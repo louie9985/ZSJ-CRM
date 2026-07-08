@@ -1,0 +1,12 @@
+# 统一换行符：仓库内文本一律 LF（与 Docker Linux 一致，消除 Windows CRLF 噪音）
+* text=auto eol=lf
+
+# 明确二进制，避免被当文本改写
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
