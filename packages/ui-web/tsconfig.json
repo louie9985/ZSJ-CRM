@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", ".storybook"]
+  "include": ["src", "lab", "vite.lab.config.ts"]
 }

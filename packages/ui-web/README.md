@@ -1,14 +1,14 @@
 # @zsj/ui-web
 
-AI-CRM PC Web 组件库。当前只提供基于 Ant Design Pro 的受控表格和统一主题入口。
+AI-CRM PC Web 组件库。正式组件位于 `src/`，轻量组件设计台位于 `lab/`。
 
 ```bash
 pnpm ui:dev
 ```
 
-访问 <http://localhost:6006>。
+访问 <http://localhost:6006>。设计台使用虚构数据，不连接后端；当前配置保存在浏览器本地。
 
-## 使用
+## 正式页面使用
 
 ```tsx
 import { DataTable, UiWebProvider } from '@zsj/ui-web';
