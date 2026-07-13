@@ -1,0 +1,44 @@
+{
+  "name": "@zsj/ui-web",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \".storybook/**/*.{ts,tsx}\"",
+    "tsc": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@ant-design/pro-components": "^2.8.2",
+    "antd": "^5.22.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@ant-design/pro-components": "^2.8.2",
+    "@storybook/addon-a11y": "^10.5.0",
+    "@storybook/addon-docs": "^10.5.0",
+    "@storybook/react-vite": "^10.5.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "antd": "^5.22.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "storybook": "^10.5.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

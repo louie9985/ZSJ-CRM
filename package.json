@@ -11,7 +11,9 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "tsc": "turbo run tsc",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "ui:dev": "pnpm --filter @zsj/ui-web storybook",
+    "ui:build": "pnpm --filter @zsj/ui-web build-storybook"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",
