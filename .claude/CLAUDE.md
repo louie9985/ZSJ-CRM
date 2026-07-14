@@ -1,7 +1,7 @@
 # CLAUDE.md — AI-CRM V3.0 项目宪法与工程规范
 
 > 本文件注入每一个 AI 会话与子 Agent 的上下文。开工前必读。
-> 事实源：`docs/AI-CRM-V3-产品需求与开发总纲-V3.3.md`、`docs/开发手册细则-V3.1.md`、`docs/事件契约表-V3.0.md`。规则以这三份受控文档最新版为准，本文件是其精炼索引。
+> 事实源：`docs/AI-CRM-V3-产品需求与开发总纲-V3.4.md`、`docs/开发手册细则-V3.2.md`、`docs/事件契约表-V3.0.md`。规则以这三份受控文档最新版为准，本文件是其精炼索引。
 
 ## 0. 最高约束：架构宪法（AP-01~21）
 
@@ -46,7 +46,7 @@
 
 ```
 packages/shared-core   # API client(OpenAPI生成)、类型、Zustand、hooks、权限判断、zod校验
-packages/web           # React18 + Ant Design Pro，只写视图
+packages/web           # React19 + HeroUI Pro（CollectUI）+ Tailwind CSS 4，只写视图
 packages/mobile        # 内部移动端（企微工作台 H5，Taro+NutUI-React），只写视图
 packages/h5-partner    # 外部提交端（Taro，出 H5+微信小程序）
 apps/server            # NestJS，platform/ + modules/m1~m13

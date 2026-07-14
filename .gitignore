@@ -11,6 +11,9 @@ build/
 apps/server/node_modules/.prisma/
 **/generated/
 
+# OpenAPI 出码中间产物（server 导出的原始 spec，不入库；生成的类型 schema.ts 入库）
+packages/shared-core/openapi.json
+
 # Env & secrets
 .env
 .env.local
@@ -33,4 +36,3 @@ Thumbs.db
 .claude/skills/
 .claude/settings.local.json
 skills-lock.json
-

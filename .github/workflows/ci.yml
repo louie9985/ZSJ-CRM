@@ -17,9 +17,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile=false
+      - name: Configure HeroUI Pro
+        run: pnpm dlx hpsetup@latest --auto
+        env:
+          HEROUI_KEY: ${{ secrets.HEROUI_KEY }}
       - run: pnpm --filter @zsj/shared-core build
       - run: pnpm --filter @zsj/server exec prisma generate
       - run: pnpm --filter @zsj/server build
+      - name: OpenAPI 出码管道（server 导出 → shared-core 生成类型）
+        run: |
+          OPENAPI_EXPORT="$PWD/packages/shared-core/openapi.json" pnpm --filter @zsj/server run openapi:export
+          pnpm --filter @zsj/shared-core run openapi:gen
+      - run: pnpm --filter @zsj/web build
       - name: lint (含 boundary 边界检查)
         run: pnpm -w lint
       - name: tsc

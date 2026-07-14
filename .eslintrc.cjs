@@ -47,6 +47,27 @@ module.exports = {
       files: ['**/*.mjs', '**/*.test.mjs'],
       env: { node: true },
     },
+    {
+      // web/mobile/h5 只写视图，禁写业务逻辑：不得直接 import 后端（@zsj/server）。
+      // 业务逻辑一律下沉 shared-core（对齐 CLAUDE.md 边界铁律）。
+      files: ['packages/web/src/**/*.{ts,tsx}'],
+      parserOptions: { ecmaFeatures: { jsx: true } },
+      env: { browser: true },
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['@zsj/server', '@zsj/server/*'],
+                message:
+                  'AP 边界：web 禁止 import 后端业务逻辑；逻辑下沉 @zsj/shared-core',
+              },
+            ],
+          },
+        ],
+      },
+    },
   ],
   ignorePatterns: ['**/dist/**', '**/node_modules/**', '**/*.d.ts'],
 };

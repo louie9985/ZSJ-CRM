@@ -8,9 +8,12 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "tsc": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test \"test/**/*.mjs\""
+    "test": "node --test \"test/**/*.mjs\"",
+    "openapi:gen": "openapi-typescript ./openapi.json -o ./src/api/schema.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
+    "openapi-typescript": "^7.5.0",
     "typescript": "^5.7.2"
   }
 }

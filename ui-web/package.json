@@ -1,0 +1,19 @@
+{
+  "name": "zsj-crm-ui-preview",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../packages/web/node_modules/vite/bin/vite.js . --host 127.0.0.1",
+    "build": "node ../packages/web/node_modules/vite/bin/vite.js build .",
+    "check:render": "node scripts/check-render.mjs",
+    "typecheck": "node ../node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "0.468.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

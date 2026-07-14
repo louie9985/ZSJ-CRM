@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@import "@heroui/styles/css";
+@import "@heroui-pro/react/css";
+
+@source "../app/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+@source "../templates/**/src/**/*.{ts,tsx}";
+
+body {
+  background-color: var(--background);
+}

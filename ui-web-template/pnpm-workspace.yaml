@@ -1,0 +1,12 @@
+packages:
+  - "."
+
+allowBuilds:
+  '@tailwindcss/oxide': true
+  sharp: true
+  unrs-resolver: true
+  "@heroui-pro/react": true
+  "@zowe/secrets-for-zowe-sdk": true
+
+overrides:
+  typescript-eslint: 8.62.1

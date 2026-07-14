@@ -1,0 +1,7 @@
+import type {ReactNode} from "react";
+
+import {ChatShell} from "../../components/chat-shell";
+
+export default function AppLayoutGroup({children}: {children: ReactNode}) {
+  return <ChatShell>{children}</ChatShell>;
+}

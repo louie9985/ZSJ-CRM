@@ -213,6 +213,6 @@ POST /attachments/presign  GET /attachments/{id}/download   下载鉴权
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | V3.0 | 2026-07-07 | 初版 |
-| V3.1 | 2026-07-08 | 技术选型评审（M11 放行）回写：**CR-08** role_data_scope.scope → SELF/ORG_SUBTREE/CUSTOM/ALL；**CR-09** 新增 data_scope_grant、temp_access_request，session 补 active_assignment_id；**CR-01** 调度引擎 BullMQ → RabbitMQ。详见《技术选型-V3.2》。 |
+| V3.1 | 2026-07-08 | 技术选型评审（M11 放行）回写：**CR-08** role_data_scope.scope → SELF/ORG_SUBTREE/CUSTOM/ALL；**CR-09** 新增 data_scope_grant、temp_access_request，session 补 active_assignment_id；**CR-01** 调度引擎 BullMQ → RabbitMQ。详见《技术选型-V3.3》。 |
 | V3.2 | 2026-07-08 | **CR-11** 移动端由 App 改小程序/H5 回写：出口标准/AC-B1-08/10 由 App 改企微 H5；notification.channel 去 push、改 inapp/wecom_app_msg/sms 并注「生成/推送分离」；第4章企微集成范围调整（B1 需 OAuth 免密+应用消息）。**新增待办（须开 M11 定稿）**：①`account_oauth_binding` 第三方绑定表结构；②企微/微信登录绑定 API 端点。详见《技术选型》第 9 章。 |
 | V3.3 | 2026-07-08 | **M11-CR11 定稿回写**：§1.1 account 注下补入 `account_oauth_binding` 第三方绑定表（字段/唯一约束/防串号/DEC-1~4 落地），account 去内联 `wecom_userid`；§2 API 概要补企微/微信免密登录与绑定端点（`/auth/wecom\|wechat/login`、`/auth/login` 带 bind_ticket、`/auth/bind/*`）。清理 V3.2 登记的两项 M11 待办。详见《M11-工单-CR11-第三方登录绑定与免密》§3/§4/§6。 |
