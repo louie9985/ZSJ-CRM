@@ -1,116 +1,93 @@
-# AGENTS.md — AI-CRM V3.0 项目宪法与工程规范
+# AI-CRM Repository Rules
 
-> 本文件注入每一个 AI 会话与子 Agent 的上下文。开工前必读。
-> 事实源：`docs/AI-CRM-V3-产品需求与开发总纲-V3.4.md`、`docs/开发手册细则-V3.2.md`、`docs/事件契约表-V3.0.md`。规则以这三份受控文档最新版为准，本文件是其精炼索引。
+## Authority Order
 
-## 0. 最高约束：架构宪法（AP-01~21）
+When sources conflict, use this order:
 
-违反任一条 = 代码评审直接打回。审查时逐条打勾。
+1. The current user request.
+2. This file.
+3. Accepted ADRs in `docs/08-架构决策/`.
+4. Contracts in `contracts/`.
+5. Module documentation in `docs/03-模块说明/`.
+6. Confirmed business rules in `docs/02-业务规则/`.
+7. Interview documents and other material in `docs/` and `references/`.
+8. Temporary task handoffs in `.handoffs/`.
 
-**身份与权限**
-- AP-01 账号/操作人/员工档案/业务任职分开建模，不允许 God-User
-- AP-02 数据范围权限与功能权限分离
-- AP-03 前端隐藏/灰按钮不能代替后端鉴权
+Interview documents are research inputs, not finalized specifications. Do not invent CRM entities, fields, states, permissions, SLAs, or approval routes from them without an accepted business rule or ADR.
 
-**状态与历史**
-- AP-04 核心状态/金额/权益/审核/归属由后端判断
-- AP-05 待办、通知、业务状态分开
-- AP-06 历史依赖快照与事件，不用当前人员/配置反推过去
+## Current Stage
 
-**流程与一致性**
-- AP-07 关键动作有前置/互斥/终态保护，防重复提交/关闭/结算/状态回退
-- AP-08 中间态不等同最终归属/结果
-- AP-09 金额/订单/权益/提现有一致性校验、去重、可追溯
+The current scope is the common technical foundation and a business-neutral walking skeleton. Do not implement CRM domain modules such as leads, orders, settlements, products, partners, students, or dashboards until their boundaries are confirmed.
 
-**通知任务审计**
-- AP-10 通知由稳定业务事件驱动，有触发时机/收件人/关联对象/去重；**生成与外部推送分离：生成必发生（站内事实源），外部推送按端能力增强（内部企微应用消息=可靠/外部只站内），推送失败不影响生成〔CR-11〕**
-- AP-11 定时任务幂等、可重试、有锁、去重
-- AP-12 关键动作/资金/权限/状态/敏感访问写审计日志；不记录密码/Token
+Use `docs/04-工程手册/第一阶段AI并行开发实施计划.md` for first-stage work packages, dependencies, path ownership, merge gates, and AI task handoffs. Use `docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` for acceptance evidence. These execution documents remain subordinate to this file, accepted ADRs, and reviewed contracts.
 
-**附件与敏感**
-- AP-13 附件统一管理上传状态/业务关联/可见范围/下载鉴权
-- AP-14 敏感信息最小化展示、按需查看、单独鉴权、访问审计
+For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.md` as the design and interaction reference. The referenced Demo is not a source of production code, dependencies, routes, roles, entities, fields, states, permissions, SLAs, approval routes, or other business rules.
 
-**接口与前端**
-- AP-15 接口字段/状态/权限/金额口径变化同步更新文档/类型/测试/业务文档
-- AP-16 前端不长期依赖 mock/静态假数据/本地硬编码业务规则
-- AP-17 页面筛选/深链/抽屉/临时状态可恢复、可清理
+## Architecture Boundaries
 
-**补充**
-- AP-18 所有写操作 API 支持客户端幂等键（X-Request-Id）
-- AP-19 金额一律整数分存储与计算，禁浮点
-- AP-20 配置也是数据：变更留痕带版本；业务快照记生效配置版本
-- AP-21 事件是唯一事实源：指标/通知/待办全由事件驱动，不跨模块直读表
+- `apps/` contains independently runnable and deployable programs.
+- `packages/platform-modules/` contains business-neutral platform capabilities.
+- `packages/domain-modules/` is reserved for confirmed business domains.
+- Domain modules may depend on `platform-sdk` and contracts. They must not depend directly on Keycloak, Flowable, RabbitMQ, Redis, or storage vendors.
+- No module may query another module's tables directly.
+- No deep imports across module boundaries. Import only through each package's public entry point.
+- PostgreSQL data is partitioned by module-owned schemas and repositories. Database row types, Drizzle schema objects, query builders, and transaction handles are not public module contracts.
+- Production schema changes use reviewed, versioned Drizzle SQL migrations. Application startup and deployment must not use automatic schema synchronization or `drizzle-kit push`.
+- HTTP and event contracts are changed before implementations.
+- Source OpenAPI files are split by module. The bundled OpenAPI document is generated and must not be edited manually.
+- Domain events are transport-neutral. RabbitMQ topology and private worker job payloads belong in `contracts/asyncapi/` and `contracts/jobs/`, not `contracts/events/`.
+- Workflow state, unified task projections, reminders/SLA, and background jobs are separate concerns.
+- Business modules store stable file references only. They must not expose object-storage buckets, keys, credentials, or permanent provider URLs, and must not call storage vendors directly.
+- Runtime technical configuration, business dictionaries/parameters, form definitions, and submitted domain data are separate concerns. Secrets never enter business configuration, and submitted form data remains owned by its domain module.
+- Published form and business-configuration versions are immutable. Runtime decisions that depend on them record the resolved version; client rendering and visibility rules never replace server-side validation or authorization.
+- Notification intent, in-app notification state, task state, and external-channel delivery are separate facts. A notification never proves that work was completed or that a provider message was read.
+- Domain modules request notifications through stable contracts. They must not call WeCom, SMS, email, push, or other channel providers directly.
+- `workbench-web`, `internal-mobile`, and `external-portal` are separate applications and deployment artifacts. External clients must consume an allowlisted external OpenAPI surface, never a complete internal client hidden by UI checks.
+- Taro applications isolate target-specific behavior behind adapters. They must not import Ant Design/ProComponents or assume the PC Web React major; shared UI is promoted only after real cross-application reuse.
+- PC Web and H5 clients use isolated BFF HTTP-only sessions; the WeChat Mini Program may hold only a short-lived opaque server-session handle. Client code and domain modules must never receive Keycloak tokens, provider secrets, or the WeChat `session_key`.
+- External provider identifiers are trusted only after server-side verification and Keycloak subject establishment. Do not auto-link identities by phone, email, name, `userid`, `openid`, or `unionid`.
+- Keycloak owns provider federation; `organization` owns the effective association from an internal Keycloak subject to a workforce person. WeCom login identity, directory-source mapping, and notification address are separate concerns and must not share tables or grant access implicitly.
+- Internal access fails closed without a unique workforce person and active employment. Closing one assignment revokes only that context; it does not imply departure or delete history.
+- External operations explicitly choose anonymous, restricted-invitation, or authenticated access. An invitation capability is not an identity, must not be unioned with login grants, and never bypasses the owning module's current resource-state check.
+- Do not create a generic external-user model, invitation table, anonymous endpoint, or external-access package until a confirmed domain scenario owns the resource and contract.
+- Provider integrations use a vendor-neutral port owned by the capability module, the business-neutral `integration-runtime` for shared technical primitives, and a concrete adapter composed in `apps/api` or `apps/worker`.
+- `integration-runtime` must not own domain facts, expose arbitrary external URL execution, become a cross-module orchestration layer, or provide a second message transport beside the Outbox/RabbitMQ/Inbox path.
+- Domain modules must not import provider SDKs or adapter implementations. Provider responses and Webhooks become business facts only after the owning module accepts them through reviewed commands or events.
+- Do not create a concrete payment, SMS, WeCom, WeChat, course-platform, question-bank, or AI adapter/schema until its capability Owner, provider protocol, test account, data boundary, idempotency, retry, callback, reconciliation, authorization, and acceptance scenario are confirmed.
+- The first production topology is two Tencent Cloud Ubuntu CVMs with a separate self-hosted Docker Compose project per host. Do not introduce Kubernetes, Docker Swarm, or production managed PostgreSQL/Redis/RabbitMQ without a new accepted ADR.
+- Two API replicas do not make Nginx, PostgreSQL, Redis, RabbitMQ, Keycloak, or Flowable highly available. Do not claim automatic failover, an SLA, RPO, or RTO until the topology and recovery drills prove it.
+- Production images use immutable versions or digests. State services stay private, backups leave the two-server failure domain, and production secrets never appear in Compose files, images, logs, frontend artifacts, or repository files.
+- The first observability baseline is Pino structured logs, hosted Sentry error/sample-trace reporting, Tencent Cloud Monitor, external uptime probes, and OpenTelemetry/W3C propagation. Do not add an OpenTelemetry Collector, Prometheus, Grafana, Loki, ELK/Elastic Stack, Alertmanager, or self-hosted Sentry without a new accepted ADR.
+- Audit records, business facts, application logs, metrics, and error/trace events have separate owners, retention, and truth semantics. Technical telemetry may correlate through safe trace references but never replaces audit evidence.
+- Logs, Sentry events, metric labels, Trace attributes, and health responses must exclude credentials, cookies, tokens, request/response bodies, personal data, customer content, raw provider payloads, SQL parameters, and unbounded user-controlled strings. Domain modules depend on `packages/observability`, not telemetry vendor SDKs.
+- Production Secret management uses root-owned restricted host files, per-service Docker Compose Secret/read-only mounts, and typed `*_FILE` references. Do not add Vault, Tencent Cloud Secrets Manager, production Secret environment values, encrypted production Secrets in Git, or a production `.env` without a new accepted ADR.
+- Every Secret is environment-, service-, and purpose-specific, fails closed when missing, and has an Owner, consumers, rotation/revocation procedure, and incident action recorded without its value. Containers receive only the Secret files they need.
+- Production Secret values must not appear in Compose YAML, Dockerfiles, image layers, command arguments, shell history, databases, business configuration, logs, Sentry, Trace data, frontend artifacts, documentation, tickets, chat, or backups. Disaster-recovery Secret bundles are encrypted before leaving the host with an offline key not stored on the production hosts or in COS.
+- Product AI calls use registered owning-module use cases through `platform-sdk`, the business-neutral `ai-gateway`, `integration-runtime`, and an application-composed Provider Adapter. Domain modules must not import model SDKs, submit arbitrary raw prompts, select unapproved models, or query AI gateway tables directly.
+- Model output is an untrusted, non-authoritative proposal. It cannot change domain state, approval, authorization, finance, pricing, personnel, performance, or allocation until an authorized human confirms it and the owning module rechecks authorization and current invariants through a formal command.
+- Do not create a real AI provider adapter, model credential, CRM prompt, customer scoring, summary use case, RAG/vector store, knowledge base, tool/MCP execution, LiteLLM, LangChain, or LangGraph integration until its Owner, data boundary, provider region/contract, budget, acceptance set, retention, authorization, and human-review behavior are confirmed.
+- AI telemetry and call metadata must exclude full prompts, model responses, chain-of-thought, customer/employee content, credentials, and raw provider payloads. Development/provider evaluation uses synthetic data; de-identification alone never authorizes cross-border model use.
 
-## 1. 仓库结构（禁止技术层横切，按业务模块纵切）
+## AI Development Rules
 
-```
-packages/shared-core   # API client(OpenAPI生成)、类型、Zustand、hooks、权限判断、zod校验
-packages/web           # React19 + HeroUI Pro（CollectUI）+ Tailwind CSS 4，只写视图
-packages/mobile        # 内部移动端（企微工作台 H5，Taro+NutUI-React），只写视图
-packages/h5-partner    # 外部提交端（Taro，出 H5+微信小程序）
-apps/server            # NestJS，platform/ + modules/m1~m13
-docs/                  # 受控文档
-tools/                 # 造数脚本、迁移
-```
+- Every task must state known facts, allowed assumptions, forbidden assumptions, and non-goals.
+- Record unresolved assumptions in the relevant task handoff. Do not silently encode them in schemas.
+- Keep changes scoped. Do not create speculative empty business modules.
+- Prefer adapters around third-party systems over modifying their source code.
+- Add or update tests with every behavioral change.
+- A separate review pass must check authorization, idempotency, transactions, migrations, observability, and backward compatibility.
+- Never put permanent business rules in `.handoffs/`.
 
-**边界铁律（ESLint boundary + CI 拦截）**：
-- `platform/**` 禁止 import `modules/**`
-- `modules/mX` 禁止 import `modules/mY`（跨模块只走事件或 platform 服务）
-- 跨模块只存 ID，禁止跨模块外键 JOIN 写业务逻辑
-- `web/mobile/h5` 禁止写业务逻辑，逻辑一律下沉 shared-core
+## Definition Of Done
 
-## 2. 后端规范要点
+A change is complete only when applicable items are present:
 
-- REST `/api/v1/<module>/...`；统一响应 `{code,message,data,trace_id}`；错误码 `<模块号><3位>`
-- 写操作接受 `X-Request-Id` 幂等键，服务端 (幂等键+端点) 去重
-- 状态流转唯一入口 `StateMachineService.transition(...)`；业务代码直接 update status = 打回
-- 归属读写只经 `OwnershipService`；直接 update 负责人字段 = 打回
-- 抢单/接单用乐观锁 `UPDATE ... WHERE status='pending' AND owner IS NULL`，影响 0 行返回业务错误码
-- 事件：业务事务内写 event_store（同库同事务），提交后 dispatcher 投递；消费端幂等（event_id 去重）
-- 金额全链路整数分；佣金台账只增不改（状态迁移=新增流水行）；分账余数规则写死进单测（大头给成交人）
-- Prisma Migrate；**迁移脚本禁止 AI 直接生成后合入，必须人工评审**
-- 敏感列应用层加密 + hash 列做等值查询/判重
-
-## 3. 前端规范要点
-
-- 权限读 `/me/permissions`；任何本地硬编码角色判断 = 打回
-- 服务端状态用 TanStack Query，缓存键 `[module, resource, params]`
-- zod schema 在 shared-core，Web/移动端 + 后端共用（single source）
-- 列表/详情用 P7-2/P7-3 统一组件，禁止每页手搓
-- 筛选条件进 URL query（Web）/路由参数（移动端 Taro），刷新/返回可恢复
-- 移动端（内部企微 H5 / 外部小程序+H5）统一 Taro + NutUI-React + Tailwind token + Lucide；登录账号密码为根 + 企微/微信绑定快进〔CR-11〕
-- 禁止 mock 长存；确需 mock 标 `// MOCK-TODO(工单号)`
-
-## 4. AI 编码纪律（红绿分级）
-
-**绿类**（UI 布局、DTO、样板 CRUD、测试脚手架）：审查走查 + CI 门禁即可。
-
-**红类**（金额/佣金、Ownership、状态机、权限、审批、迁移脚本、定时任务）：
-- 测试先行（人写断言 AC，AI 补实现）
-- 审查员逐行 + 找 bug 员对抗 + **人逐行放行**
-- 单测覆盖率 ≥90%；分账余数、终态保护、时区/夜间 SLA 必有用例
-
-**通用**：
-- 提示词中禁用真实客户数据（敏感字段见总纲附录 B），造数用 `tools/seed`
-- 跨模块边界改动（新增事件/改 platform 接口）先开 M11 工单获批再生成代码
-- 每模块完成跑一次 AI 自审：宪法条款作检查清单逐条自查输出报告，人复核
-
-## 5. 时区与日界线
-
-服务器/DB 统一 UTC 存储，展示按 Asia/Shanghai；"当日下班前""90 日"等业务日界线按 Asia/Shanghai 计算（写进公共 dateutil，禁止业务代码自算）。
-
-## 6. 提交与门禁
-
-- trunk-based，短生命 feature 分支（<2 天）
-- PR 门禁：lint + tsc + 单测 + boundary 检查全绿 + 1 名人工评审
-- commit：`feat(m4): xxx` / `fix(platform/task): xxx`，关联工单号
-- 围栏期 2026-08-18 起只修不加
-
-## 7. 多 Agent 协作
-
-角色定义见 `agents/`。组长编排，产品经理拆 AC，架构师守边界，实现者写代码，审查员挑问题，找 bug 员对抗。红类产出汇总后人放行。详见 `docs/AI多Agent协作机制-V1.0.md`。
-
-## 8. 接口契约披露
-
-存储单一源、披露渐进式：事件契约以 `docs/事件契约表` 为准，API 契约以 OpenAPI 生成类型为准，两者都不拆散不复制。Agent 按 `docs/contracts-manifest.md`（契约索引清单）定位并只拉取本模块相关切片，不凭记忆编造字段/事件；缺失标 TBD。新增事件/改字段先开 M11 工单。详见《AI多Agent协作机制》第 6 章。
+- Contract or schema changes are documented and versioned.
+- Unit, contract, integration, or end-to-end tests cover the behavior.
+- Authorization and audit behavior are explicit.
+- Idempotency, retry, timeout, and failure behavior are defined.
+- Database changes include reversible migration guidance.
+- Logs, metrics, traces, and health checks are included for runtime components.
+- Secrets are configuration references, never committed values.
+- User-facing and operator documentation is updated.
+- `pnpm check` passes.

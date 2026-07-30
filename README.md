@@ -1,134 +1,58 @@
-# AI-CRM V3.0
+# AI-CRM
 
-> 内部 CRM 系统。工程宪法与规范见 [`.claude/CLAUDE.md`](.claude/CLAUDE.md)，事实源文档在 [`docs/`](docs/)。
-> 本 README 只做**本地开发命令速查**。当前进度：X 极简骨架 + Web 壳已搭建（见 [`docs/骨架搭建范围-V3.1.md`](docs/骨架搭建范围-V3.1.md)），业务模块与鉴权尚未实现。
+AI-CRM is currently building its common technical foundation before finalized CRM business workflows are implemented.
 
-## 最快跑起来（骨架阶段，两个终端）
+## Current Scope
+
+- Workbench application shell
+- Internal mobile and external-client application shells
+- Authentication and organization context
+- Authorization facade
+- Workflow integration
+- Unified tasks and notifications
+- Form schemas and file handling
+- Audit, events, and observability
+- A business-neutral end-to-end demo flow
+
+Business interview documents under `docs/` are reference material. Confirmed rules will be promoted into `docs/02-业务规则/` before domain implementation.
+
+## Repository Map
+
+- `apps/`: independently runnable composition roots for API, Worker, PC Web, internal mobile, and external portal; application processes do not own platform or domain rules
+- `packages/platform-modules/`: business-neutral platform capabilities
+- `packages/domain-modules/`: confirmed business domains, currently intentionally empty
+- `packages/platform-sdk/`: stable, vendor-neutral access to platform capabilities
+- `contracts/`: reviewed HTTP, event, job, permission, form, business-configuration, notification, provider-neutral integration, AI governance, error, and shared model contracts
+- `tests/`: cross-application tests
+- `deploy/`: local, test, and production deployment definitions
+- `docs/`: architecture, rules, module descriptions, and operating manuals
+
+The API and worker are separate processes because synchronous HTTP and background execution have different scaling and failure behavior. Platform and domain packages may still be composed as a modular monolith; package boundaries do not imply microservices. See [ADR-0003](docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md).
+
+Third-party capabilities use owning-module ports, a small business-neutral integration runtime, and provider adapters composed at application boundaries. The repository does not contain a giant integration gateway or any unapproved payment, messaging, WeCom, WeChat, course-platform, question-bank, or AI adapter. See [ADR-0020](docs/08-架构决策/ADR-0020-第三方集成运行时与供应商适配器.md).
+
+The first production topology uses two Tencent Cloud Ubuntu CVMs with self-hosted Docker Compose services and Nginx routing. It is intentionally cost-first and is not represented as automatic high availability; recovery relies on off-host backups and tested runbooks. See [ADR-0021](docs/08-架构决策/ADR-0021-第一阶段两台云服务器Docker-Compose部署.md).
+
+The first observability baseline uses Pino JSON logs, hosted Sentry error and sampled-trace reporting, Tencent Cloud Monitor, and external uptime probes. It deliberately does not operate a Collector, Prometheus/Grafana, Loki/ELK, Alertmanager, or self-hosted Sentry. See [ADR-0022](docs/08-架构决策/ADR-0022-第一阶段轻量可观测性基线.md).
+
+Production Secrets use restricted per-host files, Docker Compose Secret mounts, and typed `*_FILE` references. The first stage does not operate Vault or Tencent Cloud Secrets Manager and does not store Secret values in Git, Compose YAML, production `.env`, databases, logs, Sentry, or client artifacts. See [ADR-0023](docs/08-架构决策/ADR-0023-文件式Secret与两台主机安全基线.md).
+
+Product AI capabilities use a business-neutral, self-developed AI gateway for registered use cases, data/prompt/model policy, budgets, structured non-authoritative proposals, and human-review enforcement. The first stage has no real model provider, CRM Prompt, RAG, tools, LiteLLM, LangChain, or autonomous domain action. See [ADR-0024](docs/08-架构决策/ADR-0024-AI网关与AI治理边界.md).
+
+First-stage implementation and parallel AI work are governed by the [AI parallel implementation plan](docs/04-工程手册/第一阶段AI并行开发实施计划.md) and the [Walking Skeleton acceptance checklist](docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md). They do not override accepted ADRs or contracts.
+
+PC workbench design and interaction should follow the [existing Demo reference baseline](docs/04-工程手册/PC工作台Demo参考基线.md). The Demo is not a source of production architecture, contracts, roles, fields, states, or business rules.
+
+## Commands
 
 ```bash
-# 首次：装 pnpm（已装可跳过）→ 新开终端 → 装依赖
-npm install -g pnpm@9.15.0
 pnpm install
-pnpm --filter @zsj/shared-core build            # 供 server/web 引用
-
-# 终端 A：后端（骨架阶段无需起 pg，直接跑）
-pnpm --filter @zsj/server dev                   # → http://localhost:3000/api/v1/health
-
-# 终端 B：Web
-pnpm --filter @zsj/web dev                      # → http://localhost:5173
+pnpm dev
+pnpm build
+pnpm test
+pnpm lint
+pnpm typecheck
+pnpm check
 ```
 
-看到 `/api/v1/health` 返回 `{"code":0,"message":"ok",...}` 即启动成功。细节见下文。
-
-## 技术栈
-
-| 包 | 角色 | 栈 |
-|---|---|---|
-| `apps/server` | 后端 | NestJS 10 + Prisma 6，全局前缀 `api/v1` |
-| `packages/shared-core` | 前后端共享 | 类型 / zod / API client / OpenAPI 生成类型（逻辑 single source） |
-| `packages/web` | PC Web（内部员工） | Vite 6 + React 19 + HeroUI Pro（CollectUI）+ Tailwind CSS 4 + react-router 7 |
-
-> `packages/mobile`（企微 H5）与 `packages/h5-partner`（外部小程序+H5）尚未建。
-
-## 环境要求
-
-- Node ≥ 22（容器 pin `node:22-slim`；本机 node 24 亦可）
-- pnpm 9.15（安装见下方「安装 pnpm」）
-- Docker（起 pg/redis/rabbitmq/nginx）
-
-## 安装 pnpm（PowerShell / CMD / Git Bash 通用）
-
-本机若 `pnpm` 命令不认（`无法将"pnpm"项识别为…` / `command not found`），用 npm 全局装一次，装到用户目录、无需管理员：
-
-```bash
-npm install -g pnpm@9.15.0
-```
-
-> **装完必须新开一个终端**，PATH 才会刷新（旧窗口仍找不到 pnpm）。新窗口跑 `pnpm -v` 应显示 `9.15.0`。
-> 三种终端都能用；日常开发推荐 Git Bash 或 PowerShell 择一固定。
-
-## 首次准备
-
-```bash
-pnpm install                                   # 安装全部 workspace 依赖
-cp .env.example .env                           # 按需改（PowerShell 用 copy .env.example .env）
-pnpm --filter @zsj/server exec prisma generate # 生成 Prisma Client
-```
-
-HeroUI Pro 是授权包。首次配置在本地临时设置 `HEROUI_KEY` 后执行 `pnpm dlx hpsetup@latest --auto`；CI 需在仓库 Secrets 中配置同名的 `HEROUI_KEY`，不要把密钥写进仓库文件。
-
-## 本地开发
-
-需两个终端：先起后端，再起 web（web 的 dev proxy 把 `/api/v1` 转发到 server `:3000`）。
-
-### 终端 A —— 起后端（下面两种方式二选一）
-
-**方式一：全套容器（一键，适合跑起来看/验证部署）**
-
-```bash
-docker compose up          # pg + redis + rabbitmq + nginx + app(server) 全用 Docker 起
-```
-
-改后端代码需重建镜像才生效，不适合边写边调。
-
-**方式二：本机 watch 起 server（适合日常开发，改代码热重载）**
-
-```bash
-pnpm --filter @zsj/server dev   # NestJS watch，监听 :3000
-```
-
-这条**只起后端本身**，不含 pg/redis/rabbitmq。若后端逻辑需要连基础设施，另开一个终端只起基础设施容器（不起 app/nginx）：
-
-```bash
-docker compose up postgres redis rabbitmq   # 只起基础设施
-```
-
-> **骨架阶段可省基础设施**：当前 Prisma 只接入未建表、后端未连库，直接 `pnpm --filter @zsj/server dev` 即可起后端、访问 `/health` 与 Swagger，无需起 pg。等到 B1 建表那轮才必须先起基础设施。
-
-### 终端 B —— 起 Web
-
-```bash
-pnpm --filter @zsj/web dev     # Vite，http://localhost:5173
-```
-
-**访问入口**
-
-| 地址 | 说明 |
-|---|---|
-| http://localhost:5173 | Web 壳（dev） |
-| http://localhost:5173/api/v1/health | 经 web dev proxy → server |
-| http://localhost:8080/api/v1/health | 经 nginx（`docker compose up` 时） |
-| http://localhost:3000/api/v1/docs | Swagger UI（本地起 server 时；容器内 3000 未映射到宿主） |
-| http://localhost:3000/api/v1/docs-json | OpenAPI JSON |
-
-## OpenAPI 出码管道
-
-改了 server 的接口 DTO 后，刷新 shared-core 里的生成类型（两步，需 server 先 build）：
-
-```bash
-pnpm --filter @zsj/server build                # 出 dist/main.js
-OPENAPI_EXPORT="$PWD/packages/shared-core/openapi.json" \
-  pnpm --filter @zsj/server run openapi:export # 导出模式：写 openapi.json 后退出，不 listen
-pnpm --filter @zsj/shared-core run openapi:gen # 生成 packages/shared-core/src/api/schema.ts
-```
-
-- `openapi.json` 是中间产物，**不入库**；生成的 `schema.ts` **入库**（可复现类型源）。
-- web 通过 `@zsj/shared-core` 的 `components['schemas'][...]` 消费这些类型。
-
-## 全量门禁（对齐 CI）
-
-```bash
-pnpm -w lint    # ESLint + boundary 边界检查（含 web 禁 import 后端）
-pnpm -w tsc     # 全包类型检查
-pnpm -w test    # node:test 单测
-pnpm -w build   # 全包构建（含 web 产物）
-```
-
-CI 门禁全绿 + 1 名人工评审方可合入（见 CLAUDE.md 第 6 节）。
-
-## 构建产物
-
-```bash
-pnpm --filter @zsj/server build   # → apps/server/dist
-pnpm --filter @zsj/web build      # → packages/web/dist（静态资源）
-```
+Packages and executable applications will add their own scripts as implementation begins.

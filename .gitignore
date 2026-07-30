@@ -1,38 +1,31 @@
-# Dependencies
 node_modules/
 .pnpm-store/
-
-# Build output
+.turbo/
+.cache/
+.eslintcache
+*.tsbuildinfo
 dist/
 build/
-.turbo/
+coverage/
+playwright-report/
+test-results/
 
-# Prisma generated client
-apps/server/node_modules/.prisma/
-**/generated/
-
-# OpenAPI 出码中间产物（server 导出的原始 spec，不入库；生成的类型 schema.ts 入库）
-packages/shared-core/openapi.json
-
-# Env & secrets
 .env
-.env.local
-*.local
+.env.*
+!.env.example
 
-# Logs
 *.log
-npm-debug.log*
-pnpm-debug.log*
-
-# Editor / OS
+*.tmp
 .DS_Store
-.idea/
-.vscode/*
-!.vscode/extensions.json
 Thumbs.db
 
-# AI 工具：第三方 skill 缓存（各开发者自行安装，不入库）与本地个人设置
-.agents/
-.claude/skills/
-.claude/settings.local.json
-skills-lock.json
+.idea/
+.vscode/
+
+deploy/data/
+deploy/compose/.runtime/
+deploy/secrets/runtime/
+deploy/secrets/**/runtime/
+deploy/secrets/**/*.secret
+deploy/secrets/**/*.age
+backups/

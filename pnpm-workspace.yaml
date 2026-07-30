@@ -1,7 +1,6 @@
 packages:
-  - "packages/*"
-  - "apps/*"
+  - apps/*
+  - packages/*
+  - packages/platform-modules/*
+  - packages/domain-modules/*
 
-allowBuilds:
-  "@heroui-pro/react": true
-  "@zowe/secrets-for-zowe-sdk": true

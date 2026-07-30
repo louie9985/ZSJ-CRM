@@ -1,0 +1,15 @@
+# Application Registry
+
+Owns stable business-neutral application, navigation, and route IDs, audience, enablement, relative route templates, and permission references for client shells. It contains no CRM applications, roles, grants, display copy, arbitrary URLs, or external provider identifiers.
+
+Every management mutation requires an Actor, UUID operation ID, bounded reason, Trace ID, explicit server-side authorization, and attempted/final audit calls. The audit port treats `(operationId, result)` as its idempotency key so a successful state mutation followed by audit dependency failure can be retried without repeating the mutation. State and the operation receipt commit in one local transaction; concurrent duplicates serialize by operation ID and changed payload reuse fails closed.
+
+Registry loads query the requested audience at the repository boundary, remove disabled entries, and authorize current application and route permission references. An external load cannot retrieve internal registrations. Task and Notification deep links contain only registered application/route IDs and a bounded opaque resource reference. Resolution checks current audience, application/route enablement, allowed source, and target authorization every time; an old link cannot bypass disablement. The returned path remains a registered relative template and is not an authorization decision.
+
+Migration `0000000006` is additive and creates an empty `app_registry` schema with referential constraints. Application rollback retains stable IDs; repairs use a forward migration. The module migration command accepts only `DATABASE_MIGRATION_URL_FILE` and is not an application startup hook.
+
+`createPostgresApplicationRegistryQueryService` is the production read-only composition boundary. Every call receives an explicit authenticated Actor, the current workforce authorization subject (all active Assignments and the optional selected Assignment), and the request Trace. It reuses the module-owned PostgreSQL Store and sends every registered application/route permission reference to the injected request authorizer. Contradictory context and authorization dependency failures fail closed before Registry facts escape.
+
+`createPostgresApplicationRegistryCapabilityProbe` is the independent module-owned PostgreSQL capability check for that production query boundary. One read-only catalog query verifies current schema usage plus the presence, required query columns, and column-level `SELECT` capability of `applications`, `routes`, and `navigation`. Missing, negative, malformed, or rejected evidence returns only `unavailable`; the probe starts no transaction and reads or writes no Registry fact.
+
+An `available` result proves only that these static prerequisites were observable for the current session at check time. It does not prove a future Registry query will complete, pass dynamic authorization, or meet a latency target. Application composition owns timeout, cancellation, non-overlapping scheduling, cached Readiness state, generation invalidation, shutdown behavior, and production role grants.

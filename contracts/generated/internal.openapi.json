@@ -1,0 +1,3417 @@
+{
+  "components": {
+    "schemas": {}
+  },
+  "info": {
+    "title": "AI-CRM API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/application-registry": {
+      "get": {
+        "description": "Returns only enabled internal applications, routes, and ancestor-closed navigation currently authorized for the internal principal. Registrations for other audiences and unauthorized targets are filtered server-side.",
+        "operationId": "getInternalApplicationRegistry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "applications": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "applicationId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          },
+                          "audience": {
+                            "const": "internal"
+                          },
+                          "enabled": {
+                            "const": true
+                          },
+                          "permissionCode": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,63}:[a-z][a-z0-9_.-]{0,63}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "applicationId",
+                          "audience",
+                          "enabled",
+                          "permissionCode"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "navigation": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "applicationId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "const": true
+                          },
+                          "navigationId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          },
+                          "order": {
+                            "maximum": 100000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "parentNavigationId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          },
+                          "routeId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "applicationId",
+                          "enabled",
+                          "navigationId",
+                          "order",
+                          "routeId"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "routes": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "applicationId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          },
+                          "deepLinkSources": {
+                            "items": {
+                              "enum": [
+                                "task",
+                                "notification"
+                              ],
+                              "type": "string"
+                            },
+                            "maxItems": 2,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "enabled": {
+                            "const": true
+                          },
+                          "path": {
+                            "pattern": "^/[a-z0-9_./:-]{0,255}$",
+                            "type": "string"
+                          },
+                          "permissionCode": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,63}:[a-z][a-z0-9_.-]{0,63}$",
+                            "type": "string"
+                          },
+                          "routeId": {
+                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "applicationId",
+                          "deepLinkSources",
+                          "enabled",
+                          "path",
+                          "permissionCode",
+                          "routeId"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "version": {
+                      "const": 1
+                    }
+                  },
+                  "required": [
+                    "applications",
+                    "navigation",
+                    "routes",
+                    "version"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current authorized internal registry snapshot."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side or target authorization denied."
+          },
+          "503": {
+            "description": "Authorization or registry persistence is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.app-registry.registry:read",
+          "owner": "platform.app-registry",
+          "resource": "platform.app-registry.registry",
+          "version": 1
+        }
+      }
+    },
+    "/application-registry/deep-links/resolve": {
+      "post": {
+        "description": "Resolves a Task or Notification deep-link descriptor only after rechecking the current internal audience, application and route enablement, source allowlist, and target authorization. The relative route template and resource reference remain separate; the result is not durable authorization.",
+        "operationId": "resolveInternalApplicationDeepLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicationId": {
+                    "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                    "type": "string"
+                  },
+                  "resourceReference": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_.:-]+$",
+                    "type": "string"
+                  },
+                  "routeId": {
+                    "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                    "type": "string"
+                  },
+                  "source": {
+                    "enum": [
+                      "task",
+                      "notification"
+                    ],
+                    "type": "string"
+                  },
+                  "version": {
+                    "const": 1
+                  }
+                },
+                "required": [
+                  "applicationId",
+                  "resourceReference",
+                  "routeId",
+                  "source",
+                  "version"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "applicationId": {
+                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                      "type": "string"
+                    },
+                    "path": {
+                      "pattern": "^/[a-z0-9_./:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "resourceReference": {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_.:-]+$",
+                      "type": "string"
+                    },
+                    "routeId": {
+                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "applicationId",
+                    "path",
+                    "resourceReference",
+                    "routeId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Currently authorized relative route target."
+          },
+          "400": {
+            "description": "Request shape is invalid."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side or target authorization denied."
+          },
+          "404": {
+            "description": "Target is missing, disabled, audience-mismatched, or not registered for this source; details are intentionally not distinguished."
+          },
+          "503": {
+            "description": "Authorization or registry persistence is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only-resolution"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only-resolution"
+        },
+        "x-ai-crm-permission": {
+          "action": "resolve",
+          "code": "platform.app-registry.deep-link:resolve",
+          "owner": "platform.app-registry",
+          "resource": "platform.app-registry.deep-link",
+          "version": 1
+        }
+      }
+    },
+    "/auth/pc/callback": {
+      "get": {
+        "operationId": "completePcLogin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Establish an opaque BFF session, rotate its identifier, and redirect to the allowlisted return path.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The one-time callback transaction is invalid, expired, or already consumed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The identity provider or session store is unavailable; authentication fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/login": {
+      "get": {
+        "operationId": "beginPcLogin",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the reviewed Keycloak authorization endpoint.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The requested local return path is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The identity provider or session store is unavailable; login fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/logout": {
+      "post": {
+        "operationId": "logoutPcSession",
+        "parameters": [
+          {
+            "description": "Required when an existing browser session Cookie is present.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Clear an absent session Cookie idempotently; no provider redirect is required.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Revoke the local session, clear its Cookie, and redirect the browser to the token-free Keycloak logout flow.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Set-Cookie": {
+                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The supplied session Cookie is malformed, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF validation failed for an existing session."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Session storage or durable authentication audit is unavailable; logout fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/refresh": {
+      "post": {
+        "operationId": "refreshPcSession",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Refresh the server-side Keycloak session and rotate the opaque BFF session identifier.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The session or refresh credential is no longer valid."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF validation failed."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Another refresh owns the short-lived session refresh lease; the request must not reuse the refresh credential."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The identity provider or session store is unavailable; refresh fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/session": {
+      "get": {
+        "operationId": "getPcSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "client": {
+                      "const": "pc-web",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "client",
+                    "authenticatedAt",
+                    "expiresAt",
+                    "csrfToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Return the browser-safe view of the current BFF session."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The session is missing, expired, revoked, or invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The identity provider or session store is unavailable; session validation fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/files/download-grants": {
+      "post": {
+        "description": "Reauthorizes both File Center access and the current owning resource reference before minting a fresh short-lived download grant. A grant is ephemeral, is not a permanent provider URL, and does not prove the owning resource remains accessible later.",
+        "operationId": "createFileDownloadGrant",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "fileReference": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "contentVersionId": {
+                        "format": "uuid",
+                        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                        "type": "string"
+                      },
+                      "fileId": {
+                        "format": "uuid",
+                        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                        "type": "string"
+                      },
+                      "mediaType": {
+                        "maxLength": 255,
+                        "minLength": 3,
+                        "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                        "type": "string"
+                      },
+                      "sizeBytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "version": {
+                        "const": 1
+                      }
+                    },
+                    "required": [
+                      "contentVersionId",
+                      "displayName",
+                      "fileId",
+                      "version"
+                    ],
+                    "type": "object"
+                  },
+                  "resource": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resourceId": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_.:@/-]+$",
+                        "type": "string"
+                      },
+                      "resourceType": {
+                        "pattern": "^[a-z][a-z0-9_.:-]{1,127}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "resourceId",
+                      "resourceType"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "fileReference",
+                  "resource"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "downloadUrl": {
+                      "maxLength": 2048,
+                      "pattern": "^https?://[^\\s]+$",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "fileReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentVersionId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "mediaType": {
+                          "maxLength": 255,
+                          "minLength": 3,
+                          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "contentVersionId",
+                        "displayName",
+                        "fileId",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "version": {
+                      "const": 1
+                    }
+                  },
+                  "required": [
+                    "downloadUrl",
+                    "expiresAt",
+                    "fileReference",
+                    "version"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Fresh short-lived download grant after current authorization."
+          },
+          "400": {
+            "description": "Request shape, identifier, media type, size, or header is invalid."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "CSRF validation or current server-side authorization denied."
+          },
+          "404": {
+            "description": "File version or current resource reference is unavailable to the current principal."
+          },
+          "409": {
+            "description": "Content is not currently available for download."
+          },
+          "503": {
+            "description": "Authorization, audit, file persistence, or storage inspection/grant dependency is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only-short-lived-grant"
+        },
+        "x-ai-crm-idempotency": {
+          "keyHeader": "Idempotency-Key",
+          "mode": "audit-operation-only",
+          "replay": "fresh-ephemeral-grant"
+        },
+        "x-ai-crm-permission": {
+          "action": "download",
+          "code": "platform.file-center.file:download",
+          "owner": "platform.file-center",
+          "resource": "platform.file-center.file",
+          "version": 1
+        }
+      }
+    },
+    "/files/upload-sessions": {
+      "post": {
+        "description": "Creates an initial immutable content version and a short-lived upload session. Declared metadata is untrusted; the returned FileReference is not usable until trusted inspection and malware scanning make the content available.",
+        "operationId": "createFileUploadSession",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "classificationReference": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_.:@/-]+$",
+                    "type": "string"
+                  },
+                  "declaredMediaType": {
+                    "maxLength": 255,
+                    "minLength": 3,
+                    "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                    "type": "string"
+                  },
+                  "declaredSizeBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "displayName": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                    "type": "string"
+                  },
+                  "ownerModule": {
+                    "pattern": "^[a-z][a-z0-9_.:-]{1,127}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "declaredMediaType",
+                  "declaredSizeBytes",
+                  "displayName",
+                  "ownerModule"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "fileReference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentVersionId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "mediaType": {
+                          "maxLength": 255,
+                          "minLength": 3,
+                          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "contentVersionId",
+                        "displayName",
+                        "fileId",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    },
+                    "session": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentVersionId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "sessionId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "created",
+                            "pending_scan",
+                            "expired",
+                            "cleanup_pending",
+                            "cleaned"
+                          ],
+                          "type": "string"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "contentVersionId",
+                        "createdAt",
+                        "expiresAt",
+                        "fileId",
+                        "sessionId",
+                        "status",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "uploadGrant": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "expiresAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "headers": {
+                          "additionalProperties": {
+                            "maxLength": 1024,
+                            "type": "string"
+                          },
+                          "maxProperties": 20,
+                          "type": "object"
+                        },
+                        "method": {
+                          "const": "PUT"
+                        },
+                        "uploadUrl": {
+                          "maxLength": 2048,
+                          "pattern": "^https?://[^\\s]+$",
+                          "type": "string"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "expiresAt",
+                        "headers",
+                        "method",
+                        "uploadUrl",
+                        "version"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "fileReference",
+                    "replayed",
+                    "session",
+                    "uploadGrant"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Durable session and ephemeral upload grant. An identical replay returns the original file/content/session identities but mints a fresh short-lived upload grant bounded by the original session expiry; it never extends durable lifetime."
+          },
+          "400": {
+            "description": "Request shape, identifier, media type, size, or header is invalid."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "CSRF validation or current server-side authorization denied."
+          },
+          "409": {
+            "description": "Idempotency key was reused with changed semantics or the current lifecycle state conflicts with the command."
+          },
+          "503": {
+            "description": "Authorization, audit, file persistence, or storage inspection/grant dependency is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-identities",
+          "ephemeralGrant": "freshly-minted-within-original-session-expiry",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
+        "x-ai-crm-permission": {
+          "action": "upload",
+          "code": "platform.file-center.file:upload",
+          "owner": "platform.file-center",
+          "resource": "platform.file-center.file",
+          "version": 1
+        }
+      }
+    },
+    "/files/upload-sessions/{sessionId}/confirm": {
+      "post": {
+        "description": "Idempotently inspects the uploaded object and confirms trusted metadata. Success moves content only to pending_scan; it never makes content available and never exposes scanner or storage-provider internals.",
+        "operationId": "confirmFileUpload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "contentVersion": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "actualSizeBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "checksumSha256": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "completedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "contentVersionId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "declaredMediaType": {
+                          "maxLength": 255,
+                          "minLength": 3,
+                          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                          "type": "string"
+                        },
+                        "declaredSizeBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "detectedMediaType": {
+                          "maxLength": 255,
+                          "minLength": 3,
+                          "pattern": "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$",
+                          "type": "string"
+                        },
+                        "fileId": {
+                          "format": "uuid",
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "scannedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "awaiting_upload",
+                            "pending_scan",
+                            "available",
+                            "quarantine_pending",
+                            "quarantined",
+                            "object_missing",
+                            "cleanup_pending",
+                            "deleted"
+                          ],
+                          "type": "string"
+                        },
+                        "version": {
+                          "const": 1
+                        },
+                        "versionNumber": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "contentVersionId",
+                        "createdAt",
+                        "declaredMediaType",
+                        "declaredSizeBytes",
+                        "fileId",
+                        "status",
+                        "version",
+                        "versionNumber"
+                      ],
+                      "type": "object"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "contentVersion",
+                    "replayed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current confirmed immutable content-version status. Replays do not re-run provider inspection."
+          },
+          "400": {
+            "description": "Request shape, identifier, media type, size, or header is invalid."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "CSRF validation or current server-side authorization denied."
+          },
+          "404": {
+            "description": "Upload session is unavailable to the current principal."
+          },
+          "409": {
+            "description": "Upload session is expired, not in a confirmable state, or conflicts with the idempotency operation. These conditions share the public File Center operation-conflict error and are intentionally not distinguished by the Controller."
+          },
+          "503": {
+            "description": "Authorization, audit, file persistence, or storage inspection/grant dependency is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "keyHeader": "Idempotency-Key",
+          "mode": "required",
+          "replay": "original-result"
+        },
+        "x-ai-crm-permission": {
+          "action": "upload",
+          "code": "platform.file-center.file:upload",
+          "owner": "platform.file-center",
+          "resource": "platform.file-center.file",
+          "version": 1
+        }
+      }
+    },
+    "/form-definitions/{definitionId}/releases/{releaseVersion}": {
+      "get": {
+        "description": "Reads one exact immutable release after current resource authorization. It does not resolve a mutable current version.",
+        "operationId": "getFormRelease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definitionId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "releaseVersion",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "contentDigest": {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    },
+                    "definitionId": {
+                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                      "type": "string"
+                    },
+                    "jsonSchema": {
+                      "type": "object"
+                    },
+                    "ownerModule": {
+                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                      "type": "string"
+                    },
+                    "publishedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "releaseVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "uiSchema": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "fields": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "component": {
+                                "enum": [
+                                  "date",
+                                  "input",
+                                  "number",
+                                  "select",
+                                  "switch",
+                                  "textarea"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                                "type": "string"
+                              },
+                              "order": {
+                                "maximum": 100000,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "span": {
+                                "maximum": 24,
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "component",
+                              "field",
+                              "order"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 100,
+                          "type": "array"
+                        },
+                        "layout": {
+                          "enum": [
+                            "grid",
+                            "vertical"
+                          ],
+                          "type": "string"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "fields",
+                        "layout",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "version": {
+                      "const": 1
+                    }
+                  },
+                  "required": [
+                    "active",
+                    "contentDigest",
+                    "definitionId",
+                    "jsonSchema",
+                    "ownerModule",
+                    "publishedAt",
+                    "releaseVersion",
+                    "uiSchema",
+                    "version"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Exact immutable form release."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side resource authorization denied."
+          },
+          "404": {
+            "description": "Exact form release does not exist."
+          },
+          "503": {
+            "description": "Authorization or form persistence is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.form-schema.form-release:read",
+          "owner": "platform.form-schema",
+          "resource": "platform.form-schema.form-release",
+          "version": 1
+        }
+      }
+    },
+    "/form-definitions/{definitionId}/releases/{releaseVersion}/validate": {
+      "post": {
+        "description": "Validates a proposed value against one exact immutable release on the server. The value is not persisted, authorization and domain invariants are not inferred, and client validation never becomes authoritative.",
+        "operationId": "validateFormSubmission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definitionId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "releaseVersion",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "The complete encoded request body is limited to 262144 bytes. The data value is depth 1; each nested object/array value increases depth by 1. Data is limited to depth 32 and 10000 total object, array, and scalar value nodes including the data root by x-ai-crm-request-limits before authorization and service invocation.",
+                "properties": {
+                  "data": {}
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "errors": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "instancePath": {
+                            "maxLength": 2048,
+                            "type": "string"
+                          },
+                          "keyword": {
+                            "maxLength": 128,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "instancePath",
+                          "keyword"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    },
+                    "reference": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "contentDigest": {
+                          "pattern": "^[a-f0-9]{64}$",
+                          "type": "string"
+                        },
+                        "definitionId": {
+                          "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                          "type": "string"
+                        },
+                        "releaseVersion": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "version": {
+                          "const": 1
+                        }
+                      },
+                      "required": [
+                        "contentDigest",
+                        "definitionId",
+                        "releaseVersion",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "valid": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "errors",
+                    "reference",
+                    "valid"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server validation result for the exact release."
+          },
+          "400": {
+            "description": "Request payload is malformed or outside the bounded transport contract."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side resource authorization denied."
+          },
+          "404": {
+            "description": "Exact form release does not exist."
+          },
+          "413": {
+            "description": "Request body exceeds 262144 bytes, JSON nesting exceeds 32 levels, or parsed JSON exceeds 10000 total object/array/scalar nodes. The Controller rejects it before authorization and before invoking Form Schema."
+          },
+          "422": {
+            "description": "The registered release cannot be compiled by the controlled server dialect; no submitted data is persisted."
+          },
+          "503": {
+            "description": "Authorization or form persistence is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only-validation"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "no-state-change"
+        },
+        "x-ai-crm-permission": {
+          "action": "validate",
+          "code": "platform.form-schema.form-release:validate",
+          "owner": "platform.form-schema",
+          "resource": "platform.form-schema.form-release",
+          "version": 1
+        },
+        "x-ai-crm-request-limits": {
+          "enforcement": "before-authorization-and-service",
+          "jsonLimitTarget": "requestBody.data",
+          "jsonNodeCounting": "object-array-and-scalar-values-including-data-root",
+          "jsonRootDepth": 1,
+          "maxBodyBytes": 262144,
+          "maxJsonDepth": 32,
+          "maxJsonNodes": 10000
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ok",
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The process is alive."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ok",
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The process is ready to accept work."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "ok",
+                        "unavailable"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required dependency is unavailable or incompatible."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "archivedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "body": {
+                            "maxLength": 8000,
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "deepLink": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "applicationId": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "parameters": {
+                                "additionalProperties": {
+                                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                  "type": "string"
+                                },
+                                "maxProperties": 20,
+                                "type": "object"
+                              },
+                              "resourceId": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "resourceType": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "routeId": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "applicationId",
+                              "routeId",
+                              "resourceType",
+                              "resourceId"
+                            ],
+                            "type": "object"
+                          },
+                          "intentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "notificationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "notificationType": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "preferenceDecision": {
+                            "enum": [
+                              "deliver",
+                              "suppress"
+                            ],
+                            "type": "string"
+                          },
+                          "preferenceReason": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "preferenceVersion": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "principalId": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "readAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "recipientReference": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "resolutionReference": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "resolutionVersion": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "sourceType": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "templateVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "maxLength": 512,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "notificationId",
+                          "intentId",
+                          "principalId",
+                          "recipientReference",
+                          "resolutionReference",
+                          "resolutionVersion",
+                          "templateKey",
+                          "templateVersion",
+                          "notificationType",
+                          "title",
+                          "body",
+                          "sourceType",
+                          "sourceId",
+                          "deepLink",
+                          "preferenceDecision",
+                          "preferenceReason",
+                          "preferenceVersion",
+                          "createdAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "maxLength": 128,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current principal's visible in-app notifications."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "503": {
+            "description": "Authorization, audit, recipient resolution, template validation, or storage failed closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "list",
+          "code": "platform.notifications.in-app-notification:list",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.in-app-notification",
+          "version": 1
+        }
+      }
+    },
+    "/notifications/{notificationId}": {
+      "get": {
+        "operationId": "getNotification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notificationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "archivedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "body": {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "deepLink": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "applicationId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "additionalProperties": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "maxProperties": 20,
+                          "type": "object"
+                        },
+                        "resourceId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "resourceType": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "routeId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "applicationId",
+                        "routeId",
+                        "resourceType",
+                        "resourceId"
+                      ],
+                      "type": "object"
+                    },
+                    "intentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceDecision": {
+                      "enum": [
+                        "deliver",
+                        "suppress"
+                      ],
+                      "type": "string"
+                    },
+                    "preferenceReason": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "readAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "recipientReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "maxLength": 512,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "notificationId",
+                    "intentId",
+                    "principalId",
+                    "recipientReference",
+                    "resolutionReference",
+                    "resolutionVersion",
+                    "templateKey",
+                    "templateVersion",
+                    "notificationType",
+                    "title",
+                    "body",
+                    "sourceType",
+                    "sourceId",
+                    "deepLink",
+                    "preferenceDecision",
+                    "preferenceReason",
+                    "preferenceVersion",
+                    "createdAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current principal's notification after object authorization."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "404": {
+            "description": "Notification does not exist for the current principal."
+          },
+          "503": {
+            "description": "Authorization, audit, recipient resolution, template validation, or storage failed closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.notifications.in-app-notification:read",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.in-app-notification",
+          "version": 1
+        }
+      }
+    },
+    "/notifications/{notificationId}/archive": {
+      "post": {
+        "operationId": "archiveNotification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notificationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "archivedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "body": {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "deepLink": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "applicationId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "additionalProperties": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "maxProperties": 20,
+                          "type": "object"
+                        },
+                        "resourceId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "resourceType": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "routeId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "applicationId",
+                        "routeId",
+                        "resourceType",
+                        "resourceId"
+                      ],
+                      "type": "object"
+                    },
+                    "intentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceDecision": {
+                      "enum": [
+                        "deliver",
+                        "suppress"
+                      ],
+                      "type": "string"
+                    },
+                    "preferenceReason": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "readAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "recipientReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "maxLength": 512,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "notificationId",
+                    "intentId",
+                    "principalId",
+                    "recipientReference",
+                    "resolutionReference",
+                    "resolutionVersion",
+                    "templateKey",
+                    "templateVersion",
+                    "notificationType",
+                    "title",
+                    "body",
+                    "sourceType",
+                    "sourceId",
+                    "deepLink",
+                    "preferenceDecision",
+                    "preferenceReason",
+                    "preferenceVersion",
+                    "createdAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Idempotently archived in-app notification."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "404": {
+            "description": "Notification does not exist for the current principal."
+          },
+          "503": {
+            "description": "Authorization, audit, recipient resolution, template validation, or storage failed closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "archive",
+          "code": "platform.notifications.in-app-notification:archive",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.in-app-notification",
+          "version": 1
+        }
+      }
+    },
+    "/notifications/{notificationId}/read": {
+      "post": {
+        "description": "Idempotently changes only the current principal's in-app read state; it never completes a task or business action.",
+        "operationId": "markNotificationRead",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notificationId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "archivedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "body": {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "deepLink": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "applicationId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "parameters": {
+                          "additionalProperties": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "maxProperties": 20,
+                          "type": "object"
+                        },
+                        "resourceId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "resourceType": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "routeId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "applicationId",
+                        "routeId",
+                        "resourceType",
+                        "resourceId"
+                      ],
+                      "type": "object"
+                    },
+                    "intentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notificationType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceDecision": {
+                      "enum": [
+                        "deliver",
+                        "suppress"
+                      ],
+                      "type": "string"
+                    },
+                    "preferenceReason": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "preferenceVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "readAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "recipientReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "resolutionVersion": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "templateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "maxLength": 512,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "notificationId",
+                    "intentId",
+                    "principalId",
+                    "recipientReference",
+                    "resolutionReference",
+                    "resolutionVersion",
+                    "templateKey",
+                    "templateVersion",
+                    "notificationType",
+                    "title",
+                    "body",
+                    "sourceType",
+                    "sourceId",
+                    "deepLink",
+                    "preferenceDecision",
+                    "preferenceReason",
+                    "preferenceVersion",
+                    "createdAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated in-app notification."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "404": {
+            "description": "Notification does not exist for the current principal."
+          },
+          "503": {
+            "description": "Authorization, audit, recipient resolution, template validation, or storage failed closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "mark-read",
+          "code": "platform.notifications.in-app-notification:mark-read",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.in-app-notification",
+          "version": 1
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "operationId": "getNotificationUnreadCount",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "count": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "count"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current principal's unread count."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "503": {
+            "description": "Authorization, audit, recipient resolution, template validation, or storage failed closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "list",
+          "code": "platform.notifications.in-app-notification:list",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.in-app-notification",
+          "version": 1
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "open",
+                "completed",
+                "cancelled"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 511,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "assigneeReference": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "candidateScopeReference": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "deepLink": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "appId": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "routeId": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "appId",
+                              "routeId"
+                            ],
+                            "type": "object"
+                          },
+                          "dueAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "projectionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "sourceTaskId": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "sourceType": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "sourceVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "open",
+                              "completed",
+                              "cancelled"
+                            ],
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "projectionId",
+                          "sourceType",
+                          "sourceTaskId",
+                          "sourceVersion",
+                          "status",
+                          "deepLink",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "maxLength": 511,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Authorized task projections only."
+          },
+          "401": {
+            "description": "No valid internal session."
+          },
+          "403": {
+            "description": "Current object-level authorization denied."
+          },
+          "503": {
+            "description": "Authorization, storage, audit, or authoritative source is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "list",
+          "code": "platform.task-center.task-projection:list",
+          "owner": "platform.task-center",
+          "resource": "platform.task-center.task-projection",
+          "version": 1
+        }
+      }
+    },
+    "/tasks/{sourceType}/{sourceTaskId}": {
+      "get": {
+        "operationId": "getTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceType",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceTaskId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "assigneeReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "candidateScopeReference": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "deepLink": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "appId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "routeId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "appId",
+                        "routeId"
+                      ],
+                      "type": "object"
+                    },
+                    "dueAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "projectionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "sourceTaskId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "sourceVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "open",
+                        "completed",
+                        "cancelled"
+                      ],
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "projectionId",
+                    "sourceType",
+                    "sourceTaskId",
+                    "sourceVersion",
+                    "status",
+                    "deepLink",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Projection after current object-level authorization."
+          },
+          "401": {
+            "description": "No valid internal session."
+          },
+          "403": {
+            "description": "Current object-level authorization denied."
+          },
+          "404": {
+            "description": "Task projection does not exist."
+          },
+          "503": {
+            "description": "Authorization, storage, audit, or authoritative source is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.task-center.task-projection:read",
+          "owner": "platform.task-center",
+          "resource": "platform.task-center.task-projection",
+          "version": 1
+        }
+      }
+    },
+    "/tasks/{sourceType}/{sourceTaskId}/complete": {
+      "post": {
+        "description": "Routes an idempotent completion command to the authoritative source. It does not close the projection.",
+        "operationId": "completeTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceType",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceTaskId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "sourceCommandId": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "accepted"
+                    }
+                  },
+                  "required": [
+                    "sourceCommandId",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Source command accepted; wait for a source lifecycle event."
+          },
+          "401": {
+            "description": "No valid internal session."
+          },
+          "403": {
+            "description": "Current object-level authorization denied."
+          },
+          "404": {
+            "description": "Task projection does not exist."
+          },
+          "409": {
+            "description": "Idempotency conflict or command still in progress."
+          },
+          "503": {
+            "description": "Authorization, storage, audit, or authoritative source is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "complete",
+          "code": "platform.task-center.task-projection:complete",
+          "owner": "platform.task-center",
+          "resource": "platform.task-center.task-projection",
+          "version": 1
+        }
+      }
+    },
+    "/tasks/{sourceType}/{sourceTaskId}/reconcile": {
+      "post": {
+        "description": "Re-authorizes an operator repair and compares the projection with the authoritative source.",
+        "operationId": "reconcileTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceType",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sourceTaskId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "projection": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "assigneeReference": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "candidateScopeReference": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "deepLink": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "appId": {
+                              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                              "type": "string"
+                            },
+                            "routeId": {
+                              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "appId",
+                            "routeId"
+                          ],
+                          "type": "object"
+                        },
+                        "dueAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "projectionId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "sourceTaskId": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "sourceType": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "sourceVersion": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "status": {
+                          "enum": [
+                            "open",
+                            "completed",
+                            "cancelled"
+                          ],
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "projectionId",
+                        "sourceType",
+                        "sourceTaskId",
+                        "sourceVersion",
+                        "status",
+                        "deepLink",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "status": {
+                      "enum": [
+                        "applied",
+                        "current",
+                        "stale"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "projection"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Reconciliation result."
+          },
+          "401": {
+            "description": "No valid internal session."
+          },
+          "403": {
+            "description": "Current object-level authorization denied."
+          },
+          "503": {
+            "description": "Authorization, storage, audit, or authoritative source is unavailable; fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "reconcile",
+          "code": "platform.task-center.task-projection:reconcile",
+          "owner": "platform.task-center",
+          "resource": "platform.task-center.task-projection",
+          "version": 1
+        }
+      }
+    }
+  },
+  "x-ai-crm-generated": true
+}
