@@ -1,0 +1,27 @@
+import { createApiPlatformComposition } from "@ai-crm/api";
+import { describe, expect, it } from "vitest";
+
+import { createE2eProcessBindings } from "./api-main.js";
+import { createE2eProcessAnchorHandler } from "./worker-main.js";
+
+describe("isolated E2E process composition", () => {
+  it("starts from complete API bindings while leaving unfinished capabilities unavailable", async () => {
+    const bindings = createE2eProcessBindings();
+    const composition = createApiPlatformComposition(bindings);
+    await expect(composition.lifecycle.onStart?.(new AbortController().signal)).resolves.toBeUndefined();
+    expect(composition.lifecycle.dependencies?.()).toEqual([{ healthy: true, name: "e2e-process-bindings", required: true }]);
+    await expect(bindings.queries.tasks.list({} as never)).rejects.toThrow("e2e_capability_not_composed");
+  });
+
+  it("keeps the Worker process alive until drain aborts its test-only anchor", async () => {
+    const handler = createE2eProcessAnchorHandler();
+    const controller = new AbortController();
+    const running = Promise.resolve(handler.run(controller.signal));
+    let settled = false;
+    void running.then(() => { settled = true; });
+    await new Promise<void>((resolve) => { setImmediate(resolve); });
+    expect(settled).toBe(false);
+    controller.abort();
+    await expect(running).resolves.toBeUndefined();
+  });
+});

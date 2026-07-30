@@ -9,6 +9,7 @@ const parseCompose = async (path) => YAML.parse(await readFile(resolve(root, pat
 const base = await parseCompose("deploy/compose/compose.base.yml");
 const dev = await parseCompose("deploy/compose/compose.dev.yml");
 const test = await parseCompose("deploy/compose/compose.test.yml");
+const e2e = await parseCompose("deploy/compose/compose.e2e.yml");
 const authTest = await parseCompose("deploy/compose/compose.auth-test.yml");
 const rabbitmqIntegration = await parseCompose("deploy/compose/compose.rabbitmq-integration.yml");
 const productionA = await parseCompose("deploy/compose/production/compose.host-a.yml");
@@ -30,6 +31,7 @@ const errors = [];
 for (const [label, model, options] of [
   ["development", mergeComposeModels(base, dev), {}],
   ["test", mergeComposeModels(base, test), {}],
+  ["e2e", mergeComposeModels(mergeComposeModels(base, test), e2e), {}],
   ["authentication-test", mergeComposeModels(base, authTest), {}],
   ["rabbitmq-integration", mergeComposeModels(base, rabbitmqIntegration), {}],
   ["host-a", productionA, { production: true }],
@@ -96,6 +98,20 @@ for (const [name, service] of Object.entries(dev.services ?? {})) {
 if (base.networks?.backend?.external) errors.push("The backend network must remain project-scoped.");
 for (const [name, service] of Object.entries(test.services ?? {})) {
   if (service?.ports) errors.push(`${name} must not publish test ports.`);
+}
+const effectiveE2e = mergeComposeModels(mergeComposeModels(base, test), e2e);
+const expectedE2eServices = ["api-e2e", "clamav", "flowable", "keycloak", "nginx", "postgres", "rabbitmq", "redis", "workbench-e2e", "worker-e2e"];
+const actualE2eServices = Object.keys(effectiveE2e.services ?? {}).sort();
+if (actualE2eServices.length !== expectedE2eServices.length || actualE2eServices.some((name, index) => name !== expectedE2eServices[index])) {
+  errors.push("E2E Compose must contain the seven dependencies plus API, Worker, and Workbench test processes.");
+}
+for (const [name, service] of Object.entries(effectiveE2e.services ?? {})) {
+  if (service?.ports) errors.push(`${name} must not publish ports in the isolated E2E composition.`);
+}
+if (effectiveE2e.services?.["api-e2e"]?.environment?.AI_CRM_E2E_PROCESS_ENTRYPOINT !== "api" ||
+  effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_E2E_PROCESS_ENTRYPOINT !== "worker" ||
+  effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED !== undefined) {
+  errors.push("E2E process entry points must be explicit and must not activate the production Task consumer.");
 }
 for (const [name, service] of Object.entries(authTest.services ?? {})) {
   for (const port of service.ports ?? []) {

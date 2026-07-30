@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { checkArtifacts, renderArtifacts, selectReferencedSchemas } from "../contracts/generate.mjs";
 import "../../contracts/asyncapi/topology.contract.test.mjs";
+import "../../contracts/asyncapi/walking-skeleton.contract.test.mjs";
+import "../../contracts/jobs/jobs.contract.test.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 

@@ -1,0 +1,94 @@
+name: ai-crm-e2e
+
+services:
+  api-e2e:
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile
+    environment:
+      AI_CRM_API_HOST: 0.0.0.0
+      AI_CRM_API_PORT: "3000"
+      AI_CRM_E2E_PROCESS_ENTRYPOINT: api
+      AI_CRM_INSTANCE_ID: api-e2e
+      AI_CRM_RELEASE: e2e-process-skeleton
+      NODE_ENV: test
+    networks: [backend]
+    restart: "no"
+    stop_grace_period: 15s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 512M }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "2" }
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  worker-e2e:
+    build:
+      context: ../..
+      dockerfile: tests/e2e/Dockerfile
+    command: [node, dist/worker-main.js]
+    environment:
+      AI_CRM_E2E_PROCESS_ENTRYPOINT: worker
+      AI_CRM_INSTANCE_ID: worker-e2e
+      AI_CRM_RELEASE: e2e-process-skeleton
+      AI_CRM_WORKER_DRAIN_TIMEOUT_SECONDS: "15"
+      AI_CRM_WORKER_HEALTH_FILE: /tmp/ai-crm-worker-ready.json
+      NODE_ENV: test
+    networks: [backend]
+    restart: "no"
+    stop_grace_period: 20s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 512M }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "2" }
+    healthcheck:
+      test: [CMD, node, node_modules/@ai-crm/worker/dist/worker-healthcheck.mjs]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  workbench-e2e:
+    build:
+      context: ../..
+      dockerfile: apps/workbench-web/Dockerfile.e2e
+    networks: [backend]
+    restart: "no"
+    stop_grace_period: 10s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "2" }
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/health/live]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  nginx:
+    volumes:
+      - ../nginx/nginx.e2e.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api-e2e: { condition: service_healthy }
+      workbench-e2e: { condition: service_healthy }

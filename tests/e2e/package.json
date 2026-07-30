@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "files": ["dist"],
   "exports": { ".": "./dist/index.js" },
   "scripts": {
     "build": "tsc -b",
@@ -12,10 +13,14 @@
     "contracts:check": "node ../../scripts/check/verify-package.mjs"
   },
   "dependencies": {
+    "@ai-crm/api": "workspace:*",
     "@ai-crm/platform-app-registry": "workspace:*",
+    "@ai-crm/platform-eventing-outbox": "workspace:*",
     "@ai-crm/platform-form-schema": "workspace:*",
     "@ai-crm/platform-notifications": "workspace:*",
     "@ai-crm/platform-organization": "workspace:*",
-    "@ai-crm/platform-task-center": "workspace:*"
+    "@ai-crm/platform-task-center": "workspace:*",
+    "@ai-crm/platform-workflow": "workspace:*",
+    "@ai-crm/worker": "workspace:*"
   }
 }

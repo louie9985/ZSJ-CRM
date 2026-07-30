@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-crm.local/jobs/v1/notification-intent-submit.schema.json",
+  "title": "Notification Intent submission Job v1",
+  "description": "Requests authorized creation of an in-app Notification Intent. The actor context reference is resolved and reauthorized by the server.",
+  "allOf": [
+    { "$ref": "./job-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "required": ["jobType", "jobVersion", "policy", "payload"],
+      "properties": {
+        "jobType": { "const": "platform.notifications.intent-submit" },
+        "jobVersion": { "const": 1 },
+        "policy": {
+          "type": "object",
+          "required": ["maxAttempts", "backoffSeconds", "timeoutMs", "failureDisposition"],
+          "properties": {
+            "maxAttempts": { "const": 3 },
+            "backoffSeconds": { "const": [30, 300] },
+            "timeoutMs": { "const": 10000 },
+            "failureDisposition": { "const": "isolate" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actorContextReference", "intent"],
+          "properties": {
+            "actorContextReference": { "$ref": "#/$defs/stableId" },
+            "intent": { "$ref": "../notifications/notification-intent.v1.schema.json" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$" }
+  }
+}

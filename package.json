@@ -27,6 +27,9 @@
     "compose:test:integration": "node scripts/check/run-compose-integration.mjs",
     "e2e:check": "node --test tests/e2e/*.test.mjs",
     "e2e:preflight": "node tests/e2e/environment-preflight.mjs",
+    "e2e:compose:integration": "node scripts/check/run-e2e-compose-integration.mjs",
+    "e2e:rabbit-jobs:integration": "node scripts/check/run-e2e-rabbit-jobs-integration.mjs",
+    "e2e:flowable-workflow:integration": "node scripts/check/run-e2e-flowable-workflow-integration.mjs",
     "check": "pnpm repo:check && pnpm compose:check && pnpm e2e:check && node scripts/contracts/generate.mjs --check && turbo run build lint typecheck test contracts:check"
   },
   "devDependencies": {

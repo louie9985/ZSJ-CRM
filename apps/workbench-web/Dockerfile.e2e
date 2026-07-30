@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1.7
+FROM node:24.15.0-bookworm-slim AS build
+
+WORKDIR /workspace
+RUN npm install --global pnpm@9.15.0
+COPY . .
+ENV VITE_AI_CRM_E2E=true
+RUN pnpm install --frozen-lockfile \
+    && pnpm --filter @ai-crm/workbench-web build \
+    && test -f apps/workbench-web/dist/web/index.html
+
+FROM nginx:1.28.0-alpine AS runtime
+COPY --from=build /workspace/apps/workbench-web/dist/web/ /usr/share/nginx/html/
+COPY --chown=nginx:nginx deploy/nginx/nginx.workbench-e2e.conf /etc/nginx/nginx.conf
+RUN mkdir -p /var/cache/nginx /var/run/nginx /tmp/nginx \
+    && chown -R nginx:nginx /var/cache/nginx /var/run/nginx /tmp/nginx
+USER nginx
+EXPOSE 8080

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import SwaggerParser from "@apidevtools/swagger-parser";
 import { Parser as AsyncApiParser } from "@asyncapi/parser";
@@ -31,6 +31,23 @@ function stable(value) {
 
 function json(value) {
   return `${JSON.stringify(stable(value), null, 2)}\n`;
+}
+
+function normalizeSchemaReferences(value, sourcePath, schemaIdsByPath) {
+  if (Array.isArray(value)) return value.map((item) => normalizeSchemaReferences(item, sourcePath, schemaIdsByPath));
+  if (!value || typeof value !== "object") return value;
+  const normalized = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "$ref" && typeof item === "string" && !item.startsWith("#") && !/^[a-z][a-z0-9+.-]*:/iu.test(item)) {
+      const [referencePath, fragment] = item.split("#", 2);
+      const id = schemaIdsByPath.get(resolve(dirname(sourcePath), referencePath));
+      if (!id) throw new Error(`${relative(process.cwd(), sourcePath)} references unknown schema ${item}.`);
+      normalized[key] = fragment === undefined ? id : `${id}#${fragment}`;
+    } else {
+      normalized[key] = normalizeSchemaReferences(item, sourcePath, schemaIdsByPath);
+    }
+  }
+  return normalized;
 }
 
 function selectPaths(paths, audience) {
@@ -142,10 +159,18 @@ export async function renderArtifacts(root) {
 
   const schemaPaths = await walk(resolve(root, "contracts"), (path) => path.endsWith(".schema.json"));
   const ajv = new Ajv2020({ allErrors: true, strict: true });
+  const registeredSchemas = [];
   for (const path of schemaPaths) {
     const schema = JSON.parse(await readFile(path, "utf8"));
     if (!schema.$id?.match(/\/v\d+\//)) throw new Error(`${relative(root, path)} must use a versioned $id.`);
-    ajv.compile(schema);
+    registeredSchemas.push({ id: schema.$id, path, schema });
+  }
+  const schemaIdsByPath = new Map(registeredSchemas.map(({ id, path }) => [path, id]));
+  for (const schema of registeredSchemas) {
+    ajv.addSchema(normalizeSchemaReferences(schema.schema, schema.path, schemaIdsByPath));
+  }
+  for (const schema of registeredSchemas) {
+    if (!ajv.getSchema(schema.id)) throw new Error(`${relative(root, schema.path)} could not be compiled.`);
   }
 
   const asyncApiPaths = await walk(resolve(root, "contracts/asyncapi"), (path) => path.endsWith(".yaml"));

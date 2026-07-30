@@ -11,6 +11,8 @@ if (!directoryArgument || !isAbsolute(directoryArgument)) {
 }
 
 const directory = resolve(directoryArgument);
+const fixtureMode = process.argv[3] ?? "transport-matrix";
+if (fixtureMode !== "transport-matrix" && fixtureMode !== "walking-skeleton") throw new Error("Unsupported RabbitMQ integration fixture mode.");
 const vhost = "ai-crm-integration";
 const users = {
   consumer: { name: "ai_crm_integration_consumer", password: randomBytes(32).toString("base64url") },
@@ -43,7 +45,7 @@ runOpenSsl(["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=rabbitmq.integ
 runOpenSsl(["x509", "-req", "-days", "2", "-in", "server.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-extfile", "server-ext.cnf", "-out", "server.pem"]);
 runOpenSsl(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=Untrusted Integration CA", "-keyout", "untrusted-ca.key", "-out", "untrusted-ca.pem"]);
 
-const definitions = {
+const transportDefinitions = {
   rabbit_version: "4.2.9",
   users: Object.values(users).map((user) => ({
     name: user.name,
@@ -60,6 +62,20 @@ const definitions = {
   queues: [{ name: "ai.crm.integration", vhost, durable: true, auto_delete: false, arguments: {} }],
   bindings: [{ source: "ai.crm.events", vhost, destination: "ai.crm.integration", destination_type: "queue", routing_key: "integration.ok", arguments: {} }],
 };
+const walkingSkeletonNames = "ai-crm\\.tests\\.(?:events|retry|dead-letter)\\.v1|ai-crm\\.tests\\.(?:walking-skeleton\\.source-command|platform\\.notifications\\.intent-submit)(?:\\.retry\\.(?:30s|300s))?\\.v1|ai-crm\\.tests\\.walking-skeleton\\.dead\\.v1";
+const walkingSkeletonDefinitions = {
+  rabbit_version: "4.2.9",
+  users: transportDefinitions.users,
+  vhosts: [{ name: vhost }],
+  permissions: [
+    { user: users.publisher.name, vhost, configure: "^ai-crm\\.tests\\.events\\.v1$", write: "^ai-crm\\.tests\\.events\\.v1$", read: "^$" },
+    { user: users.consumer.name, vhost, configure: `^(?:${walkingSkeletonNames})$`, write: `^(?:${walkingSkeletonNames})$`, read: `^(?:${walkingSkeletonNames})$` },
+  ],
+  exchanges: [],
+  queues: [],
+  bindings: [],
+};
+const definitions = fixtureMode === "walking-skeleton" ? walkingSkeletonDefinitions : transportDefinitions;
 await writeFile(resolve(directory, "definitions.json"), `${JSON.stringify(definitions)}\n`, { mode: 0o600 });
 await writeFile(resolve(directory, "rabbitmq.conf"), [
   "listeners.tcp = none",

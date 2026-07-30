@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { blockers, expectedServices, runEnvironmentPreflight, validateServices } from "./environment-preflight.mjs";
+import { expectedServices, implementationGaps, runEnvironmentPreflight, validateServices } from "./environment-preflight.mjs";
 
-test("reports the dependency-only environment without claiming the main walking skeleton", async () => {
+test("reports the full process skeleton without claiming the main walking skeleton", async () => {
   const calls = [];
   const result = await runEnvironmentPreflight({
     command(executable, args) {
@@ -13,16 +13,19 @@ test("reports the dependency-only environment without claiming the main walking 
     nodeVersion: "24.15.0",
   });
   assert.equal(result.status, "environment-preflight-passed");
-  assert.equal(result.composeScope, "dependencies-only");
-  assert.equal(result.blockerEvidenceMode, "manual-snapshot-with-anchor-checks");
+  assert.equal(result.composeScope, "full-process-skeleton");
+  assert.equal(result.evidenceMode, "reviewed-contract-and-composition-anchor-checks");
+  assert.deepEqual(result.contractBlockers, []);
   assert.equal(result.mainWalkingSkeletonReady, false);
+  assert.equal(result.rabbitJobChain, "real-rabbitmq-transport-with-memory-stores");
+  assert.equal(result.workflowChain, "real-flowable-facade-with-memory-ledger-and-source");
   assert.deepEqual(result.services, expectedServices);
-  assert.deepEqual(result.blockers.map((item) => item.acceptanceId), ["07-09", "08-05", "08-07", "09-05", "10-07"]);
+  assert.deepEqual(result.implementationGaps.map((item) => item.acceptanceId), ["07-09", "08-05", "08-07", "09-05", "10-07"]);
   assert.equal(calls.length, 3);
 });
 
 test("fails closed for runtime or Compose topology drift", async () => {
   await assert.rejects(runEnvironmentPreflight({ command: () => "", nodeVersion: "22.0.0" }), /node_version_invalid/u);
   assert.throws(() => validateServices("postgres\nredis\napi"), /service_mismatch/u);
-  assert.equal(blockers.length, 5);
+  assert.equal(implementationGaps.length, 5);
 });

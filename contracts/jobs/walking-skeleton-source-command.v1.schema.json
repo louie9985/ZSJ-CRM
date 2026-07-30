@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-crm.local/jobs/v1/walking-skeleton-source-command.schema.json",
+  "title": "Walking Skeleton synthetic source command Job v1",
+  "description": "Test-scoped command used only by the business-neutral Walking Skeleton. It is not a production domain command.",
+  "allOf": [
+    { "$ref": "./job-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "required": ["jobType", "jobVersion", "source", "policy", "payload"],
+      "properties": {
+        "jobType": { "const": "tests.walking-skeleton.source-command" },
+        "jobVersion": { "const": 1 },
+        "source": { "const": "urn:ai-crm:tests.walking-skeleton" },
+        "policy": {
+          "type": "object",
+          "required": ["maxAttempts", "backoffSeconds", "timeoutMs", "failureDisposition"],
+          "properties": {
+            "maxAttempts": { "const": 3 },
+            "backoffSeconds": { "const": [30, 300] },
+            "timeoutMs": { "const": 10000 },
+            "failureDisposition": { "const": "isolate" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "action", "sourceType", "sourceTaskId", "expectedSourceVersion", "actorContextReference", "workflowTaskId", "workflowCompletionEventId"],
+          "properties": {
+            "commandId": { "$ref": "#/$defs/uuid" },
+            "action": { "const": "complete" },
+            "sourceType": { "const": "tests.walking-skeleton" },
+            "sourceTaskId": { "$ref": "#/$defs/stableId" },
+            "expectedSourceVersion": { "type": "integer", "minimum": 1 },
+            "actorContextReference": { "$ref": "#/$defs/stableId" },
+            "workflowTaskId": { "$ref": "#/$defs/stableId" },
+            "workflowCompletionEventId": { "$ref": "#/$defs/uuid" },
+            "formSubmissionReference": { "$ref": "#/$defs/stableId" },
+            "fileReferences": {
+              "type": "array",
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/stableId" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+  }
+}

@@ -1,0 +1,243 @@
+asyncapi: 3.0.0
+info:
+  title: AI-CRM Walking Skeleton test topology
+  version: 0.1.0
+  description: >-
+    Test-scoped at-least-once routes for the business-neutral Walking Skeleton.
+    This document never authorizes production activation.
+defaultContentType: application/json
+channels:
+  sourceCommandExchange:
+    address: tests.walking-skeleton.source-command.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.tests.events.v1, type: topic, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  sourceCommandQueue:
+    address: ai-crm.tests.walking-skeleton.source-command.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.walking-skeleton.source-command.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.events.v1, routingKey: tests.walking-skeleton.source-command.v1 }
+    x-ai-crm-queue-arguments:
+      x-dead-letter-exchange: ai-crm.tests.dead-letter.v1
+      x-dead-letter-routing-key: tests.walking-skeleton.source-command.v1.dead
+  notificationIntentExchange:
+    address: platform.notifications.intent-submit.v1
+    messages:
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.tests.events.v1, type: topic, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  notificationIntentQueue:
+    address: ai-crm.tests.platform.notifications.intent-submit.v1
+    messages:
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.platform.notifications.intent-submit.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.events.v1, routingKey: platform.notifications.intent-submit.v1 }
+    x-ai-crm-queue-arguments:
+      x-dead-letter-exchange: ai-crm.tests.dead-letter.v1
+      x-dead-letter-routing-key: platform.notifications.intent-submit.v1.dead
+  retryExchange:
+    address: walking-skeleton.retry.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.tests.retry.v1, type: direct, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  sourceRetry30Queue:
+    address: ai-crm.tests.walking-skeleton.source-command.retry.30s.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.walking-skeleton.source-command.retry.30s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.retry.v1, routingKey: tests.walking-skeleton.source-command.v1.retry.30s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 30000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: tests.walking-skeleton.source-command.v1 }
+    x-ai-crm-consumer-forbidden: true
+  sourceRetry300Queue:
+    address: ai-crm.tests.walking-skeleton.source-command.retry.300s.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.walking-skeleton.source-command.retry.300s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.retry.v1, routingKey: tests.walking-skeleton.source-command.v1.retry.300s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 300000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: tests.walking-skeleton.source-command.v1 }
+    x-ai-crm-consumer-forbidden: true
+  notificationRetry30Queue:
+    address: ai-crm.tests.platform.notifications.intent-submit.retry.30s.v1
+    messages:
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.platform.notifications.intent-submit.retry.30s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.retry.v1, routingKey: platform.notifications.intent-submit.v1.retry.30s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 30000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: platform.notifications.intent-submit.v1 }
+    x-ai-crm-consumer-forbidden: true
+  notificationRetry300Queue:
+    address: ai-crm.tests.platform.notifications.intent-submit.retry.300s.v1
+    messages:
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.platform.notifications.intent-submit.retry.300s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.retry.v1, routingKey: platform.notifications.intent-submit.v1.retry.300s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 300000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: platform.notifications.intent-submit.v1 }
+    x-ai-crm-consumer-forbidden: true
+  deadLetterExchange:
+    address: walking-skeleton.dead.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.tests.dead-letter.v1, type: direct, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  deadLetterQueue:
+    address: ai-crm.tests.walking-skeleton.dead.v1
+    messages:
+      sourceCommandV1:
+        $ref: '#/components/messages/sourceCommandV1'
+      notificationIntentSubmitV1:
+        $ref: '#/components/messages/notificationIntentSubmitV1'
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.tests.walking-skeleton.dead.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.tests.dead-letter.v1, routingKey: tests.walking-skeleton.source-command.v1.dead }
+      - { exchange: ai-crm.tests.dead-letter.v1, routingKey: platform.notifications.intent-submit.v1.dead }
+    x-ai-crm-replay: { automatic: false, enabled: false, authorizationRequired: true, auditRequired: true, authoritativeStateRecheckRequired: true }
+operations:
+  publishSourceCommand:
+    action: send
+    channel: { $ref: '#/channels/sourceCommandExchange' }
+    messages:
+      - { $ref: '#/channels/sourceCommandExchange/messages/sourceCommandV1' }
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+  consumeSourceCommand:
+    action: receive
+    channel: { $ref: '#/channels/sourceCommandQueue' }
+    messages:
+      - { $ref: '#/channels/sourceCommandQueue/messages/sourceCommandV1' }
+    bindings:
+      amqp: { ack: true, bindingVersion: 0.3.0 }
+    x-ai-crm-ack-mode: manual-after-inbox-transaction
+    x-ai-crm-delivery-semantics: at-least-once
+    x-ai-crm-activation: { testEnabled: true, productionEnabled: false }
+    x-ai-crm-runtime-policy: &jobPolicy
+      maxAttempts: 3
+      backoffSeconds: [30, 300]
+      timeoutMs: 10000
+      prefetch: 2
+      concurrency: 1
+      authoritativeStateRecheckRequired: true
+      authorizationRecheckRequired: true
+      unknownErrorDisposition: terminal
+  publishNotificationIntent:
+    action: send
+    channel: { $ref: '#/channels/notificationIntentExchange' }
+    messages:
+      - { $ref: '#/channels/notificationIntentExchange/messages/notificationIntentSubmitV1' }
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+  consumeNotificationIntent:
+    action: receive
+    channel: { $ref: '#/channels/notificationIntentQueue' }
+    messages:
+      - { $ref: '#/channels/notificationIntentQueue/messages/notificationIntentSubmitV1' }
+    bindings:
+      amqp: { ack: true, bindingVersion: 0.3.0 }
+    x-ai-crm-ack-mode: manual-after-inbox-transaction
+    x-ai-crm-delivery-semantics: at-least-once
+    x-ai-crm-activation: { testEnabled: true, productionEnabled: false }
+    x-ai-crm-runtime-policy: *jobPolicy
+  publishRetry:
+    action: send
+    channel: { $ref: '#/channels/retryExchange' }
+    messages:
+      - { $ref: '#/channels/retryExchange/messages/sourceCommandV1' }
+      - { $ref: '#/channels/retryExchange/messages/notificationIntentSubmitV1' }
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+  publishDeadLetter:
+    action: send
+    channel: { $ref: '#/channels/deadLetterExchange' }
+    messages:
+      - { $ref: '#/channels/deadLetterExchange/messages/sourceCommandV1' }
+      - { $ref: '#/channels/deadLetterExchange/messages/notificationIntentSubmitV1' }
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+components:
+  messages:
+    sourceCommandV1:
+      name: sourceCommandV1
+      contentType: application/json
+      payload:
+        $ref: ../jobs/walking-skeleton-source-command.v1.schema.json
+      x-ai-crm-kind: job
+      x-ai-crm-owner: tests.e2e.walking-skeleton
+      x-ai-crm-scope: tests-only
+    notificationIntentSubmitV1:
+      name: notificationIntentSubmitV1
+      contentType: application/json
+      payload:
+        $ref: ../jobs/notification-intent-submit.v1.schema.json
+      x-ai-crm-kind: job
+      x-ai-crm-owner: platform.notifications
+      x-ai-crm-scope: walking-skeleton-test-route
+x-ai-crm-topology-policy:
+  scope: tests-only
+  productionActivation: forbidden
+  environmentIsolatedVhost: true
+  publisherConfirms: required
+  consumerAcknowledgement: manual-after-local-transaction
+  immediateRequeue: forbidden
+  payloadLogging: forbidden
+  automaticDeadLetterReplay: forbidden
