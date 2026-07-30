@@ -565,6 +565,24 @@ importers:
 
   packages/tsconfig: {}
 
+  tests/e2e:
+    dependencies:
+      '@ai-crm/platform-app-registry':
+        specifier: workspace:*
+        version: link:../../packages/platform-modules/app-registry
+      '@ai-crm/platform-form-schema':
+        specifier: workspace:*
+        version: link:../../packages/platform-modules/form-schema
+      '@ai-crm/platform-notifications':
+        specifier: workspace:*
+        version: link:../../packages/platform-modules/notifications
+      '@ai-crm/platform-organization':
+        specifier: workspace:*
+        version: link:../../packages/platform-modules/organization
+      '@ai-crm/platform-task-center':
+        specifier: workspace:*
+        version: link:../../packages/platform-modules/task-center
+
 packages:
 
   '@acemir/cssom@0.9.31':

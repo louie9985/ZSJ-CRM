@@ -3,4 +3,4 @@ packages:
   - packages/*
   - packages/platform-modules/*
   - packages/domain-modules/*
-
+  - tests/e2e

@@ -15,6 +15,12 @@ The preflight is read-only. It checks Node 24, a reachable Docker daemon, Docker
 
 The current `compose.base.yml + compose.test.yml` environment contains PostgreSQL, Redis, RabbitMQ, Keycloak, Flowable, ClamAV, and Nginx only. It does not contain API, Worker, or any client application.
 
+## In-process platform slice
+
+Run `pnpm --filter @ai-crm/e2e test` to exercise a synthetic, business-neutral chain through the public entry points of Organization, App Registry, Form Schema, Task Center, and Notifications. It verifies workforce context resolution, stable registry and deep links, server-side form validation, task-projection idempotency and denial, direct notification-intent idempotency, and the injectable audit ports.
+
+This is an in-process joint test, not the main E2E. It does not start a browser, API, Worker, database, RabbitMQ consumer, Workflow source command, Task completion route, or production Notification activation, and it does not change the status of the five blocked contracts.
+
 ## Task boundary
 
 Known facts:

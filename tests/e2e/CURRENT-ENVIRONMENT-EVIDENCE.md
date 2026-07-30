@@ -1,8 +1,8 @@
 # E2E-01 Environment Evidence
 
 - Date: 2026-07-30
-- Scope: repository and local dependency-environment readiness only
-- Result: dependency environment can be rendered and independently exercised; the main Walking Skeleton remains not implemented
+- Scope: repository/local dependency readiness plus a business-neutral in-process platform slice
+- Result: the dependency environment and the in-process slice are executable; the main Walking Skeleton remains not implemented
 
 Fresh local verification:
 
@@ -15,7 +15,11 @@ Fresh local verification:
 - Flowable 1/1, Eventing Outbox 6/6, Task Center 4/4, Notifications 3/3, and Audit 3/3 isolated integration tests passed.
 - Seven PostgreSQL module integration runners (Organization, Authorization, App Registry, Audit, Business Configuration, Form Schema, and File Center) passed 29/29 tests after their direct-Docker cleanup was changed to remove attached anonymous Volumes.
 - A before/after comparison of all dangling Docker Volume identifiers around those seven runs was identical (`139 -> 139`, no added or removed identifiers). Existing unrelated and historical dangling Volumes were observed but not deleted.
-- `pnpm check`: 140/140 Turbo tasks passed after the E2E preflight and anonymous-Volume cleanup gate were connected.
+- Earlier readiness candidate: `pnpm check` passed 140/140 Turbo tasks after the E2E preflight and anonymous-Volume cleanup gate were connected.
+- `pnpm --filter @ai-crm/e2e test`: 2/2 passed. The synthetic in-process slice resolved Organization context, loaded App Registry and stable task/notification deep links, published and validated a Form release, deduplicated a Task projection and Notification Intent, denied unauthorized Task detail access, and collected evidence through the four injectable audit ports.
+- `pnpm check`: 145/145 Turbo tasks passed after `@ai-crm/e2e` became a workspace package.
+
+The in-process slice uses Memory Stores and direct public package APIs. It does not start a browser, API, Worker, PostgreSQL, RabbitMQ, Flowable, File Center, or ClamAV chain. Organization's public memory factory has no injectable audit port, so the shared audit evidence covers App Registry, Form Schema, Task Center, and Notifications only. This evidence does not change `mainWalkingSkeletonReady=false`, the five contract blockers, or any item in acceptance section 17.
 
 ## Executable evidence
 
