@@ -8,7 +8,7 @@ Implement the reviewed business-neutral cross-component Walking Skeleton with sy
 
 - The isolated 10-service process composition is healthy, routed, and repeatably cleaned up.
 - The reviewed source-command and Notification Job contracts are test-scoped and production-disabled.
-- Five implementation gaps currently keep `mainWalkingSkeletonReady=false`; the Rabbit transport slice is now real, while durable storage and the remaining composed components are not.
+- Five composition gaps currently keep `mainWalkingSkeletonReady=false`; the Flowable/Rabbit/PostgreSQL durable slice and the real File Center/ClamAV slice now pass separately.
 - Task Center routes completion to the owning source and must not mutate Workflow or source state itself.
 
 ## Allowed Assumptions
@@ -89,6 +89,9 @@ In progress.
 
 Implemented slices:
 
+- A durable combined slice now completes a real Flowable task, persists Workflow Ledger/source/Outbox/Inbox/Notification state in PostgreSQL, publishes and consumes both reviewed Jobs through TLS RabbitMQ, and proves duplicate delivery leaves one source effect and one notification.
+- The durable runner explicitly applies reviewed migrations, uses a temporary runtime Secret file and test-only grants, reports `durable=true`, and removes all containers, networks, Volumes, TLS material, and Secrets on success or failure.
+- A separate real ClamAV slice proves clean availability, malicious quarantine, idempotent replay, scanner-unavailable failure closing, authorization, audit, and cleanup through File Center public APIs.
 - A tests-only authoritative source validates the reviewed command, resolves Actor Context server-side, reauthorizes, checks current version/state/Workflow Task, and records a stable receipt by envelope idempotency key.
 - Its Job MessageHandler enforces the exact fixed policy, participates in Eventing Inbox deduplication, and rejects stale authoritative state and payload drift.
 - Task Center lost-receipt recovery reuses the exact prepared source command and produces one source effect.
@@ -103,6 +106,7 @@ Implemented slices:
 
 Remaining before completion:
 
-- Replace the in-memory Eventing, source, and Notification stores in this slice with reviewed PostgreSQL-backed durable stores; install the Task projection route in the full isolated Worker composition.
-- Combine the separately proven real Flowable and RabbitMQ slices inside the full isolated Worker/API composition, then add authenticated API/BFF bindings, Workbench API polling, file/ClamAV, trace, and durable audit evidence.
+- Install the durable source, Workflow, Eventing, Notification, and Task projection bindings inside the full isolated Worker/API process composition.
+- Add authenticated API/BFF bindings and Workbench polling, then carry form and FileReference evidence from the separately proven ClamAV slice into task completion.
+- Connect browser-to-BFF-to-API-to-Outbox-to-RabbitMQ-to-Worker Trace propagation and durable Audit correlation.
 - Run the full authorized, duplicate, denied, and dependency-failure scenarios before changing `mainWalkingSkeletonReady`.

@@ -8,10 +8,15 @@ import {
 import {
   walkingSkeletonSourceType,
   type WalkingSkeletonSourceCommand,
-  type createWalkingSkeletonSource,
+  type WalkingSkeletonSourceReceipt,
 } from "./walking-skeleton-source.js";
 
 export const walkingSkeletonSourceJobType = "tests.walking-skeleton.source-command" as const;
+
+export interface WalkingSkeletonSourceCommandPort {
+  canAccept(command: WalkingSkeletonSourceCommand): boolean | Promise<boolean>;
+  complete(input: { readonly command: WalkingSkeletonSourceCommand; readonly idempotencyKey: string }): Promise<WalkingSkeletonSourceReceipt>;
+}
 
 const requiredPayloadKeys = Object.freeze([
   "action",
@@ -77,16 +82,18 @@ function parse(message: ValidatedMessage): { readonly command: WalkingSkeletonSo
 }
 
 export function createWalkingSkeletonSourceCommandMessageHandler(
-  source: ReturnType<typeof createWalkingSkeletonSource>,
+  source: WalkingSkeletonSourceCommandPort,
 ): MessageHandler {
   if (typeof source.canAccept !== "function" || typeof source.complete !== "function") throw new Error("e2e_source_port_invalid");
   return Object.freeze({
     kind: "job",
     messageType: walkingSkeletonSourceJobType,
     messageVersion: 1,
-    recheckAuthoritativeState(message: ValidatedMessage, signal: AbortSignal): Promise<boolean> {
+    async recheckAuthoritativeState(message: ValidatedMessage, signal: AbortSignal): Promise<boolean> {
       signal.throwIfAborted();
-      return Promise.resolve(source.canAccept(parse(message).command));
+      const acceptable = await source.canAccept(parse(message).command);
+      signal.throwIfAborted();
+      return acceptable;
     },
     async handle(message: ValidatedMessage, signal: AbortSignal): Promise<void> {
       signal.throwIfAborted();

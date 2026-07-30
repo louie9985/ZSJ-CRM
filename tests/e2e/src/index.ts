@@ -15,6 +15,10 @@ export {
 } from "./walking-skeleton-rabbit.js";
 export { runWalkingSkeletonRabbitJobIntegration } from "./rabbit-job-integration.js";
 export { runWalkingSkeletonFlowableWorkflowIntegration } from "./flowable-workflow-integration.js";
+export { createMainChainIntegrationFactory, runMainChainIntegration, type MainChainIntegrationFactory, type MainChainSourcePort } from "./main-chain.js";
+export { createPostgresWalkingSkeletonSource } from "./postgres-walking-skeleton-source.js";
+export { createPostgresWorkflowCommandLedger } from "./postgres-workflow-ledger.js";
+export type { E2ePostgresRuntime } from "./postgres-runtime.js";
 export {
   createWalkingSkeletonSource,
   createWalkingSkeletonTaskPorts,

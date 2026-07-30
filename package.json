@@ -30,6 +30,8 @@
     "e2e:compose:integration": "node scripts/check/run-e2e-compose-integration.mjs",
     "e2e:rabbit-jobs:integration": "node scripts/check/run-e2e-rabbit-jobs-integration.mjs",
     "e2e:flowable-workflow:integration": "node scripts/check/run-e2e-flowable-workflow-integration.mjs",
+    "e2e:main-chain:integration": "node scripts/check/run-e2e-main-chain-integration.mjs",
+    "e2e:file-clamav:integration": "node scripts/check/run-e2e-file-clamav-integration.mjs",
     "check": "pnpm repo:check && pnpm compose:check && pnpm e2e:check && node scripts/contracts/generate.mjs --check && turbo run build lint typecheck test contracts:check"
   },
   "devDependencies": {

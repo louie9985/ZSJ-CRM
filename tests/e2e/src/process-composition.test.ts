@@ -2,6 +2,7 @@ import { createApiPlatformComposition } from "@ai-crm/api";
 import { describe, expect, it } from "vitest";
 
 import { createE2eProcessBindings } from "./api-main.js";
+import { createMainChainIntegrationFactory } from "./main-chain.js";
 import { createE2eProcessAnchorHandler } from "./worker-main.js";
 
 describe("isolated E2E process composition", () => {
@@ -23,5 +24,13 @@ describe("isolated E2E process composition", () => {
     expect(settled).toBe(false);
     controller.abort();
     await expect(running).resolves.toBeUndefined();
+  });
+
+  it("exposes explicit test-only replacement seams for the source and Workflow ledger", () => {
+    const createSource = () => ({ marker: "source" }) as never;
+    const createWorkflowLedger = () => ({ marker: "ledger" }) as never;
+    const factory = createMainChainIntegrationFactory({ createSource, createWorkflowLedger });
+    expect(factory.createSource).toBe(createSource);
+    expect(factory.createWorkflowLedger).toBe(createWorkflowLedger);
   });
 });

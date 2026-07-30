@@ -9,11 +9,12 @@ export type WalkingSkeletonSourceErrorCode =
   | "source_command_conflict"
   | "source_command_invalid"
   | "source_operation_denied"
+  | "source_storage_unavailable"
   | "source_state_conflict"
   | "source_state_not_found";
 
 export class WalkingSkeletonSourceError extends Error {
-  public constructor(public readonly code: WalkingSkeletonSourceErrorCode) {
+  public constructor(public readonly code: WalkingSkeletonSourceErrorCode, public readonly retryable = false) {
     super(code);
     this.name = "WalkingSkeletonSourceError";
   }

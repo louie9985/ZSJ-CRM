@@ -15,6 +15,16 @@ const requiredFiles = Object.freeze([
   "deploy/keycloak/realm-dev.json",
   "scripts/check/run-e2e-rabbit-jobs-integration.mjs",
   "scripts/check/run-e2e-flowable-workflow-integration.mjs",
+  "scripts/check/run-e2e-main-chain-integration.mjs",
+  "scripts/check/run-e2e-file-clamav-integration.mjs",
+  "tests/e2e/migrations/0000000016_e2e_walking_skeleton_durable_stores.sql",
+  "tests/e2e/migrations/0000000016_e2e_walking_skeleton_durable_stores.meta.json",
+  "tests/e2e/src/apply-e2e-migration.ts",
+  "tests/e2e/src/durable-main-chain.ts",
+  "tests/e2e/src/file-clamav-integration.mjs",
+  "tests/e2e/src/main-chain.ts",
+  "tests/e2e/src/postgres-walking-skeleton-source.ts",
+  "tests/e2e/src/postgres-workflow-ledger.ts",
   "tests/e2e/src/flowable-workflow-integration.ts",
   "tests/e2e/src/rabbit-job-integration.ts",
   "tests/e2e/src/walking-skeleton-rabbit.ts",
@@ -22,29 +32,29 @@ const requiredFiles = Object.freeze([
 
 const implementationGaps = Object.freeze([
   Object.freeze({
-    acceptanceId: "07-09",
-    evidence: Object.freeze(["contracts/jobs/walking-skeleton-source-command.v1.schema.json", "tests/e2e/src/walking-skeleton-source-handler.ts"]),
-    reason: "The test-only Worker MessageHandler runs through real TLS RabbitMQ, Confirm publishing, manual ACK, and Inbox duplicate handling, but the source and Eventing stores remain in memory rather than durable PostgreSQL stores.",
-  }),
-  Object.freeze({
-    acceptanceId: "08-05",
-    evidence: Object.freeze(["contracts/jobs/walking-skeleton-source-command.v1.schema.json", "tests/e2e/src/walking-skeleton-source.test.ts"]),
-    reason: "Task completion and duplicate recovery pass separately through real Flowable and real RabbitMQ, but they are not yet one durable cross-process chain and the command/source stores remain in memory.",
-  }),
-  Object.freeze({
-    acceptanceId: "08-07",
-    evidence: Object.freeze(["tests/e2e/src/walking-skeleton-workflow.ts", "apps/api/src/composition-factory.ts"]),
-    reason: "The test adapter completes a real Flowable human task through the Workflow Facade before source acceptance, but this binding remains absent from the full E2E API/Worker process composition and uses a memory command Ledger.",
-  }),
-  Object.freeze({
     acceptanceId: "09-05",
     evidence: Object.freeze(["tests/e2e/src/walking-skeleton-source.ts", "apps/api/src/composition-factory.ts"]),
-    reason: "The tests-only Task source router is implemented, but the composed E2E API still installs unavailable Task bindings and exposes no authenticated completion path.",
+    reason: "The durable tests-only source route is proven through RabbitMQ, but the full E2E API process still exposes no authenticated Task completion endpoint.",
   }),
   Object.freeze({
-    acceptanceId: "10-07",
-    evidence: Object.freeze(["contracts/asyncapi/walking-skeleton.asyncapi.yaml", "tests/e2e/src/walking-skeleton-notification-handler.ts"]),
-    reason: "The Notification Job Handler passes server-side Actor resolution and payload-confusion tests and runs through real TLS RabbitMQ with Inbox duplicate handling, but Notification and Eventing stores remain in memory.",
+    acceptanceId: "17-01",
+    evidence: Object.freeze(["apps/api/src/auth/keycloak.integration.test.ts", "deploy/compose/compose.e2e.yml"]),
+    reason: "Keycloak/BFF integration and the ten-service process shell pass separately; no browser signs in through the composed E2E edge and session path.",
+  }),
+  Object.freeze({
+    acceptanceId: "17-06",
+    evidence: Object.freeze(["apps/worker/src/task-projection-composition.ts", "deploy/compose/compose.e2e.yml"]),
+    reason: "Task projection behavior is tested independently, but its reviewed consumer is not installed in the full isolated E2E Worker process.",
+  }),
+  Object.freeze({
+    acceptanceId: "17-09",
+    evidence: Object.freeze(["tests/e2e/src/file-clamav-integration.mjs", "tests/e2e/src/main-chain.ts"]),
+    reason: "File Center and real ClamAV pass as an isolated chain, but form submission, FileReference, and task completion do not yet carry that evidence through the durable main slice.",
+  }),
+  Object.freeze({
+    acceptanceId: "17-16",
+    evidence: Object.freeze(["tests/e2e/src/durable-main-chain.ts", "packages/observability/src/context.test.ts"]),
+    reason: "The durable slice records bounded authorization and lifecycle evidence, but browser-to-BFF-to-API-to-Outbox-to-Worker Trace propagation and durable Audit correlation are not composed.",
   }),
 ]);
 
@@ -140,10 +150,10 @@ export async function runEnvironmentPreflight(options = {}) {
     composeScope: "full-process-skeleton",
     mainWalkingSkeletonReady: false,
     nodeMajor,
-    rabbitJobChain: "real-rabbitmq-transport-with-memory-stores",
+    rabbitJobChain: "real-rabbitmq-with-postgresql-stores",
     services: Object.freeze(validateServices(serviceOutput)),
     status: "environment-preflight-passed",
-    workflowChain: "real-flowable-facade-with-memory-ledger-and-source",
+    workflowChain: "real-flowable-rabbit-postgresql-combined-slice",
   });
 }
 

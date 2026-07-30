@@ -14,6 +14,7 @@ import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing"
 import {
   createNotificationCenter,
   InMemoryNotificationStore,
+  NotificationError,
   type NotificationActor,
 } from "@ai-crm/platform-notifications";
 import {
@@ -35,7 +36,7 @@ import {
   walkingSkeletonSourceRabbitTopology,
 } from "./walking-skeleton-rabbit.js";
 import { createWalkingSkeletonSourceCommandMessageHandler, walkingSkeletonSourceJobType } from "./walking-skeleton-source-handler.js";
-import { createWalkingSkeletonSource } from "./walking-skeleton-source.js";
+import { createWalkingSkeletonSource, WalkingSkeletonSourceError } from "./walking-skeleton-source.js";
 
 const at = "2026-07-30T00:00:00.000Z";
 const actor: NotificationActor = { activeAssignmentIds: ["assignment.synthetic"], principalId: "principal.synthetic" };
@@ -131,7 +132,9 @@ function duplicatePublication(envelope: JobEnvelope): OutboxPublication {
 }
 
 function classify(error: unknown): "retryable" | "terminal" {
-  return error instanceof EventingError && error.retryable ? "retryable" : "terminal";
+  return (error instanceof EventingError || error instanceof NotificationError || error instanceof WalkingSkeletonSourceError) && error.retryable
+    ? "retryable"
+    : "terminal";
 }
 
 export async function runWalkingSkeletonRabbitJobIntegration(): Promise<void> {

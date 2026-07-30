@@ -17,10 +17,10 @@ test("reports the full process skeleton without claiming the main walking skelet
   assert.equal(result.evidenceMode, "reviewed-contract-and-composition-anchor-checks");
   assert.deepEqual(result.contractBlockers, []);
   assert.equal(result.mainWalkingSkeletonReady, false);
-  assert.equal(result.rabbitJobChain, "real-rabbitmq-transport-with-memory-stores");
-  assert.equal(result.workflowChain, "real-flowable-facade-with-memory-ledger-and-source");
+  assert.equal(result.rabbitJobChain, "real-rabbitmq-with-postgresql-stores");
+  assert.equal(result.workflowChain, "real-flowable-rabbit-postgresql-combined-slice");
   assert.deepEqual(result.services, expectedServices);
-  assert.deepEqual(result.implementationGaps.map((item) => item.acceptanceId), ["07-09", "08-05", "08-07", "09-05", "10-07"]);
+  assert.deepEqual(result.implementationGaps.map((item) => item.acceptanceId), ["09-05", "17-01", "17-06", "17-09", "17-16"]);
   assert.equal(calls.length, 3);
 });
 

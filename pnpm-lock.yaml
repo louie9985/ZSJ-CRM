@@ -570,6 +570,9 @@ importers:
       '@ai-crm/api':
         specifier: workspace:*
         version: link:../../apps/api
+      '@ai-crm/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@ai-crm/platform-app-registry':
         specifier: workspace:*
         version: link:../../packages/platform-modules/app-registry

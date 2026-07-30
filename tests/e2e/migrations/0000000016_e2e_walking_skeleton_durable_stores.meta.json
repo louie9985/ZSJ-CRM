@@ -1,0 +1,13 @@
+{
+  "moduleOwner": "tests/e2e",
+  "purpose": "Persist business-neutral synthetic Walking Skeleton source state, command receipts, and Workflow command ledger evidence, and grant the disposable single-process E2E orchestrator the platform writes needed by the composed API/Worker test chain.",
+  "applicationCompatibility": {
+    "minimumInclusive": "0.0.0"
+  },
+  "lockImpact": "Creates a new test-only schema and tables and applies catalog-only grants to existing Eventing and Notification tables in the disposable E2E database.",
+  "dataImpact": "Additive E2E-only synthetic state. No production or CRM domain data is created or transformed.",
+  "backfill": "None. E2E fixtures explicitly register synthetic source state after controlled migration execution.",
+  "recovery": "Drop the e2e_walking_skeleton schema only in the disposable E2E database after preserving required test evidence.",
+  "forwardFix": "Append a new globally unique migration; never edit this migration after it has been applied.",
+  "destructive": false
+}
