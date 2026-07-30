@@ -52,7 +52,7 @@ try {
 } catch (error) {
   primaryError = error;
 } finally {
-  const removed = spawnSync("docker", ["rm", "--force", container], { encoding: "utf8" });
+  const removed = spawnSync("docker", ["rm", "--force", "--volumes", container], { encoding: "utf8" });
   if (removed.status !== 0 && !removed.stderr.includes("No such container")) cleanupError = new Error("The IAM-02 PostgreSQL container could not be removed.");
   try { await rm(directory, { force: true, recursive: true }); } catch { cleanupError ??= new Error("The IAM-02 temporary Secret directory could not be removed."); }
 }

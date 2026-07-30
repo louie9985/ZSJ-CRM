@@ -3,17 +3,20 @@
 - 审计日期：2026-07-30
 - 审计对象：`docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` 的 199 个复选项
 - 审计性质：仓库证据盘点，不修改权威验收清单，不构成第一阶段签收
-- 当前仓库代码证据基线：`f42d8ea`
-- 当前结论：`VERIFIED_REPO 138 / PARTIAL 27 / EXTERNAL_BLOCKED 12 / CONTRACT_BLOCKED 5 / NOT_IMPLEMENTED 17`，合计 199
+- 当前仓库代码证据基线：`2416e63`
+- 当前结论：`VERIFIED_REPO 139 / PARTIAL 26 / EXTERNAL_BLOCKED 12 / CONTRACT_BLOCKED 5 / NOT_IMPLEMENTED 17`，合计 199
 
 ## 1. 任务边界
 
 已知事实：
 
 - 权威验收清单的 199 项目前均未正式勾选。
-- G3 的仓库侧组合已存在，但真实首发授权策略、真实 COS、受信镜像摘要、生产 RabbitMQ/TLS/CAM/告警/恢复和消费者显式启用证据未闭合。
+- G3 的仓库侧组合、远端 CI 和提交寻址镜像发布证据已存在，但真实首发授权策略、真实 COS、生产 RabbitMQ/TLS/CAM/告警/恢复和消费者显式启用证据未闭合。
 - E2E-01 与 OPS-02 未完成。
 - Notification、Workflow、File Job 的生产消费者不得在缺少已审合同时创建。
+- 远端仓库为 `louie9985/ZSJ-CRM`；基线 `2416e63` 的 CI 与 Application images 工作流均成功，后者已发布按提交寻址的 GHCR 镜像并保留 digest。
+- 用户确认项目从未部署，且没有共享测试、预发布或生产数据库；历史 Organization `0000000003` 未进入非临时环境，本地数据库也没有迁移登记记录。
+- COS 已开通于 `ap-guangzhou`，但本地开发明确继续使用 Local File Storage + ClamAV；真实 Bucket/CAM conformance 延后，禁止使用主账号 Secret 绕过最小权限。
 
 允许的假设：
 
@@ -43,9 +46,9 @@
 | `CONTRACT_BLOCKED` | 继续实现或验收前缺少已审合同/来源命令边界，按仓库规则必须失败关闭。 |
 | `NOT_IMPLEMENTED` | 清单要求的可运行行为或端到端报告当前没有实现。 |
 
-## 3. 本次候选分支新鲜执行证据
+## 3. 当前基线的新鲜执行证据
 
-以下结果以当前仓库代码证据基线 `f42d8ea` 为对象，由本次并行执行线实际运行后汇总；它们提升本地候选版本的可信度，但不是远程受保护 CI、预发布或生产签收证据。
+以下本地结果最初形成于前序候选并已在当前树复核关键门；远端结果直接绑定当前基线 `2416e63`。它们不替代预发布或生产签收证据。
 
 | 范围 | 本次新鲜结果 | 审计影响 |
 |---|---|---|
@@ -57,13 +60,15 @@
 | 模块 PostgreSQL 集成 | Organization 4/4、Notifications 3/3、Authorization 5/5、App Registry 5/5、Audit 3/3、Business Configuration 4/4、Form Schema 3/3、File Center 5/5、Outbox 3/3、Task Center 4/4，全部通过 | 加强第 5～13 章的仓库持久化证据；不补齐真实 COS、缺失消费者合同或主 E2E。 |
 | Eventing/Task 后续闭环 | Eventing PostgreSQL 6/6、Task Center PostgreSQL 4/4；10 条 PostgreSQL Runner 的稳定 TCP Readiness 门和 Eventing/Task Cleanup 门 2/2 | `07-07` 与 `09-04` 获得直接仓库级重放/对账证据；测试基础设施不再把裸端口或静默清理失败当作成功。 |
 | PC 工作台视觉复验 | 1366x768、1440x900、1920x1080、390x844 四视口；状态恢复；页面 Console warning/error 均为 0 | `14-07～14-08` 获得当前树的直接浏览器证据；不等于真实 BFF/Keycloak 或主 E2E。 |
-| 当前候选独立 Review | 八维问题清单、处置和新鲜测试引用已记录；最终增量复审无 P0-P3 | `21-01～21-08` 获得当前仓库代码候选的直接 Review 证据；不覆盖尚未执行的 G3 外部证据、E2E-01 或 OPS-02。 |
-| 最终全仓门 | `pnpm check` 140/140；120 项缓存命中、20 项按最终候选文档树执行 | 当前候选的仓库门通过；本地缓存结果不冒充远程受保护 CI。 |
+| 当前候选独立 Review | 既有八维 Review 与 `.handoffs/E2E-01-LOCAL-REVIEW.md` 已记录问题、处置和新鲜测试；本轮预检/清理增量无剩余 P0-P3 | `21-01～21-08` 获得当前仓库代码候选的直接 Review 证据；不覆盖尚未执行的主 E2E、G3 外部证据或 OPS-02。 |
+| 远端 CI | [CI run 30512984519](https://github.com/louie9985/ZSJ-CRM/actions/runs/30512984519) 在 `2416e63` 成功，`pnpm check` 步骤成功 | 当前远端仓库已有受信 CI 运行证据；仓库未启用分支保护/审批是用户接受的轻量治理取舍。 |
+| 当前 E2E 环境预检 | `pnpm e2e:check` 2/2；`pnpm e2e:preflight` 通过，明确返回 `composeScope=dependencies-only`、`mainWalkingSkeletonReady=false` | 七个依赖服务与五项合同阻塞已机器校验；不升级第 17 章任何主 E2E 项。 |
+| 当前本地全仓门 | E2E 预检与 PostgreSQL 匿名卷清理门接入后，`pnpm check` 140/140 Turbo 任务成功 | 证明当前未提交增量通过完整仓库门；仍须推送后取得新远端 CI 证据。 |
 | API / Worker | API 176 通过、5 项外部环境测试跳过；Worker 专项通过 | 证明候选版本组合专项通过；5 项 skip 明确保留为外部证据缺口，不能按通过计。 |
 | 镜像与部署载荷静态门 | P1 修复后的镜像门 14/14；artifact 卫生器覆盖应用根和部署制品内全部 `@ai-crm` 运行时依赖；deploy 载荷禁止项 0；迁移联合校验通过 | 加强 Dockerfile、应用/Workspace 依赖卫生、部署载荷和迁移制品的仓库门证据。直接证据为 `scripts/deploy/application-artifact-hygiene.mjs`、`sanitize-application-artifact.mjs`、`scripts/check/application-images.test.mjs` 与两个应用 Dockerfile。 |
-| 真实 Docker build | 未完成：访问 `auth.docker.io` 超时 | 卫生器 14/14 只证明合成制品和静态接线；不升级受信镜像/整镜验收，实际层内容、non-root 运行态、本地 digest 及真实依赖树仍是残余风险。 |
+| 远端镜像构建与发布 | [Application images run 30512984536](https://github.com/louie9985/ZSJ-CRM/actions/runs/30512984536) 在 `2416e63` 完成 API/Worker 精确构建、迁移制品复验、GHCR 登录、按提交寻址发布和 digest 留存 | 已补齐当前基线的受信构建/发布证据；仍不等于预发布/生产拉取、运行或回滚证据。 |
 
-保守结论：Compose 新鲜证据将 `02-05` 升级为 `VERIFIED_REPO`；独立 Review 同时确认迁移历史不可变性尚未闭环，因此 `06-02` 降为 `PARTIAL`。其余新鲜结果用于强化既有仓库证据；凡是仍缺浏览器全链、真实 Provider、受信制品、预发布/生产配置、持久恢复报告或已审合同的项目，状态保持不变。
+保守结论：Compose 新鲜证据将 `02-05` 升级为 `VERIFIED_REPO`；用户已确认项目从未部署、没有任何非临时数据库且本地无迁移登记，因此 `06-02` 的“已部署迁移不改写”在当前实际环境中无历史对象，结合追加迁移静态门恢复为 `VERIFIED_REPO`。凡是仍缺浏览器全链、真实 Provider、预发布/生产配置、持久恢复报告或已审合同的项目，状态保持不变。
 
 ## 4. 分章节统计
 
@@ -73,7 +78,7 @@
 | 03 工程和边界 | 7 | 7 | 0 | 0 | 0 | 0 |
 | 04 身份与会话 | 13 | 9 | 4 | 0 | 0 | 0 |
 | 05 授权 | 9 | 7 | 2 | 0 | 0 | 0 |
-| 06 数据库与迁移 | 8 | 5 | 3 | 0 | 0 | 0 |
+| 06 数据库与迁移 | 8 | 6 | 2 | 0 | 0 | 0 |
 | 07 Outbox/RabbitMQ/Inbox | 10 | 9 | 0 | 0 | 1 | 0 |
 | 08 Workflow | 8 | 5 | 1 | 0 | 2 | 0 |
 | 09 Task Center | 8 | 6 | 1 | 0 | 1 | 0 |
@@ -89,7 +94,7 @@
 | 19 Secret 与主机安全 | 9 | 3 | 2 | 4 | 0 | 0 |
 | 20 部署、备份与恢复 | 11 | 1 | 4 | 6 | 0 | 0 |
 | 21 独立 Review | 8 | 8 | 0 | 0 | 0 | 0 |
-| **合计** | **199** | **138** | **27** | **12** | **5** | **17** |
+| **合计** | **199** | **139** | **26** | **12** | **5** | **17** |
 
 ## 5. 逐项可审计映射
 
@@ -136,9 +141,9 @@
 | 编号 | 状态 | 直接证据 | 尚缺 |
 |---|---|---|---|
 | 06-01 | VERIFIED_REPO | `packages/database/src/migrations.integration.test.ts` 与本轮数据库 40/40 | 空数据库升级到候选最新版本 `0000000015` 的本地集成证据存在。 |
-| 06-02 | PARTIAL | `migration-compatibility.test.ts`、`migration-artifact.test.mjs` 可检测候选制品内 checksum/identity 漂移；当前修复以新版本 `0000000015` 追加 | 候选基线 `57a6d30` 曾把同一 Organization trigger 替换记为 `0000000003`，且元数据标为非 destructive。只有确认该版本仅应用于可丢弃的一次性测试库、并可合法按单模块迁移历史处理时，改为全局 `0000000015` 才不会改写已部署迁移。仓库无法证明外部非临时环境是否已经应用历史 `0000000003`，必须由用户审计所有环境的 `ai_crm_migrations.applied_migrations`、持久化 checksum 与发布记录后确认；确认前不能声称“已部署迁移不可修改”已验收。 |
+| 06-02 | VERIFIED_REPO | `migration-compatibility.test.ts`、`migration-artifact.test.mjs` 检测 checksum/identity 漂移；修复以新版本 `0000000015` 追加；用户确认项目从未部署、没有共享测试/预发布/生产数据库且本地无迁移登记 | 当前不存在已部署迁移可被历史改写；首次建立共享环境时仍须从空库执行并保存实际 Manifest/checksum，不能把本结论外推为未来环境证据。 |
 | 06-03～06-06 | VERIFIED_REPO | Compose 数据库隔离、模块自有迁移目录/Repository、`migrations*.test.ts`、`runtime-role-*.test.ts`、禁止自动 sync/push 的仓库门 | 数据库隔离、模块边界、受控迁移入口及失败不记成功有自动化机制。 |
-| 06-07 | PARTIAL | `packages/platform-modules/organization/migrations/0000000015_recheck_placement_parent_updates.sql` 与 `.meta.json` | `0015` 是 destructive trigger replacement：同一事务内 drop/recreate `organization_unit_placements_no_overlap`；元数据已记录 destructive approval、表锁影响、失败事务回滚、恢复和仅允许追加迁移的前滚方案。仍缺用户确认历史 `0003` 是否进入任何非临时环境，以及目标环境备份/恢复点、变更审批和实际锁影响记录，故不能升级。 |
+| 06-07 | PARTIAL | `packages/platform-modules/organization/migrations/0000000015_recheck_placement_parent_updates.sql` 与 `.meta.json`；用户已确认历史 `0003` 未进入非临时环境 | `0015` 是 destructive trigger replacement：同一事务内 drop/recreate `organization_unit_placements_no_overlap`；元数据已记录 destructive approval、表锁影响、失败事务回滚、恢复和仅允许追加迁移的前滚方案。仍缺首次目标环境的备份/恢复点、变更审批和实际锁影响记录，故不能升级。 |
 | 06-08 | PARTIAL | `packages/database/src/runtime*.test.ts`、observability context/trace 测试 | 缺真实慢查询与事务 Trace 关联的运行证据。 |
 
 ### 07 Outbox、RabbitMQ 与 Inbox 验收
@@ -228,7 +233,7 @@
 
 | 编号 | 状态 | 直接证据 | 尚缺 |
 |---|---|---|---|
-| 17-01～17-17 | NOT_IMPLEMENTED | `tests/e2e/README.md` 尚无主链测试/报告 | Keycloak/BFF → 人员/授权 → Workbench → Form/Flowable → Outbox/RabbitMQ/Worker → Task/Notification → File/ClamAV → 来源命令 → Audit/Trace 全链尚未实现。 |
+| 17-01～17-17 | NOT_IMPLEMENTED | `tests/e2e/environment-preflight.mjs`、`environment-preflight.test.mjs` 与 `CURRENT-ENVIRONMENT-EVIDENCE.md` 仅建立依赖环境预检并显式返回主链未就绪 | Keycloak/BFF → 人员/授权 → Workbench → Form/Flowable → Outbox/RabbitMQ/Worker → Task/Notification → File/ClamAV → 来源命令 → Audit/Trace 全链尚未实现。 |
 
 ### 18 可观测与健康验收
 
@@ -266,30 +271,30 @@
 
 | 编号 | 状态 | 直接证据 | 尚缺 |
 |---|---|---|---|
-| 21-01～21-08 | VERIFIED_REPO | `.handoffs/CURRENT-INDEPENDENT-REVIEW.md` 绑定当前仓库代码证据基线，记录八维问题清单、处置和新鲜测试；最终增量复审无 P0-P3 | 只闭合当前仓库代码候选的 Review；G3 外部证据、E2E-01 与 OPS-02 尚未执行，完成后仍须分别独立 Review。 |
+| 21-01～21-08 | VERIFIED_REPO | `.handoffs/CURRENT-INDEPENDENT-REVIEW.md` 与 `.handoffs/E2E-01-LOCAL-REVIEW.md` 记录八维问题清单、处置和新鲜测试；本轮增量无剩余 P0-P3 | 只闭合当前仓库代码候选的 Review；G3 外部证据、主 E2E 与 OPS-02 尚未执行，完成后仍须分别独立 Review。 |
 
 ## 6. 关键阻断
 
-1. **主 E2E 缺失：17 项。** `tests/e2e` 只有 README，业务中立全链与故障/重复/拒绝路径尚未形成可运行测试和报告。
+1. **主 E2E 缺失：17 项。** `tests/e2e` 已有可执行环境预检和边界测试，但业务中立全链与故障/重复/拒绝路径尚未形成可运行测试和报告。
 2. **合同阻断：5 项。** 通用 Worker Job、Workflow 来源正式命令、Task 完成路由和 Notification RabbitMQ 消费链不能在合同缺失时实现。
 3. **真实外部证据：12 项。** 真实 COS、日志轮转、主机 SSH、Secret 演练、灾备/恢复、预发布发布回滚等必须在受控环境执行。
-4. **仓库证据仍非生产签收。** 138 项标为 `VERIFIED_REPO` 只说明存在直接的仓库级可重复验证机制；本轮已有多组新鲜专项结果，但仍没有远程受保护 CI/制品证据，也没有最终签收所需的完整证据包。
-5. **27 项仅部分闭环。** 主要是跨组件浏览器/E2E、真实运行抽样、预发布接线，以及历史 Organization `0003` 是否进入外部非临时环境的迁移审计。
-6. **真实镜像未构建完成。** `auth.docker.io` 超时阻断了真实 Docker build；P1 修复后的卫生器已覆盖应用根和全部 `@ai-crm` 运行时依赖且静态门 14/14 通过，但不能消除真实镜像层、运行态和实际依赖树风险。
+4. **仓库证据仍非生产签收。** 139 项标为 `VERIFIED_REPO` 只说明存在直接的仓库级可重复验证机制；当前基线已有远端 CI、镜像构建与 GHCR 发布证据，但仍没有预发布/生产运行和最终签收所需的完整证据包。
+5. **26 项仅部分闭环。** 主要是跨组件浏览器/E2E、真实运行抽样和预发布接线。历史 Organization `0003` 的外部环境事实已由用户确认不存在，但破坏性迁移的环境级备份/锁影响证据仍待真实部署环境。
+6. **真实镜像已构建发布但未部署。** 当前基线 API/Worker 镜像已由远端工作流构建、复验并发布 GHCR；尚无预发布/生产拉取、non-root 运行抽样、健康、逐台发布与回滚证据。
 
 ## 7. 建议的证据闭环顺序
 
 1. 保存本轮 Compose、认证、数据库、RabbitMQ TLS、Flowable、模块、API/Worker、镜像静态门与迁移联合校验的命令、版本、退出码和日志摘要，并补跑/保存最终非缓存 `pnpm check` 完整输出。
-2. 由用户审计所有非临时数据库/发布记录，确认历史 Organization `0000000003` 是否曾应用；如存在，必须按已部署事实制定兼容/前滚处置，不能假定重编号为 `0000000015` 已自动解决迁移历史。
-3. 在 `auth.docker.io` 连通后重试 API/Worker 真实生产镜像构建，检查实际层、non-root、迁移 Manifest、Fixture/Source Map/Secret 排除和本地 digest。
+2. 保留“历史 Organization `0000000003` 未进入任何非临时环境、本地无迁移登记”的用户确认；首次建立共享环境时从空库执行并保存迁移 Manifest、checksum、备份/恢复点和锁影响证据。
+3. 在首个测试服/预发布环境验证已发布 API/Worker digest 的拉取、non-root 运行、迁移 Manifest、Fixture/Source Map/Secret 排除、健康和回滚。
 4. 在合同 Owner 决策前维持 5 个 `CONTRACT_BLOCKED` 项失败关闭，不以通用消费者代替具体合同。
 5. 外部 G3 闭合后实现 E2E-01，再执行 OPS-02 和当前候选版本的八维独立 Review。
 6. 只有证据文件经过复核后，才由验收 Owner 在权威清单逐项勾选；不得根据本审计批量勾选。
 
 ## 8. 审计自检
 
-- 编号计数：20 个章节，199 项；五类状态为 138/27/12/5/17，合计 199。
-- 证据基线：已注明当前仓库代码证据基线 `f42d8ea`；5 项 API external skip 与 Docker build 超时未被计为通过。
+- 编号计数：20 个章节，199 项；五类状态为 139/26/12/5/17，合计 199。
+- 证据基线：已注明当前仓库代码证据基线 `2416e63`；5 项 API external skip、未部署环境和 E2E 预检的 `mainWalkingSkeletonReady=false` 未被计为通过。
 - 原验收清单与合同：未修改。
 - 当前代码增量、视觉复验和独立 Review handoff 均已在本审计中列出直接证据。
 - `output/`：未读取、未修改。

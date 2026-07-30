@@ -25,7 +25,7 @@ try {
   if (outcome.status !== 0) throw new Error(`AUTH-PERSIST-01 PostgreSQL integration failed with ${String(outcome.status)}.`);
 } catch (error) { primaryError = error; }
 finally {
-  const removed = spawnSync("docker", ["rm", "--force", container], { encoding: "utf8" }); if (removed.status !== 0 && !removed.stderr.includes("No such container")) cleanupError = new Error("AUTH-PERSIST-01 PostgreSQL cleanup failed.");
+  const removed = spawnSync("docker", ["rm", "--force", "--volumes", container], { encoding: "utf8" }); if (removed.status !== 0 && !removed.stderr.includes("No such container")) cleanupError = new Error("AUTH-PERSIST-01 PostgreSQL cleanup failed.");
   try { await rm(directory, { force: true, recursive: true }); } catch { cleanupError ??= new Error("AUTH-PERSIST-01 temporary Secret cleanup failed."); }
 }
 if (primaryError && cleanupError) throw new AggregateError([primaryError, cleanupError], "AUTH-PERSIST-01 integration and cleanup failed.");

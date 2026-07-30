@@ -35,6 +35,19 @@ test("PostgreSQL integration runners use bounded stable TCP readiness", async ()
   }
 });
 
+test("Direct Docker PostgreSQL integration runners remove anonymous volumes", async () => {
+  for (const path of runners) {
+    const source = await readFile(resolve(root, path), "utf8");
+    if (!source.includes('"postgres:17.5-alpine"')) continue;
+    const compact = source.replaceAll(/\s/gu, "");
+    assert.match(
+      compact,
+      /spawnSync\("docker",\["rm","--force","--volumes",container\]/u,
+      `${path} must remove the test container and its anonymous volumes.`,
+    );
+  }
+});
+
 test("Compose-backed PostgreSQL integration runners surface cleanup failures and retain Secret evidence", async () => {
   for (const path of [
     "packages/platform-modules/eventing-outbox/scripts/run-integration.mjs",
