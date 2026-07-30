@@ -3,7 +3,7 @@
 - 审计日期：2026-07-30
 - 审计对象：`docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` 的 199 个复选项
 - 审计性质：仓库证据盘点，不修改权威验收清单，不构成第一阶段签收
-- 当前仓库代码证据基线：`e90f530` 加本轮业务中立进程内联合切片候选
+- 当前仓库代码证据基线：`9fa4e2c` 加本轮 OPS-02 仓库级恢复证据门候选
 - 当前结论：`VERIFIED_REPO 139 / PARTIAL 26 / EXTERNAL_BLOCKED 12 / CONTRACT_BLOCKED 5 / NOT_IMPLEMENTED 17`，合计 199
 
 ## 1. 任务边界
@@ -12,9 +12,9 @@
 
 - 权威验收清单的 199 项目前均未正式勾选。
 - G3 的仓库侧组合、远端 CI 和提交寻址镜像发布证据已存在，但真实首发授权策略、真实 COS、生产 RabbitMQ/TLS/CAM/告警/恢复和消费者显式启用证据未闭合。
-- E2E-01 与 OPS-02 未完成。
+- E2E-01 与 OPS-02 的真实跨组件/外部执行未完成；OPS-02 已新增仓库级恢复证据 Manifest 和失败关闭校验基础，但没有生成或验证任何真实备份、WAL、Secret 应急包或恢复演练证据。
 - Notification、Workflow、File Job 的生产消费者不得在缺少已审合同时创建。
-- 远端仓库为 `louie9985/ZSJ-CRM`；基线 `e90f530` 的 CI 与 Application images 工作流均成功，后者已发布按提交寻址的 GHCR 镜像并保留 digest。
+- 远端仓库为 `louie9985/ZSJ-CRM`；基线 `9fa4e2c` 的 CI 与 Application images 工作流均成功，后者已发布按提交寻址的 GHCR 镜像并保留 digest。
 - 用户确认项目从未部署，且没有共享测试、预发布或生产数据库；历史 Organization `0000000003` 未进入非临时环境，本地数据库也没有迁移登记记录。
 - COS 已开通于 `ap-guangzhou`，但本地开发明确继续使用 Local File Storage + ClamAV；真实 Bucket/CAM conformance 延后，禁止使用主账号 Secret 绕过最小权限。
 
@@ -48,7 +48,7 @@
 
 ## 3. 当前基线的新鲜执行证据
 
-以下本地结果最初形成于前序候选并已在当前树复核关键门；已列出的最新远端结果绑定基线 `e90f530`。它们不替代预发布或生产签收证据。
+以下本地结果最初形成于前序候选并已在当前树复核关键门；已列出的最新远端结果绑定基线 `9fa4e2c`。它们不替代预发布或生产签收证据。
 
 | 范围 | 本次新鲜结果 | 审计影响 |
 |---|---|---|
@@ -60,14 +60,15 @@
 | 模块 PostgreSQL 集成 | Organization 4/4、Notifications 3/3、Authorization 5/5、App Registry 5/5、Audit 3/3、Business Configuration 4/4、Form Schema 3/3、File Center 5/5、Outbox 3/3、Task Center 4/4，全部通过 | 加强第 5～13 章的仓库持久化证据；不补齐真实 COS、缺失消费者合同或主 E2E。 |
 | Eventing/Task 后续闭环 | Eventing PostgreSQL 6/6、Task Center PostgreSQL 4/4；10 条 PostgreSQL Runner 的稳定 TCP Readiness 门和 Eventing/Task Cleanup 门 2/2 | `07-07` 与 `09-04` 获得直接仓库级重放/对账证据；测试基础设施不再把裸端口或静默清理失败当作成功。 |
 | PC 工作台视觉复验 | 1366x768、1440x900、1920x1080、390x844 四视口；状态恢复；页面 Console warning/error 均为 0 | `14-07～14-08` 获得当前树的直接浏览器证据；不等于真实 BFF/Keycloak 或主 E2E。 |
-| 当前候选独立 Review | 既有八维 Review 与 `.handoffs/E2E-01-LOCAL-REVIEW.md` 已记录问题、处置和新鲜测试；本轮预检/清理增量无剩余 P0-P3 | `21-01～21-08` 获得当前仓库代码候选的直接 Review 证据；不覆盖尚未执行的主 E2E、G3 外部证据或 OPS-02。 |
-| 远端 CI | [CI run 30517952068](https://github.com/louie9985/ZSJ-CRM/actions/runs/30517952068) 在 `e90f530` 成功，`pnpm check` 步骤成功 | 当前远端仓库已有受信 CI 运行证据；仓库未启用分支保护/审批是用户接受的轻量治理取舍。 |
+| 当前候选独立 Review | 既有八维 Review 与 `.handoffs/E2E-01-LOCAL-REVIEW.md` 已记录问题、处置和新鲜测试；本轮预检/清理增量无剩余 P0-P3 | `21-01～21-08` 获得当前仓库代码候选的直接 Review 证据；不覆盖尚未执行的主 E2E、G3 外部证据或 OPS-02 真实恢复演练。 |
+| 远端 CI | [CI run 30519665799](https://github.com/louie9985/ZSJ-CRM/actions/runs/30519665799) 在 `9fa4e2c` 成功，`pnpm check` 步骤成功 | 当前远端仓库已有受信 CI 运行证据；仓库未启用分支保护/审批是用户接受的轻量治理取舍。 |
 | 当前 E2E 环境预检 | `pnpm e2e:check` 2/2；`pnpm e2e:preflight` 通过，明确返回 `composeScope=dependencies-only`、`mainWalkingSkeletonReady=false` | 七个依赖服务与五项合同阻塞已机器校验；不升级第 17 章任何主 E2E 项。 |
 | 业务中立进程内平台切片 | `@ai-crm/e2e` 2/2；经五个平台模块公共入口覆盖 Organization 上下文、Registry/Deep Link、Form 发布与校验、Task 重复投影/拒绝、Notification direct Intent 幂等和四个可注入 Audit port | 仅为 Memory Store 与进程内联合证据；无 Browser/API/Worker/PostgreSQL/RabbitMQ/Flowable/File/ClamAV，不升级第 17 章。 |
+| OPS-02 仓库级恢复证据门 | `scripts/backup/recovery-evidence.mjs`、CLI、合成示例和 `scripts/check/backup-recovery.test.mjs` 要求三库分别恢复、WAL 连续性、异故障域加密备份、RabbitMQ/Outbox/Inbox/业务状态对账、配置制品、加密 Secret 应急包、隔离空主机恢复和安全演练均绑定 `evidence://` 与 SHA-256，并拒绝自报布尔、敏感字段和未批准的 RPO/RTO/SLA/保留期/频率/Owner | 只证明仓库证据结构会失败关闭；校验器不解析证据、不重算底层制品摘要，也未访问 PostgreSQL、RabbitMQ、`age`、COS 或服务器。`19-08～19-09`、`20-07～20-11` 状态均不升级。 |
 | 当前本地全仓门 | E2E Workspace 接入后，`pnpm check` 145/145 Turbo 任务成功 | 证明当前候选通过完整仓库门；仍须推送后取得新远端 CI 证据。 |
 | API / Worker | API 176 通过、5 项外部环境测试跳过；Worker 专项通过 | 证明候选版本组合专项通过；5 项 skip 明确保留为外部证据缺口，不能按通过计。 |
 | 镜像与部署载荷静态门 | P1 修复后的镜像门 14/14；artifact 卫生器覆盖应用根和部署制品内全部 `@ai-crm` 运行时依赖；deploy 载荷禁止项 0；迁移联合校验通过 | 加强 Dockerfile、应用/Workspace 依赖卫生、部署载荷和迁移制品的仓库门证据。直接证据为 `scripts/deploy/application-artifact-hygiene.mjs`、`sanitize-application-artifact.mjs`、`scripts/check/application-images.test.mjs` 与两个应用 Dockerfile。 |
-| 远端镜像构建与发布 | [Application images run 30517952045](https://github.com/louie9985/ZSJ-CRM/actions/runs/30517952045) 在 `e90f530` 完成 API/Worker 精确构建、迁移制品复验、GHCR 登录、按提交寻址发布和 digest 留存 | 已补齐远端基线的受信构建/发布证据；仍不等于预发布/生产拉取、运行或回滚证据。 |
+| 远端镜像构建与发布 | [Application images run 30519665813](https://github.com/louie9985/ZSJ-CRM/actions/runs/30519665813) 在 `9fa4e2c` 完成 API/Worker 精确构建、迁移制品复验、GHCR 登录、按提交寻址发布和 digest 留存 | 已补齐远端基线的受信构建/发布证据；仍不等于预发布/生产拉取、运行或回滚证据。 |
 
 保守结论：Compose 新鲜证据将 `02-05` 升级为 `VERIFIED_REPO`；用户已确认项目从未部署、没有任何非临时数据库且本地无迁移登记，因此 `06-02` 的“已部署迁移不改写”在当前实际环境中无历史对象，结合追加迁移静态门恢复为 `VERIFIED_REPO`。凡是仍缺浏览器全链、真实 Provider、预发布/生产配置、持久恢复报告或已审合同的项目，状态保持不变。
 
@@ -266,19 +267,19 @@
 | 20-03～20-04 | PARTIAL | `deploy/nginx/nginx.production.conf.template`、release/image gates、fixed compose image refs | Nginx/版本静态门存在；缺预发布流量验证与 API/Worker 受信 digest。 |
 | 20-05 | EXTERNAL_BLOCKED | 生产发布 Runbook 与 release gates | 需预发布逐台发布、健康检查、回滚记录。 |
 | 20-06 | PARTIAL | `scripts/check/verify-worker-drain.mjs`、worker bootstrap tests、production Compose stop grace | 本地 drain 机制可测；缺预发布在途任务/幂等演练。 |
-| 20-07～20-11 | EXTERNAL_BLOCKED | `scripts/backup/README.md` 与生产 Runbook | 需故障域外 PostgreSQL/WAL、分库恢复、Rabbit 重建/对账、空主机恢复及实测报告。 |
+| 20-07～20-11 | EXTERNAL_BLOCKED | `scripts/backup/recovery-evidence.mjs`、`scripts/backup/recovery-evidence.example.json`、`scripts/check/backup-recovery.test.mjs`、`scripts/backup/README.md` 与 `.handoffs/OPS-02-REPOSITORY-FOUNDATION.md` | 仓库已有证据 Manifest 和失败关闭结构门；仍需真实故障域外 PostgreSQL 基础备份/连续 WAL、三库分别恢复、RabbitMQ 重建及 Outbox/Inbox/业务状态对账、空主机或等价隔离恢复和实测报告。合成引用不能替代这些外部证据。 |
 
 ### 21 独立 Review Pass
 
 | 编号 | 状态 | 直接证据 | 尚缺 |
 |---|---|---|---|
-| 21-01～21-08 | VERIFIED_REPO | `.handoffs/CURRENT-INDEPENDENT-REVIEW.md` 与 `.handoffs/E2E-01-LOCAL-REVIEW.md` 记录八维问题清单、处置和新鲜测试；本轮增量无剩余 P0-P3 | 只闭合当前仓库代码候选的 Review；G3 外部证据、主 E2E 与 OPS-02 尚未执行，完成后仍须分别独立 Review。 |
+| 21-01～21-08 | VERIFIED_REPO | `.handoffs/CURRENT-INDEPENDENT-REVIEW.md`、`.handoffs/E2E-01-LOCAL-REVIEW.md` 与 `.handoffs/OPS-02-REPOSITORY-FOUNDATION.md` 记录八维问题、处置和新鲜测试；OPS-02 门禁发现的凭据值绕过、三库证据复用、恢复报告字段缺失和大小写别名问题均已修复，无剩余 P0-P3 | 只闭合当前仓库代码候选的 Review；G3 外部证据、主 E2E 与 OPS-02 真实恢复演练尚未执行，完成后仍须分别独立 Review。 |
 
 ## 6. 关键阻断
 
 1. **主 E2E 缺失：17 项。** `tests/e2e` 已有环境预检和业务中立进程内平台片段，且覆盖局部重复与拒绝路径；跨进程、持久化、消息、浏览器、文件和来源命令全链仍未实现。
 2. **合同阻断：5 项。** 通用 Worker Job、Workflow 来源正式命令、Task 完成路由和 Notification RabbitMQ 消费链不能在合同缺失时实现。
-3. **真实外部证据：12 项。** 真实 COS、日志轮转、主机 SSH、Secret 演练、灾备/恢复、预发布发布回滚等必须在受控环境执行。
+3. **真实外部证据：12 项。** 真实 COS、日志轮转、主机 SSH、Secret 演练、灾备/恢复、预发布发布回滚等必须在受控环境执行。OPS-02 仓库门只能拒绝不完整或不安全的证据 Manifest，不会把合成引用转换为外部验收证据。
 4. **仓库证据仍非生产签收。** 139 项标为 `VERIFIED_REPO` 只说明存在直接的仓库级可重复验证机制；当前基线已有远端 CI、镜像构建与 GHCR 发布证据，但仍没有预发布/生产运行和最终签收所需的完整证据包。
 5. **26 项仅部分闭环。** 主要是跨组件浏览器/E2E、真实运行抽样和预发布接线。历史 Organization `0003` 的外部环境事实已由用户确认不存在，但破坏性迁移的环境级备份/锁影响证据仍待真实部署环境。
 6. **真实镜像已构建发布但未部署。** 当前基线 API/Worker 镜像已由远端工作流构建、复验并发布 GHCR；尚无预发布/生产拉取、non-root 运行抽样、健康、逐台发布与回滚证据。
@@ -289,15 +290,15 @@
 2. 保留“历史 Organization `0000000003` 未进入任何非临时环境、本地无迁移登记”的用户确认；首次建立共享环境时从空库执行并保存迁移 Manifest、checksum、备份/恢复点和锁影响证据。
 3. 在首个测试服/预发布环境验证已发布 API/Worker digest 的拉取、non-root 运行、迁移 Manifest、Fixture/Source Map/Secret 排除、健康和回滚。
 4. 在合同 Owner 决策前维持 5 个 `CONTRACT_BLOCKED` 项失败关闭，不以通用消费者代替具体合同。
-5. 外部 G3 闭合后实现 E2E-01，再执行 OPS-02 和当前候选版本的八维独立 Review。
+5. 外部 G3 闭合后实现 E2E-01；OPS-02 仓库级证据基础已建立，真实备份/恢复与安全演练须等待受控环境、最小权限 CAM、私有加密 COS、正式 Owner/复核人和批准参数就绪后执行，并对该候选做八维独立 Review。
 6. 只有证据文件经过复核后，才由验收 Owner 在权威清单逐项勾选；不得根据本审计批量勾选。
 
 ## 8. 审计自检
 
 - 编号计数：20 个章节，199 项；五类状态为 139/26/12/5/17，合计 199。
-- 证据基线：已注明远端代码证据基线 `e90f530` 与本轮候选增量；5 项 API external skip、未部署环境和 E2E 预检的 `mainWalkingSkeletonReady=false` 未被计为通过。
+- 证据基线：已注明远端代码证据基线 `9fa4e2c` 与本轮候选增量；5 项 API external skip、未部署环境和 E2E 预检的 `mainWalkingSkeletonReady=false` 未被计为通过。
 - 原验收清单与合同：未修改。
-- 当前代码增量、视觉复验和独立 Review handoff 均已在本审计中列出直接证据。
+- 当前代码增量、视觉复验、OPS-02 仓库级证据门和独立 Review handoff 均已在本审计中列出直接证据；OPS-02 外部项目的状态与总统计未改变。
 - `output/`：未读取、未修改。
 - 生产/外部系统：未访问。
 - 本文件未写入 Secret、个人数据、真实 Provider Payload 或生产标识。

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "exerciseRef": "synthetic-local-recovery-example",
+  "operatorRef": "synthetic-operator",
+  "approverRef": "synthetic-approver",
+  "source": {
+    "environmentRef": "synthetic-local-source",
+    "failureDomainRef": "synthetic-local-source-domain"
+  },
+  "target": {
+    "environmentRef": "synthetic-local-isolated-target",
+    "failureDomainRef": "synthetic-local-target-domain",
+    "isolationEvidence": { "evidenceRef": "evidence://synthetic/recovery/target-isolation", "evidenceDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" }
+  },
+  "postgres": {
+    "version": "17.5",
+    "versionEvidence": { "evidenceRef": "evidence://synthetic/postgres/version", "evidenceDigest": "sha256:1222222222222222222222222222222222222222222222222222222222222222" }
+  },
+  "databases": {
+    "ai_crm": {
+      "backupArtifact": { "evidenceRef": "evidence://synthetic/database/ai-crm/backup-artifact", "evidenceDigest": "sha256:2111111111111111111111111111111111111111111111111111111111111111" },
+      "backupEvidence": { "evidenceRef": "evidence://synthetic/database/ai-crm/backup", "evidenceDigest": "sha256:2122222222222222222222222222222222222222222222222222222222222222" },
+      "restoreEvidence": { "evidenceRef": "evidence://synthetic/database/ai-crm/restore", "evidenceDigest": "sha256:2133333333333333333333333333333333333333333333333333333333333333" },
+      "verificationEvidence": { "evidenceRef": "evidence://synthetic/database/ai-crm/verification", "evidenceDigest": "sha256:2144444444444444444444444444444444444444444444444444444444444444" }
+    },
+    "keycloak": {
+      "backupArtifact": { "evidenceRef": "evidence://synthetic/database/keycloak/backup-artifact", "evidenceDigest": "sha256:2211111111111111111111111111111111111111111111111111111111111111" },
+      "backupEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/backup", "evidenceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+      "restoreEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/restore", "evidenceDigest": "sha256:2233333333333333333333333333333333333333333333333333333333333333" },
+      "verificationEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/verification", "evidenceDigest": "sha256:2244444444444444444444444444444444444444444444444444444444444444" }
+    },
+    "flowable": {
+      "backupArtifact": { "evidenceRef": "evidence://synthetic/database/flowable/backup-artifact", "evidenceDigest": "sha256:2311111111111111111111111111111111111111111111111111111111111111" },
+      "backupEvidence": { "evidenceRef": "evidence://synthetic/database/flowable/backup", "evidenceDigest": "sha256:2322222222222222222222222222222222222222222222222222222222222222" },
+      "restoreEvidence": { "evidenceRef": "evidence://synthetic/database/flowable/restore", "evidenceDigest": "sha256:2333333333333333333333333333333333333333333333333333333333333333" },
+      "verificationEvidence": { "evidenceRef": "evidence://synthetic/database/flowable/verification", "evidenceDigest": "sha256:2344444444444444444444444444444444444444444444444444444444444444" }
+    }
+  },
+  "walArchive": {
+    "startSegment": "000000010000000000000001",
+    "endSegment": "000000010000000000000002",
+    "continuityEvidence": { "evidenceRef": "evidence://synthetic/postgres/wal/continuity", "evidenceDigest": "sha256:3111111111111111111111111111111111111111111111111111111111111111" },
+    "restoreEvidence": { "evidenceRef": "evidence://synthetic/postgres/wal/restore", "evidenceDigest": "sha256:3222222222222222222222222222222222222222222222222222222222222222" }
+  },
+  "offsiteBackup": {
+    "failureDomainSeparation": { "evidenceRef": "evidence://synthetic/offsite/failure-domain", "evidenceDigest": "sha256:4111111111111111111111111111111111111111111111111111111111111111" },
+    "privateAccess": { "evidenceRef": "evidence://synthetic/offsite/private-access", "evidenceDigest": "sha256:4222222222222222222222222222222222222222222222222222222222222222" },
+    "atRestEncryption": { "evidenceRef": "evidence://synthetic/offsite/at-rest-encryption", "evidenceDigest": "sha256:4333333333333333333333333333333333333333333333333333333333333333" },
+    "transportEncryption": { "evidenceRef": "evidence://synthetic/offsite/transport-encryption", "evidenceDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" }
+  },
+  "rabbitmqRecovery": {
+    "topologyArtifact": { "evidenceRef": "evidence://synthetic/rabbitmq/topology", "evidenceDigest": "sha256:5111111111111111111111111111111111111111111111111111111111111111" },
+    "outboxReconciliation": { "evidenceRef": "evidence://synthetic/rabbitmq/outbox-reconciliation", "evidenceDigest": "sha256:5222222222222222222222222222222222222222222222222222222222222222" },
+    "inboxReconciliation": { "evidenceRef": "evidence://synthetic/rabbitmq/inbox-reconciliation", "evidenceDigest": "sha256:5333333333333333333333333333333333333333333333333333333333333333" },
+    "businessStateReconciliation": { "evidenceRef": "evidence://synthetic/rabbitmq/business-state-reconciliation", "evidenceDigest": "sha256:5444444444444444444444444444444444444444444444444444444444444444" }
+  },
+  "configurationArtifacts": {
+    "compose": { "evidenceRef": "evidence://synthetic/configuration/compose", "evidenceDigest": "sha256:6111111111111111111111111111111111111111111111111111111111111111" },
+    "nginx": { "evidenceRef": "evidence://synthetic/configuration/nginx", "evidenceDigest": "sha256:6222222222222222222222222222222222222222222222222222222222222222" },
+    "keycloakRealm": { "evidenceRef": "evidence://synthetic/configuration/keycloak-realm", "evidenceDigest": "sha256:6333333333333333333333333333333333333333333333333333333333333333" },
+    "flowableConfiguration": { "evidenceRef": "evidence://synthetic/configuration/flowable", "evidenceDigest": "sha256:6444444444444444444444444444444444444444444444444444444444444444" },
+    "infrastructureInventory": { "evidenceRef": "evidence://synthetic/configuration/infrastructure-inventory", "evidenceDigest": "sha256:6555555555555555555555555555555555555555555555555555555555555555" }
+  },
+  "encryptedEmergencyBundle": {
+    "artifact": { "evidenceRef": "evidence://synthetic/emergency-bundle/artifact", "evidenceDigest": "sha256:7111111111111111111111111111111111111111111111111111111111111111" },
+    "offlinePublicKeyEncryption": { "evidenceRef": "evidence://synthetic/emergency-bundle/offline-public-key-encryption", "evidenceDigest": "sha256:7222222222222222222222222222222222222222222222222222222222222222" },
+    "decryptionKeySeparation": { "evidenceRef": "evidence://synthetic/emergency-bundle/decryption-key-separation", "evidenceDigest": "sha256:7333333333333333333333333333333333333333333333333333333333333333" },
+    "isolatedRestore": { "evidenceRef": "evidence://synthetic/emergency-bundle/isolated-restore", "evidenceDigest": "sha256:7444444444444444444444444444444444444444444444444444444444444444" }
+  },
+  "emptyHostRecovery": {
+    "hostProvisioning": { "evidenceRef": "evidence://synthetic/empty-host/provisioning", "evidenceDigest": "sha256:8111111111111111111111111111111111111111111111111111111111111111" },
+    "databaseRestore": { "evidenceRef": "evidence://synthetic/empty-host/database-restore", "evidenceDigest": "sha256:8222222222222222222222222222222222222222222222222222222222222222" },
+    "serviceStartup": { "evidenceRef": "evidence://synthetic/empty-host/service-startup", "evidenceDigest": "sha256:8333333333333333333333333333333333333333333333333333333333333333" },
+    "actualRestorePoint": { "evidenceRef": "evidence://synthetic/empty-host/actual-restore-point", "evidenceDigest": "sha256:8444444444444444444444444444444444444444444444444444444444444444" },
+    "elapsedTime": { "evidenceRef": "evidence://synthetic/empty-host/elapsed-time", "evidenceDigest": "sha256:8555555555555555555555555555555555555555555555555555555555555555" },
+    "dataDifference": { "evidenceRef": "evidence://synthetic/empty-host/data-difference", "evidenceDigest": "sha256:8666666666666666666666666666666666666666666666666666666666666666" },
+    "recoveryVerification": { "evidenceRef": "evidence://synthetic/empty-host/recovery-verification", "evidenceDigest": "sha256:8777777777777777777777777777777777777777777777777777777777777777" }
+  },
+  "securityExercises": {
+    "hostCompromise": { "evidenceRef": "evidence://synthetic/security/host-compromise", "evidenceDigest": "sha256:9111111111111111111111111111111111111111111111111111111111111111" },
+    "accessMaterialLeak": { "evidenceRef": "evidence://synthetic/security/access-material-leak", "evidenceDigest": "sha256:9222222222222222222222222222222222222222222222222222222222222222" },
+    "offboardingRevocation": { "evidenceRef": "evidence://synthetic/security/offboarding-revocation", "evidenceDigest": "sha256:9333333333333333333333333333333333333333333333333333333333333333" }
+  }
+}
