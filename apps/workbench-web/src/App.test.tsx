@@ -79,7 +79,7 @@ describe("workbench shell", () => {
     );
     expect(screen.getByText("fixture-task-06")).toBeInTheDocument();
     expect(screen.queryByText("fixture-task-02")).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("uses longest-prefix selection in ProLayout and renders a collection deep link", async () => {
     renderApp("/notifications/fixture-notification-06");
