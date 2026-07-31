@@ -34,8 +34,8 @@ describe("walking skeleton evidence chain", () => {
     let attempts = 0;
     const taskAudit: TaskAudit = { record: (record) => { evidence.push({ module: "task", traceId, operationId: record.referenceId, result: record.phase, resource: record.referenceId }); return Promise.resolve(); } };
     let denialPending = true;
-    const authorization = { authorize: vi.fn(async ({ operation }: { operation: string }) => ({ allowed: operation !== "task_detail" || !denialPending, decisionId: "00000000-0000-4000-8000-000000000202" })) };
-    const router = { complete: vi.fn(async () => { attempts += 1; if (attempts === 1) throw new Error("dependency_unavailable"); return { sourceCommandId: "00000000-0000-4000-8000-000000000301", status: "accepted" as const }; }) };
+    const authorization = { authorize: vi.fn(({ operation }: { operation: string }) => Promise.resolve({ allowed: operation !== "task_detail" || !denialPending, decisionId: "00000000-0000-4000-8000-000000000202" })) };
+    const router = { complete: vi.fn(() => { attempts += 1; if (attempts === 1) return Promise.reject(new Error("dependency_unavailable")); return Promise.resolve({ sourceCommandId: "00000000-0000-4000-8000-000000000301", status: "accepted" as const }); }) };
     const event: TaskLifecycleEvent = { assigneeReference: actor.assignmentId, deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" }, eventId: "00000000-0000-4000-8000-000000000302", occurredAt: at, sourceTaskId: "task.synthetic.evidence", sourceType: "platform.synthetic", sourceVersion: 1, status: "open" };
     const task = createTaskCenter({ audit: taskAudit, authorization, router, sourceReader: { get: () => Promise.resolve(event) }, store: new InMemoryTaskCenterStore() });
     await task.apply(event);

@@ -18,9 +18,9 @@ function createIsolatedProjectionAdapter(): RabbitConsumerAdapter {
     ready: () => undefined,
     run: async (_accept: (bindingId: string, message: RabbitDelivery) => Promise<void>, signal: AbortSignal) => {
       if (signal.aborted) return;
-      await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+      await new Promise<void>((resolve) => { signal.addEventListener("abort", () => { resolve(); }, { once: true }); });
     },
-    stop: () => undefined,
+    stop: () => { /* controlled test adapter */ },
     drain: () => Promise.resolve(),
   });
 }
