@@ -2,6 +2,8 @@ import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { request as httpRequest } from "node:http";
 import type { OutgoingHttpHeaders } from "node:http";
+import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/platform-authorization";
+import { TaskCenterError } from "@ai-crm/platform-task-center";
 import { describe, expect, it, vi } from "vitest";
 import { createApiApplication } from "./index.js";
 
@@ -130,7 +132,7 @@ describe("API composition root", () => {
     };
     const app = createApiApplication({
       logger,
-      platformHttp: { applicationRegistry, authorize, fileCenter, forms },
+      platformHttp: { applicationRegistry, authorize, fileCenter, forms, validateTaskMutation: vi.fn() },
     });
     await app.start(0, "127.0.0.1");
     const address = await app.instance()?.getUrl();
@@ -195,6 +197,54 @@ describe("API composition root", () => {
       origin: "https://workbench.invalid",
     }), expect.objectContaining({ ownerModule: "platform.synthetic" }));
     await app.stop();
+  });
+
+  it("distinguishes Task authorization denial from unavailable authorization", async () => {
+    const complete = vi.fn()
+      .mockRejectedValueOnce(new AuthorizationDeniedError("decision-task-denied"))
+      .mockRejectedValueOnce(new TaskCenterError("TASK_OPERATION_DENIED"))
+      .mockRejectedValueOnce(new AuthorizationUnavailableError())
+      .mockRejectedValueOnce(new TaskCenterError("TASK_AUTHORIZATION_FAILED", { retryable: true }));
+    const app = createApiApplication({
+      logger,
+      platformHttp: {
+        applicationRegistry: { loadRegistry: vi.fn(), resolveDeepLink: vi.fn() },
+        authorize: vi.fn().mockResolvedValue({
+          decision: { allowed: true, decisionId: "decision-task-http", evaluatedAt: "2026-07-31T00:00:00.000Z", policyVersion: "synthetic-v1", reason: "allowed" },
+          principal: { authenticationSubject: { issuer: "https://identity.invalid/realms/synthetic", subject: "subject-task" }, clientId: "pc-web", expiresAt: "2026-08-01T00:00:00.000Z", issuedAt: "2026-07-31T00:00:00.000Z" },
+          workforce: { assignments: [], employmentIds: [], resolvedAt: "2026-07-31T00:00:00.000Z", subject: { issuer: "https://identity.invalid/realms/synthetic", subject: "subject-task" }, workforcePersonId: "person-task" },
+        }),
+        fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
+        forms: { handle: vi.fn() },
+        tasks: { complete },
+        validateTaskMutation: vi.fn(),
+      },
+    });
+    await app.start(0, "127.0.0.1");
+    try {
+      const address = await app.instance()?.getUrl();
+      if (address === undefined) throw new Error("api_not_started");
+      const request = () => fetch(`${address}/tasks/tests.walking-skeleton/source-task.synthetic/complete`, {
+        headers: {
+          cookie: `__Host-ai_crm_pc_session=${"a".repeat(43)}`,
+          "idempotency-key": "task-complete.synthetic-0001",
+          origin: "https://workbench.invalid",
+          "x-csrf-token": "c".repeat(43),
+        },
+        method: "POST",
+      });
+      const responses = [await request(), await request(), await request(), await request()];
+      expect(responses.map((response) => response.status)).toEqual([403, 403, 503, 503]);
+      const bodies = await Promise.all(responses.map(async (response) => response.json() as Promise<{ readonly code: string }>));
+      expect(bodies.map((body) => body.code)).toEqual([
+        "AUTHORIZATION_DENIED",
+        "TASK_OPERATION_DENIED",
+        "AUTHORIZATION_UNAVAILABLE",
+        "TASK_AUTHORIZATION_FAILED",
+      ]);
+    } finally {
+      await app.stop();
+    }
   });
 
   it("serializes concurrent starts", async () => {

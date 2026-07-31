@@ -3,8 +3,11 @@ import { resolve } from "node:path";
 
 import { createDatabaseRuntime } from "@ai-crm/database";
 import { createPostgresEventingStore } from "@ai-crm/platform-eventing-outbox";
+import { createPostgresFormSchemaStore } from "@ai-crm/platform-form-schema";
 import { createPostgresNotificationStore } from "@ai-crm/platform-notifications";
+import { createPostgresTaskCenterStore } from "@ai-crm/platform-task-center";
 
+import { createPostgresMainChainEvidence } from "./durable-evidence.js";
 import { createMainChainIntegrationFactory, runMainChainIntegration } from "./main-chain.js";
 import { createPostgresWalkingSkeletonSource } from "./postgres-walking-skeleton-source.js";
 import { createPostgresWorkflowCommandLedger } from "./postgres-workflow-ledger.js";
@@ -31,10 +34,13 @@ const runtime = createDatabaseRuntime({
 try {
   await runMainChainIntegration(createMainChainIntegrationFactory({
     createEventingStore: () => createPostgresEventingStore(runtime),
+    createFormStore: () => createPostgresFormSchemaStore(runtime),
     createNotificationStore: () => createPostgresNotificationStore(runtime),
     createSource: (options) => createPostgresWalkingSkeletonSource({ ...options, runtime }),
+    createTaskStore: () => createPostgresTaskCenterStore(runtime),
     createWorkflowLedger: () => createPostgresWorkflowCommandLedger({ leaseMs: 30_000, runtime }),
     durable: true,
+    evidence: createPostgresMainChainEvidence(runtime),
   }));
 } finally {
   await runtime.close();

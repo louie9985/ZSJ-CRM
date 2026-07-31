@@ -11,6 +11,17 @@ import { BrowserSessionFailure } from "./auth/errors.js";
 import { parsePcSessionCredential, type AuthenticationHttpResponse, type BrowserRequestContext, type PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
 import type { ApiPlatformHttpComposition, AuthorizedOperationContext } from "./composition.js";
 
+export {
+  createOidcClient,
+  createPcAuthenticationHttpAdapter,
+  createPcBffSessionService,
+  connectRedisSessionStore,
+  createRedisBrowserSessionStore,
+  type AuthenticationAuditPort,
+  type PcAuthenticationHttpAdapter,
+  type RedisSessionConnection,
+} from "./auth/index.js";
+
 export const applicationId = "@ai-crm/api" as const;
 const API_COMPOSITION = Symbol("api-composition");
 const API_RUNTIME_STATE = Symbol("api-runtime-state");
@@ -310,8 +321,11 @@ const TASK_IDEMPOTENCY = TASK_REF;
 
 function taskResponseError(error: unknown): PlatformHttpResponse {
   const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? "") : "";
-  const denied = code.includes("DENIED") || code.includes("AUTHORIZATION") || (typeof error === "object" && error !== null && Reflect.get(error, "name") === "AuthorizationDeniedError");
-  const status = denied ? 403
+  const denied = code === "AUTHORIZATION_DENIED"
+    || code === "TASK_OPERATION_DENIED"
+    || (typeof error === "object" && error !== null && Reflect.get(error, "name") === "AuthorizationDeniedError");
+  const status = code === "authentication_csrf_rejected" ? 403
+    : denied ? 403
     : code.includes("NOT_FOUND") ? 404
       : code.includes("CONFLICT") || code.includes("IN_PROGRESS") ? 409
         : error instanceof BrowserSessionFailure ? 401 : 503;
@@ -328,12 +342,21 @@ class TaskController {
       const sourceType = typeof request.params["sourceType"] === "string" ? request.params["sourceType"] : undefined;
       const sourceTaskId = typeof request.params["sourceTaskId"] === "string" ? request.params["sourceTaskId"] : undefined;
       const idempotencyKey = singleHeader(request, "idempotency-key", 255, 1);
+      const csrfToken = singleHeader(request, "x-csrf-token", 512);
+      const origin = singleHeader(request, "origin", 512);
+      const referer = singleHeader(request, "referer", 2048);
       const credential = credentialFromRequest(request);
       if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-      if (sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value)) {
+      if (sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value) || !csrfToken.valid || !origin.valid || !referer.valid) {
         sendPlatformResponse(response, { body: { code: "task_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
         return;
       }
+      await platform(this.composition).validateTaskMutation({
+        credential,
+        ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }),
+        ...(origin.value === undefined ? {} : { origin: origin.value }),
+        ...(referer.value === undefined ? {} : { referer: referer.value }),
+      });
       const traceId = extractTraceContext({ traceparent: platformHeader(request, "traceparent", 512) }).traceId;
       const authorized = await platform(this.composition).authorize({
         at: new Date().toISOString(), credential, traceId,

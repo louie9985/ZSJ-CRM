@@ -30,6 +30,8 @@ Delete an isolated test environment with `node scripts/bootstrap/cleanup-test-co
 
 `pnpm e2e:compose:integration` adds `compose.e2e.yml` to the isolated dependency composition. It builds test-only API and Worker entry points plus a Workbench image selected by the explicit E2E build flag, waits for all ten services, verifies API readiness and liveness through Nginx, verifies the Workbench route, and then removes only its unique project, Volumes, and temporary Secret directory. The process anchor does not activate production consumers and this test does not claim the main Walking Skeleton behavior.
 
+`pnpm e2e:browser-auth:integration` adds `compose.e2e-browser-auth.yml`, mounts the locally built E2E Workbench artifact read-only into Nginx, and routes only `/auth/pc/` to a short-lived host BFF. Keycloak and Redis publish dynamically selected loopback ports; the edge uses `localhost:18088` because it is an allowlisted development/test redirect URI. This overlay is test-only and does not alter production topology.
+
 ## RabbitMQ TLS integration
 
 Run `node scripts/check/run-rabbitmq-integration.mjs` to validate RabbitMQ `4.2.9` against the repository-pinned `amqplib@2.0.1`. The runner requires Docker and OpenSSL, creates all certificates and credentials in a system-temporary directory, publishes only an automatically selected loopback AMQPS port, and removes its unique Compose project, Volume, network, and fixture directory in `finally` cleanup.

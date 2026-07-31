@@ -21,6 +21,18 @@ Run `pnpm --filter @ai-crm/e2e test` to exercise a synthetic, business-neutral c
 
 This is an in-process joint test, not the main E2E. It does not start a browser, API, Worker, database, RabbitMQ consumer, Workflow source command, Task completion route, or production Notification activation, and it does not change the status of the five blocked contracts.
 
+## Durable evidence slice
+
+Run `pnpm e2e:main-chain:integration` to execute the test-only durable chain against disposable PostgreSQL, real Flowable, and real TLS RabbitMQ. The slice publishes and validates a versioned synthetic Form Schema release, persists a submission reference with a stable synthetic `FileReference`, completes the projected task through Task Center, retries after a synthetic dependency failure, publishes trace-bearing Jobs through Outbox/RabbitMQ/Worker/Inbox, and queries durable Audit correlation. It also proves denied access, inactive-release rejection, command replay, duplicate delivery, and cleanup.
+
+The stable FileReference is an explicit synthetic fixture. Real File Center and ClamAV clean/quarantine behavior is proven by `pnpm e2e:file-clamav:integration`, but that separate scan result is not yet fed into this chain. The browser/BFF login slice is also separate, so `mainWalkingSkeletonReady` remains `false`.
+
+## Browser authentication slice
+
+Run `pnpm e2e:browser-auth:integration` to build the E2E Workbench, start disposable PostgreSQL, Redis, Keycloak, and Nginx services, and drive an installed headless Chromium browser through the real PC BFF Authorization Code + PKCE login path. The runner creates and deletes one synthetic Keycloak user at runtime and checks callback validation, the browser Token boundary, CSRF, session fixation, refresh rotation, old-Cookie rejection, and session expiry.
+
+The runner binds only loopback dependency/edge ports and a short-lived host BFF port used by the isolated Nginx container. It removes its Compose project, Volumes, browser profile, build output, temporary Secrets, and synthetic user. This proves `17-01`; it does not join the browser session to the durable Task/Worker trace and does not set `mainWalkingSkeletonReady` to `true`.
+
 ## Task boundary
 
 Known facts:

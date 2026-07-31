@@ -11,7 +11,7 @@ describe("isolated E2E process composition", () => {
     const composition = createApiPlatformComposition(bindings);
     await expect(composition.lifecycle.onStart?.(new AbortController().signal)).resolves.toBeUndefined();
     expect(composition.lifecycle.dependencies?.()).toEqual([{ healthy: true, name: "e2e-process-bindings", required: true }]);
-    await expect(bindings.queries.tasks.list({} as never)).rejects.toThrow("e2e_capability_not_composed");
+    await expect(bindings.queries.notifications.list({} as never)).rejects.toThrow("e2e_capability_not_composed");
   });
 
   it("keeps the Worker process alive until drain aborts its test-only anchor", async () => {

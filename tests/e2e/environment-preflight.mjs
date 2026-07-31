@@ -11,15 +11,23 @@ const requiredFiles = Object.freeze([
   "deploy/compose/compose.base.yml",
   "deploy/compose/compose.test.yml",
   "deploy/compose/compose.e2e.yml",
+  "deploy/compose/compose.e2e-browser-auth.yml",
   "deploy/flowable/bpmn/synthetic-human-task.v1.bpmn20.xml",
   "deploy/keycloak/realm-dev.json",
   "scripts/check/run-e2e-rabbit-jobs-integration.mjs",
   "scripts/check/run-e2e-flowable-workflow-integration.mjs",
   "scripts/check/run-e2e-main-chain-integration.mjs",
   "scripts/check/run-e2e-file-clamav-integration.mjs",
+  "scripts/check/run-e2e-browser-authentication.mjs",
   "tests/e2e/migrations/0000000016_e2e_walking_skeleton_durable_stores.sql",
   "tests/e2e/migrations/0000000016_e2e_walking_skeleton_durable_stores.meta.json",
+  "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.sql",
+  "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.meta.json",
+  "tests/e2e/src/api-main.ts",
+  "tests/e2e/src/api-main.test.ts",
   "tests/e2e/src/apply-e2e-migration.ts",
+  "tests/e2e/src/browser-authentication-bff.ts",
+  "tests/e2e/src/durable-evidence.ts",
   "tests/e2e/src/durable-main-chain.ts",
   "tests/e2e/src/file-clamav-integration.mjs",
   "tests/e2e/src/main-chain.ts",
@@ -32,24 +40,14 @@ const requiredFiles = Object.freeze([
 
 const implementationGaps = Object.freeze([
   Object.freeze({
-    acceptanceId: "09-05",
-    evidence: Object.freeze(["tests/e2e/src/walking-skeleton-source.ts", "apps/api/src/composition-factory.ts"]),
-    reason: "The durable tests-only source route is proven through RabbitMQ, but the full E2E API process still exposes no authenticated Task completion endpoint.",
-  }),
-  Object.freeze({
-    acceptanceId: "17-01",
-    evidence: Object.freeze(["apps/api/src/auth/keycloak.integration.test.ts", "deploy/compose/compose.e2e.yml"]),
-    reason: "Keycloak/BFF integration and the ten-service process shell pass separately; no browser signs in through the composed E2E edge and session path.",
-  }),
-  Object.freeze({
     acceptanceId: "17-09",
-    evidence: Object.freeze(["tests/e2e/src/file-clamav-integration.mjs", "tests/e2e/src/main-chain.ts"]),
-    reason: "File Center and real ClamAV pass as an isolated chain, but form submission, FileReference, and task completion do not yet carry that evidence through the durable main slice.",
+    evidence: Object.freeze(["tests/e2e/src/file-clamav-integration.mjs", "tests/e2e/src/main-chain.ts", "tests/e2e/src/durable-evidence.ts"]),
+    reason: "The durable main slice now validates and persists a versioned form submission with a stable synthetic FileReference before Task Center completion, while real File Center and ClamAV availability remain proven only in the separate isolated chain.",
   }),
   Object.freeze({
     acceptanceId: "17-16",
-    evidence: Object.freeze(["tests/e2e/src/durable-main-chain.ts", "packages/observability/src/context.test.ts"]),
-    reason: "The durable slice records bounded authorization and lifecycle evidence, but browser-to-BFF-to-API-to-Outbox-to-Worker Trace propagation and durable Audit correlation are not composed.",
+    evidence: Object.freeze(["tests/e2e/src/durable-main-chain.ts", "tests/e2e/src/durable-evidence.ts", "packages/observability/src/context.test.ts"]),
+    reason: "One W3C trace now correlates Workflow, PostgreSQL Outbox, RabbitMQ/Worker effects, Inbox receipts and durable Audit records, but the separately proven browser/BFF login slice is not yet joined to that trace through the authenticated API endpoint.",
   }),
 ]);
 
@@ -73,21 +71,28 @@ function validateServices(output) {
   return services;
 }
 
-async function assertRepositoryEvidence(root) {
-  await Promise.all(requiredFiles.map((path) => readFile(resolve(root, path), "utf8")));
-  const [apiReadme, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver] = await Promise.all([
-    readFile(resolve(root, "apps/api/README.md"), "utf8"),
-    readFile(resolve(root, "apps/api/src/composition-factory.ts"), "utf8"),
-    readFile(resolve(root, "contracts/asyncapi/topology.asyncapi.yaml"), "utf8"),
-    readFile(resolve(root, "contracts/asyncapi/walking-skeleton.asyncapi.yaml"), "utf8"),
-    readFile(resolve(root, "contracts/jobs/README.md"), "utf8"),
-    readFile(resolve(root, "contracts/jobs/walking-skeleton-source-command.v1.schema.json"), "utf8"),
-    readFile(resolve(root, "contracts/jobs/notification-intent-submit.v1.schema.json"), "utf8"),
-    readFile(resolve(root, "apps/worker/src/handler-registry.ts"), "utf8"),
-    readFile(resolve(root, "scripts/check/run-e2e-rabbit-jobs-integration.mjs"), "utf8"),
-    readFile(resolve(root, "tests/e2e/src/rabbit-job-integration.ts"), "utf8"),
-    readFile(resolve(root, "scripts/check/run-e2e-flowable-workflow-integration.mjs"), "utf8"),
-    readFile(resolve(root, "tests/e2e/src/flowable-workflow-integration.ts"), "utf8"),
+async function assertRepositoryEvidence(root, readText = (path) => readFile(path, "utf8")) {
+  await Promise.all(requiredFiles.map((path) => readText(resolve(root, path))));
+  const [apiReadme, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver, browserAuthRunner, browserAuthBff, apiMain, apiMainTest, durableEvidence, evidenceMigration, evidenceMetadataText] = await Promise.all([
+    readText(resolve(root, "apps/api/README.md")),
+    readText(resolve(root, "apps/api/src/composition-factory.ts")),
+    readText(resolve(root, "contracts/asyncapi/topology.asyncapi.yaml")),
+    readText(resolve(root, "contracts/asyncapi/walking-skeleton.asyncapi.yaml")),
+    readText(resolve(root, "contracts/jobs/README.md")),
+    readText(resolve(root, "contracts/jobs/walking-skeleton-source-command.v1.schema.json")),
+    readText(resolve(root, "contracts/jobs/notification-intent-submit.v1.schema.json")),
+    readText(resolve(root, "apps/worker/src/handler-registry.ts")),
+    readText(resolve(root, "scripts/check/run-e2e-rabbit-jobs-integration.mjs")),
+    readText(resolve(root, "tests/e2e/src/rabbit-job-integration.ts")),
+    readText(resolve(root, "scripts/check/run-e2e-flowable-workflow-integration.mjs")),
+    readText(resolve(root, "tests/e2e/src/flowable-workflow-integration.ts")),
+    readText(resolve(root, "scripts/check/run-e2e-browser-authentication.mjs")),
+    readText(resolve(root, "tests/e2e/src/browser-authentication-bff.ts")),
+    readText(resolve(root, "tests/e2e/src/api-main.ts")),
+    readText(resolve(root, "tests/e2e/src/api-main.test.ts")),
+    readText(resolve(root, "tests/e2e/src/durable-evidence.ts")),
+    readText(resolve(root, "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.sql")),
+    readText(resolve(root, "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.meta.json")),
   ]);
   if (!apiReadme.includes("Workflow remains uncomposed")) throw new Error("e2e_environment_preflight_workflow_boundary_changed");
   if (!apiComposition.includes("task_source_router_unavailable")) throw new Error("e2e_environment_preflight_task_boundary_changed");
@@ -116,6 +121,31 @@ async function assertRepositoryEvidence(root) {
     || !flowableDriver.includes('status: "e2e-flowable-workflow-passed"')) {
     throw new Error("e2e_environment_preflight_flowable_workflow_evidence_changed");
   }
+  if (!browserAuthRunner.includes('status: "e2e-browser-authentication-passed"')
+    || !browserAuthRunner.includes("Network.getAllCookies")
+    || !browserAuthBff.includes("createPcBffSessionService")) {
+    throw new Error("e2e_environment_preflight_browser_auth_evidence_changed");
+  }
+  if (!apiMain.includes("createWalkingSkeletonTaskPorts")
+    || !apiMain.includes("sessionForMutation")
+    || !apiMainTest.includes("idempotently routes completion")
+    || !apiMainTest.includes("authentication_csrf_rejected")) {
+    throw new Error("e2e_environment_preflight_task_api_evidence_changed");
+  }
+  if (!durableEvidence.includes("saveSubmission")
+    || !durableEvidence.includes("inspect(traceId")
+    || !evidenceMigration.includes("CREATE TABLE e2e_walking_skeleton.form_submissions")
+    || !evidenceMigration.includes("GRANT SELECT, INSERT ON audit.records")) {
+    throw new Error("e2e_environment_preflight_durable_evidence_changed");
+  }
+  let evidenceMetadata;
+  try { evidenceMetadata = JSON.parse(evidenceMetadataText); }
+  catch { throw new Error("e2e_environment_preflight_durable_evidence_changed"); }
+  if (evidenceMetadata?.moduleOwner !== "tests/e2e"
+    || evidenceMetadata?.destructive !== false
+    || typeof evidenceMetadata?.recovery !== "string") {
+    throw new Error("e2e_environment_preflight_durable_evidence_changed");
+  }
 }
 
 export async function runEnvironmentPreflight(options = {}) {
@@ -123,7 +153,7 @@ export async function runEnvironmentPreflight(options = {}) {
   const execute = options.command ?? command;
   const nodeMajor = Number((options.nodeVersion ?? process.versions.node).split(".")[0]);
   if (nodeMajor !== 24) throw new Error("e2e_environment_preflight_node_version_invalid");
-  await assertRepositoryEvidence(root);
+  await assertRepositoryEvidence(root, options.readText);
   execute("docker", ["version", "--format", "{{.Server.Version}}"]);
   execute("docker", ["compose", "version", "--short"]);
   const serviceOutput = execute("docker", [

@@ -28,6 +28,7 @@
     "e2e:check": "node --test tests/e2e/*.test.mjs",
     "e2e:preflight": "node tests/e2e/environment-preflight.mjs",
     "e2e:compose:integration": "node scripts/check/run-e2e-compose-integration.mjs",
+    "e2e:browser-auth:integration": "node scripts/check/run-e2e-browser-authentication.mjs",
     "e2e:rabbit-jobs:integration": "node scripts/check/run-e2e-rabbit-jobs-integration.mjs",
     "e2e:flowable-workflow:integration": "node scripts/check/run-e2e-flowable-workflow-integration.mjs",
     "e2e:main-chain:integration": "node scripts/check/run-e2e-main-chain-integration.mjs",

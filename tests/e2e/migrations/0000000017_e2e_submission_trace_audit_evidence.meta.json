@@ -1,0 +1,14 @@
+{
+  "moduleOwner": "tests/e2e",
+  "purpose": "Persist synthetic versioned form-submission references and grant the disposable E2E orchestrator the narrow Form Schema, Task Center, and Audit writes required by the durable evidence chain.",
+  "applicationCompatibility": {
+    "minimumInclusive": "0.0.0"
+  },
+  "lockImpact": "Creates one E2E-only table and applies catalog-only grants to existing platform tables in the disposable E2E database.",
+  "dataImpact": "Stores synthetic references, digests, stable FileReference identifiers, and W3C trace correlation only. It stores no submitted form body or file content.",
+  "backfill": "None. The explicitly invoked E2E runner creates the synthetic submission after applying reviewed migrations.",
+  "recovery": "Drop e2e_walking_skeleton.form_submissions only in the disposable E2E database after preserving required evidence.",
+  "forwardFix": "Append a new globally unique migration; never edit this migration after it has been applied.",
+  "destructive": false
+}
+

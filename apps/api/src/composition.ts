@@ -16,6 +16,7 @@ import type { OrganizationServiceApi, WorkforceContext } from "@ai-crm/platform-
 import type { TaskCenter } from "@ai-crm/platform-task-center";
 
 import type { PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
+import { validateBrowserMutation } from "./auth/session-security.js";
 import type { PcBffSessionService } from "./auth/session-service.js";
 import type { ApiComposition } from "./index.js";
 import {
@@ -80,6 +81,12 @@ export interface ApiPlatformHttpComposition {
   readonly fileCenter: FileCenterHttpAdapter;
   readonly forms: FormSchemaHttpAdapter;
   readonly tasks?: Pick<TaskCenter, "complete">;
+  readonly validateTaskMutation: (input: {
+    readonly credential: string;
+    readonly csrfToken?: string;
+    readonly origin?: string;
+    readonly referer?: string;
+  }) => Promise<void>;
 }
 
 export interface ApiPlatformComposition {
@@ -224,6 +231,16 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
       if (result === undefined) throw new Error("task_completion_binding_missing");
       return result;
     } },
+    validateTaskMutation: async (input: Parameters<ApiPlatformHttpComposition["validateTaskMutation"]>[0]) => {
+      const session = await bindings.sessions.sessionForMutation(input.credential);
+      validateBrowserMutation({
+        allowedOrigins: bindings.browserSecurity.allowedOrigins,
+        csrfHeader: input.csrfToken,
+        csrfSessionValue: session.csrfToken,
+        origin: input.origin,
+        referer: input.referer,
+      });
+    },
   });
 
   return Object.freeze({

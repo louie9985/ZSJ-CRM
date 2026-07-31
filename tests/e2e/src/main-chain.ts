@@ -11,10 +11,14 @@ import {
   type EventingObservation,
   type EventingStore,
   type JobEnvelope,
+  type MessageHandler,
   type OutboxPublication,
 } from "@ai-crm/platform-eventing-outbox";
 import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
+import { createFormSchemaService, createMemoryFormSchemaStore, FormSchemaError, type FormAudit, type FormSchemaStore } from "@ai-crm/platform-form-schema";
+import type { FileReference } from "@ai-crm/platform-file-center";
 import { createNotificationCenter, InMemoryNotificationStore, NotificationError, type NotificationActor, type NotificationStore } from "@ai-crm/platform-notifications";
+import { createTaskCenter, InMemoryTaskCenterStore, TaskCenterError, type TaskAudit, type TaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
 import { createFlowableRestEngine, createWorkflowFacade, type WorkflowAuditRecord, type WorkflowCommandLedger, type WorkflowLifecycleEvent } from "@ai-crm/platform-workflow";
 import { createMemoryWorkflowCommandLedger } from "@ai-crm/platform-workflow/testing";
 import {
@@ -37,6 +41,7 @@ import {
 } from "./walking-skeleton-rabbit.js";
 import { createWalkingSkeletonSourceCommandMessageHandler, walkingSkeletonSourceJobType, type WalkingSkeletonSourceCommandPort } from "./walking-skeleton-source-handler.js";
 import { createWalkingSkeletonSource, WalkingSkeletonSourceError, walkingSkeletonSourceType, type WalkingSkeletonSourceState } from "./walking-skeleton-source.js";
+import { auditOperationId, stableUuid, type MainChainEvidence } from "./durable-evidence.js";
 
 const at = "2026-07-30T00:00:00.000Z";
 const actor = Object.freeze({ activeAssignmentIds: Object.freeze(["assignment.synthetic"]), principalId: "principal.synthetic" });
@@ -44,6 +49,18 @@ const notificationActor: NotificationActor = actor;
 const actorContextReference = "actor-context.synthetic";
 const definitionKey = "syntheticHumanTaskV1";
 const sourceTaskId = "source-task.main-chain-synthetic";
+const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+const traceparent = `00-${traceId}-00f067aa0ba902b7-01`;
+const formDefinitionId = "platform.synthetic.task-completion";
+const submissionReference = "submission.main-chain-synthetic-0001";
+const fileReference: FileReference = Object.freeze({
+  contentVersionId: "93000000-0000-4000-8000-000000000002",
+  displayName: "synthetic-clean-fixture.txt",
+  fileId: "93000000-0000-4000-8000-000000000001",
+  mediaType: "text/plain",
+  sizeBytes: 24,
+  version: 1,
+});
 
 type SourceOptions = Parameters<typeof createWalkingSkeletonSource>[0];
 
@@ -53,20 +70,26 @@ export interface MainChainSourcePort extends WalkingSkeletonSourceCommandPort {
 }
 
 export interface MainChainIntegrationFactory {
+  readonly createFormStore: () => FormSchemaStore;
   readonly createEventingStore: () => EventingStore;
   readonly createNotificationStore: () => NotificationStore;
   readonly createSource: (options: SourceOptions) => MainChainSourcePort;
+  readonly createTaskStore: () => TaskCenterStore;
   readonly createWorkflowLedger: () => WorkflowCommandLedger;
   readonly durable: boolean;
+  readonly evidence?: MainChainEvidence;
 }
 
 export function createMainChainIntegrationFactory(overrides: Partial<MainChainIntegrationFactory> = {}): MainChainIntegrationFactory {
   return Object.freeze({
+    createFormStore: overrides.createFormStore ?? createMemoryFormSchemaStore,
     createEventingStore: overrides.createEventingStore ?? (() => new InMemoryEventingStore()),
     createNotificationStore: overrides.createNotificationStore ?? (() => new InMemoryNotificationStore()),
     createSource: overrides.createSource ?? createWalkingSkeletonSource,
+    createTaskStore: overrides.createTaskStore ?? (() => new InMemoryTaskCenterStore()),
     createWorkflowLedger: overrides.createWorkflowLedger ?? createMemoryWorkflowCommandLedger,
     durable: overrides.durable ?? false,
+    ...(overrides.evidence === undefined ? {} : { evidence: overrides.evidence }),
   });
 }
 
@@ -109,7 +132,7 @@ function job(input: { readonly id: "source" | "notification"; readonly workflowE
     jobVersion: 1,
     payload: source ? Object.freeze({
       action: "complete", actorContextReference, commandId: "91000000-0000-4000-8000-000000000002",
-      expectedSourceVersion: 1, sourceTaskId, sourceType: walkingSkeletonSourceType,
+      expectedSourceVersion: 1, fileReferences: [fileReference.fileId], formSubmissionReference: submissionReference, sourceTaskId, sourceType: walkingSkeletonSourceType,
       workflowCompletionEventId: input.workflowEventId, workflowTaskId: input.workflowTaskId,
     }) : Object.freeze({
       actorContextReference,
@@ -122,18 +145,32 @@ function job(input: { readonly id: "source" | "notification"; readonly workflowE
       }),
     }),
     policy: Object.freeze({ backoffSeconds: walkingSkeletonJobPolicy.backoffSeconds, failureDisposition: "isolate", maxAttempts: 3, timeoutMs: 10_000 }),
-    requestedAt: at, source: "urn:ai-crm:tests.walking-skeleton",
+    requestedAt: at, source: "urn:ai-crm:tests.walking-skeleton", traceparent,
   });
 }
 
 function duplicate(envelope: JobEnvelope): OutboxPublication {
-  return Object.freeze({ attempt: 1, correlationId: envelope.correlationId, messageId: envelope.jobId, messageKind: "job", messageType: envelope.jobType, messageVersion: envelope.jobVersion, payload: JSON.stringify(envelope), producer: envelope.source });
+  return Object.freeze({ attempt: 1, correlationId: envelope.correlationId, messageId: envelope.jobId, messageKind: "job", messageType: envelope.jobType, messageVersion: envelope.jobVersion, payload: JSON.stringify(envelope), producer: envelope.source, ...(envelope.traceparent === undefined ? {} : { traceparent: envelope.traceparent }) });
 }
 
 function classify(error: unknown): "retryable" | "terminal" {
   return (error instanceof EventingError || error instanceof NotificationError || error instanceof WalkingSkeletonSourceError) && error.retryable
     ? "retryable"
     : "terminal";
+}
+
+function requireWorkerTrace(handler: MessageHandler, observed: Set<string>): MessageHandler {
+  const check = (message: Parameters<MessageHandler["handle"]>[0]): void => {
+    if (message.traceparent !== traceparent) throw new EventingError("eventing_invalid_input");
+    observed.add(message.messageId);
+  };
+  return Object.freeze({
+    kind: handler.kind,
+    messageType: handler.messageType,
+    messageVersion: handler.messageVersion,
+    ...(handler.recheckAuthoritativeState === undefined ? {} : { recheckAuthoritativeState: async (message: Parameters<NonNullable<MessageHandler["recheckAuthoritativeState"]>>[0], signal: AbortSignal) => { check(message); return handler.recheckAuthoritativeState?.(message, signal) ?? false; } }),
+    handle: async (message: Parameters<MessageHandler["handle"]>[0], signal: AbortSignal) => { check(message); await handler.handle(message, signal); },
+  });
 }
 
 function lifecycleEventId(eventKey: string): string {
@@ -152,19 +189,113 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   const engine = createFlowableRestEngine({ baseUrl: config.flowableBaseUrl, password, timeoutMs: 10_000, username: "dev_flowable_admin" });
   const workflowAudit: WorkflowAuditRecord[] = [];
   const lifecycle: WorkflowLifecycleEvent[] = [];
+  const recordEvidence = factory.evidence?.audit.record.bind(factory.evidence.audit);
+  const auditActor = Object.freeze({ actorId: actor.principalId, actorType: "authenticated_subject" as const });
   const facade = createWorkflowFacade(
     engine, factory.createWorkflowLedger(),
-    { authorize: () => Promise.resolve({ allowed: true, decisionId: "decision.workflow.main-chain" }) },
-    { record: (record) => { workflowAudit.push(record); return Promise.resolve(); } },
+    { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("decision.workflow.main-chain") }) },
+    { record: async (record) => {
+      workflowAudit.push(record);
+      await recordEvidence?.({
+        action: `workflow.${record.operation}`,
+        actor: auditActor,
+        occurredAt: at,
+        reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() },
+        resource: { resourceId: record.referenceId, resourceType: "workflow_reference" },
+        result: record.phase,
+        trace: { authorizationDecisionId: stableUuid("decision.workflow.main-chain"), operationId: auditOperationId(`${record.idempotencyKey}:${record.operation}`, record.phase), traceId },
+      });
+    } },
     { publish: (event) => { lifecycle.push(event); return Promise.resolve(); } },
-    { variablePolicy: { definitions: { [definitionKey]: {} } } },
+    { traceparent: () => traceparent, variablePolicy: { definitions: { [definitionKey]: {} } } },
   );
   const definition = await facade.deployDefinition({ actor, assetName: "synthetic-human-task.v1.bpmn20.xml", assetVersion: "1.0.0", bpmnXml: await readFile(bpmnPath, "utf8"), definitionKey, idempotencyKey: "main-chain-definition.synthetic-v1" });
   const instance = await facade.startProcess({ actor, definitionKey, definitionVersion: definition.version, idempotencyKey: "main-chain-process.synthetic-0001", variables: {} });
   const tasks = await facade.listTasks(instance.processInstanceId);
   const workflowTask = tasks.length === 1 ? tasks[0] : undefined;
   if (workflowTask === undefined || workflowTask.status !== "active") throw new Error("e2e_main_chain_flowable_task_invalid");
-  await facade.completeTask({ actor, definitionKey, idempotencyKey: "main-chain-workflow-complete.synthetic-0001", taskId: workflowTask.taskId });
+
+  const formAudit: FormAudit = { record: async (record) => {
+    await recordEvidence?.({
+      action: record.action,
+      actor: auditActor,
+      occurredAt: at,
+      reason: { code: "synthetic_e2e" },
+      resource: { resourceId: record.resourceId, resourceType: "form_definition" },
+      result: record.result,
+      trace: { authorizationDecisionId: record.authorizationDecisionId, operationId: auditOperationId(record.operationId, record.result), traceId: record.traceId },
+    });
+  } };
+  let formEventSequence = 0;
+  const form = createFormSchemaService(
+    factory.createFormStore(),
+    { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("decision.form.main-chain") }) },
+    formAudit,
+    { clock: () => new Date(at), id: () => { formEventSequence += 1; return stableUuid(`form-event:${String(formEventSequence)}`); } },
+  );
+  const formActor = Object.freeze({ actorId: actor.principalId, actorType: "authenticated_subject" as const });
+  const formMeta = (name: string) => Object.freeze({ actor: formActor, operationId: stableUuid(`form:${name}`), reason: "synthetic durable evidence", traceId });
+  await form.saveDraft({
+    ...formMeta("draft"), definitionId: formDefinitionId, expectedRevision: 0, ownerModule: "tests.walking-skeleton",
+    jsonSchema: { $schema: "https://json-schema.org/draft/2020-12/schema", additionalProperties: false, properties: { content_version_id: { minLength: 36, maxLength: 36, type: "string" }, file_id: { minLength: 36, maxLength: 36, type: "string" }, synthetic_value: { minLength: 1, type: "string" } }, required: ["content_version_id", "file_id", "synthetic_value"], type: "object" },
+    uiSchema: { fields: [{ component: "input", field: "synthetic_value", order: 1 }, { component: "input", field: "file_id", order: 2 }, { component: "input", field: "content_version_id", order: 3 }], layout: "vertical", version: 1 },
+  });
+  const publishedForm = await form.publish({ ...formMeta("publish"), definitionId: formDefinitionId, expectedRevision: 1 });
+  await form.setReleaseActive({ ...formMeta("inactive"), active: false, definitionId: formDefinitionId, releaseVersion: publishedForm.reference.releaseVersion });
+  let inactiveReleaseRejected = false;
+  try {
+    await form.validateSubmission({ actor: formActor, data: {}, definitionId: formDefinitionId, releaseVersion: publishedForm.reference.releaseVersion });
+  } catch (error) {
+    if (!(error instanceof FormSchemaError) || error.code !== "form_not_found") throw error;
+    inactiveReleaseRejected = true;
+    await recordEvidence?.({ action: "form.submission.validate", actor: auditActor, occurredAt: at, reason: { code: "inactive_release" }, resource: { resourceId: formDefinitionId, resourceType: "form_definition" }, result: "failed", trace: { operationId: auditOperationId("form:inactive-validation", "failed"), traceId } });
+  }
+  if (!inactiveReleaseRejected) throw new Error("e2e_main_chain_inactive_form_accepted");
+  await form.setReleaseActive({ ...formMeta("reactivate"), active: true, definitionId: formDefinitionId, releaseVersion: publishedForm.reference.releaseVersion });
+  const submission = Object.freeze({ content_version_id: fileReference.contentVersionId, file_id: fileReference.fileId, synthetic_value: "synthetic-approved" });
+  const validation = await form.validateSubmission({ actor: formActor, data: submission, definitionId: formDefinitionId, releaseVersion: publishedForm.reference.releaseVersion });
+  if (!validation.valid || validation.reference.contentDigest !== publishedForm.reference.contentDigest) throw new Error("e2e_main_chain_form_submission_invalid");
+  await recordEvidence?.({ action: "form.submission.validate", actor: auditActor, occurredAt: at, reason: { code: "synthetic_e2e" }, resource: { resourceId: submissionReference, resourceType: "form_submission" }, result: "succeeded", trace: { operationId: auditOperationId("form:submission-validation", "succeeded"), traceId } });
+  const savedSubmission = await factory.evidence?.saveSubmission({ contentDigest: validation.reference.contentDigest, definitionId: validation.reference.definitionId, fileReference, releaseVersion: validation.reference.releaseVersion, submissionReference, traceId, traceparent });
+  const replayedSubmission = await factory.evidence?.saveSubmission({ contentDigest: validation.reference.contentDigest, definitionId: validation.reference.definitionId, fileReference, releaseVersion: validation.reference.releaseVersion, submissionReference, traceId, traceparent });
+  if (factory.durable && (savedSubmission?.replayed !== false || replayedSubmission?.replayed !== true)) throw new Error("e2e_main_chain_submission_replay_invalid");
+
+  const openTaskEvent: TaskLifecycleEvent = Object.freeze({ assigneeReference: actor.activeAssignmentIds[0] ?? "assignment.synthetic", deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" }, eventId: stableUuid("task-projection:open"), occurredAt: at, sourceTaskId, sourceType: walkingSkeletonSourceType, sourceVersion: 1, status: "open" });
+  let dependencyFailuresRemaining = 1;
+  let workflowCompletionCalls = 0;
+  const taskAudit: TaskAudit = { record: async (record) => {
+      await recordEvidence?.({ action: `task.${record.operation}`, actor: { actorId: record.actor.principalId, actorType: "authenticated_subject" }, occurredAt: at, reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() }, resource: { resourceId: record.referenceId, resourceType: "task_projection" }, result: record.phase, trace: { authorizationDecisionId: record.decisionId, operationId: auditOperationId(`${record.operation}:${record.referenceId}:${record.actor.principalId}`, record.phase), traceId } });
+  } };
+  const taskStore = factory.createTaskStore();
+  const taskCenter = createTaskCenter({
+    audit: taskAudit,
+    authorization: { authorize: ({ actor: taskActor }) => Promise.resolve({ allowed: taskActor.principalId !== "principal.denied", decisionId: stableUuid(`decision.task:${taskActor.principalId}`) }) },
+    commandLeaseToken: () => stableUuid(`task-lease:${String(workflowCompletionCalls)}:${String(dependencyFailuresRemaining)}`),
+    now: () => Date.parse(at),
+    router: { complete: async () => {
+      if (dependencyFailuresRemaining > 0) { dependencyFailuresRemaining -= 1; throw new Error("synthetic_flowable_dependency_unavailable"); }
+      workflowCompletionCalls += 1;
+      await facade.completeTask({ actor, definitionKey, idempotencyKey: "main-chain-workflow-complete.synthetic-0001", taskId: workflowTask.taskId });
+      return { sourceCommandId: stableUuid("task-command:workflow-complete"), status: "accepted" };
+    } },
+    sourceReader: { get: () => Promise.resolve(openTaskEvent) },
+    store: taskStore,
+  });
+  await taskCenter.apply(openTaskEvent);
+  await taskCenter.complete({ actor: { principalId: "principal.denied" }, idempotencyKey: "task-complete.denied-0001", sourceTaskId, sourceType: walkingSkeletonSourceType }).then(
+    () => { throw new Error("e2e_main_chain_denied_task_accepted"); },
+    (error: unknown) => { if (!(error instanceof TaskCenterError) || error.code !== "TASK_OPERATION_DENIED") throw error; },
+  );
+  const completionCommand = { actor, idempotencyKey: "task-complete.main-chain-0001", sourceTaskId, sourceType: walkingSkeletonSourceType } as const;
+  await taskCenter.complete(completionCommand).then(
+    () => { throw new Error("e2e_main_chain_dependency_failure_not_observed"); },
+    (error: unknown) => { if (!(error instanceof TaskCenterError) || error.code !== "TASK_SOURCE_UNAVAILABLE" || !error.retryable) throw error; },
+  );
+  const recoveredTaskReceipt = await taskCenter.complete(completionCommand);
+  const replayedTaskReceipt = await taskCenter.complete(completionCommand);
+  if (workflowCompletionCalls !== 1
+    || recoveredTaskReceipt.sourceCommandId !== stableUuid("task-command:workflow-complete")
+    || JSON.stringify(replayedTaskReceipt) !== JSON.stringify(recoveredTaskReceipt)) throw new Error("e2e_main_chain_task_completion_replay_invalid");
   const completion = lifecycle.find((event) => event.eventType === "workflow.task-lifecycle.v1" && event.data.occurrence === "completed");
   if (completion === undefined) throw new Error("e2e_main_chain_workflow_event_missing");
 
@@ -173,14 +304,18 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   const core = createEventingCore(eventStore, { observer: { record: (observation) => { observations.push(observation); } } });
   let sourceAuthorizations = 0;
   const source = factory.createSource({
-    audit: { record: () => Promise.resolve() },
-    authorization: { authorize: () => { sourceAuthorizations += 1; return Promise.resolve({ allowed: true, decisionId: "decision.source.main-chain" }); } },
+    audit: { record: async (record) => {
+      await recordEvidence?.({ action: `source.${record.operation}`, actor: auditActor, occurredAt: at, reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() }, resource: { resourceId: record.referenceId, resourceType: "source_task" }, result: record.phase, trace: { authorizationDecisionId: stableUuid("decision.source.main-chain"), operationId: auditOperationId(`${record.operation}:${record.referenceId}`, record.phase), traceId } });
+    } },
+    authorization: { authorize: () => { sourceAuthorizations += 1; return Promise.resolve({ allowed: true, decisionId: stableUuid("decision.source.main-chain") }); } },
     clock: () => new Date(at), resolver: { resolve: () => Promise.resolve(actor) },
   });
   await source.register({ actorContextReference, assigneeReference: actor.activeAssignmentIds[0] ?? "", sourceTaskId, sourceVersion: 1, status: "open", workflowTaskId: workflowTask.taskId });
   const notificationStore = factory.createNotificationStore();
   const notifications = createNotificationCenter({
-    audit: { record: () => Promise.resolve() }, authorization: { authorize: () => Promise.resolve({ allowed: true, decisionId: "decision.notification.main-chain" }) }, now: () => new Date(at),
+    audit: { record: async (record) => {
+      await recordEvidence?.({ action: `notification.${record.operation}`, actor: { actorId: record.actor.principalId, actorType: "authenticated_subject" }, occurredAt: at, reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() }, resource: { resourceId: record.referenceId, resourceType: "notification_reference" }, result: record.phase, trace: { authorizationDecisionId: record.decisionId, operationId: auditOperationId(`${record.operation}:${record.referenceId}`, record.phase), traceId } });
+    } }, authorization: { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("decision.notification.main-chain") }) }, now: () => new Date(at),
     preference: { evaluate: () => Promise.resolve({ decision: "deliver", reason: "synthetic-default", version: "synthetic-v1" }) },
     resolver: { resolve: () => Promise.resolve([{ principalId: actor.principalId, recipientReference: "person.synthetic", resolutionReference: "assignment.synthetic", resolutionVersion: "organization-synthetic-v1" }]) }, store: notificationStore,
   });
@@ -191,11 +326,12 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   let runFailure: unknown;
   let running: Promise<void> | undefined;
   let worker: ReturnType<typeof createRabbitInboxHandler> | undefined;
+  const workerTraceMessages = new Set<string>();
   try {
     const consumer = await createAmqplibConsumerAdapter(await rabbitConnection("consumer"), [walkingSkeletonSourceRabbitTopology, walkingSkeletonNotificationRabbitTopology], { concurrency: walkingSkeletonJobPolicy.concurrency, prefetch: walkingSkeletonJobPolicy.prefetch });
     const bindings: readonly RabbitInboxBinding[] = Object.freeze([
-      Object.freeze({ bindingId: walkingSkeletonSourceBindingId, classify, consumer: walkingSkeletonSourceConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: createWalkingSkeletonSourceCommandMessageHandler(source) }),
-      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(notificationActor) }) }),
+      Object.freeze({ bindingId: walkingSkeletonSourceBindingId, classify, consumer: walkingSkeletonSourceConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonSourceCommandMessageHandler(source), workerTraceMessages) }),
+      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(notificationActor) }), workerTraceMessages) }),
     ]);
     worker = createRabbitInboxHandler(core, consumer, bindings);
     publisherAdapter = await createAmqplibPublisherAdapter(await rabbitConnection("publisher"));
@@ -220,11 +356,16 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     const completedTask = await engine.getTask(workflowTask.taskId);
     const completedInstance = await engine.getInstance(instance.processInstanceId);
     const finalSource = await source.getState(sourceTaskId);
+    const finalTaskEvent: TaskLifecycleEvent = Object.freeze({ ...openTaskEvent, eventId: lifecycleEventId(completion.data.eventKey), sourceVersion: finalSource.sourceVersion, status: finalSource.status });
+    const finalTaskApply = await taskCenter.apply(finalTaskEvent);
+    const finalTaskProjection = await taskStore.get({ sourceTaskId, sourceType: walkingSkeletonSourceType });
+    const durableEvidence = await factory.evidence?.inspect(traceId, traceparent);
     if (runFailure !== undefined) {
       throw runFailure instanceof Error ? runFailure : new Error("e2e_main_chain_worker_failed", { cause: runFailure });
     }
-    if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || sourceAuthorizations !== 1 || await notifications.unreadCount(notificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
-    process.stdout.write(`${JSON.stringify({ durable: factory.durable, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, inboxDuplicates: 2, mainWalkingSkeletonReady: false, notifications: 1, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-slice-passed" : "e2e-main-chain-slice-passed" })}\n`);
+    if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || finalTaskApply.status !== "applied" || finalTaskProjection?.status !== "completed" || finalTaskProjection.sourceVersion !== 2 || finalTaskProjection.assigneeReference !== openTaskEvent.assigneeReference || sourceAuthorizations !== 1 || await notifications.unreadCount(notificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
+    if (factory.durable && (durableEvidence === undefined || durableEvidence.submissionCount !== 1 || durableEvidence.outboxTraceCount !== 2 || durableEvidence.inboxCount !== 2 || durableEvidence.auditCount !== 30 || durableEvidence.auditFactCount !== 2 || workerTraceMessages.size !== 2)) throw new Error("e2e_main_chain_durable_evidence_invalid");
+    process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, durable: factory.durable, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, mainWalkingSkeletonReady: false, notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, workerTraceMessages: workerTraceMessages.size })}\n`);
   } finally {
     controller.abort();
     await running;
