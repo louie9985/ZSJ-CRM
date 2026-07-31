@@ -305,6 +305,51 @@ class FileCenterController {
   }
 }
 
+const TASK_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u;
+const TASK_IDEMPOTENCY = TASK_REF;
+
+function taskResponseError(error: unknown): PlatformHttpResponse {
+  const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? "") : "";
+  const denied = code.includes("DENIED") || code.includes("AUTHORIZATION") || (typeof error === "object" && error !== null && Reflect.get(error, "name") === "AuthorizationDeniedError");
+  const status = denied ? 403
+    : code.includes("NOT_FOUND") ? 404
+      : code.includes("CONFLICT") || code.includes("IN_PROGRESS") ? 409
+        : error instanceof BrowserSessionFailure ? 401 : 503;
+  return Object.freeze({ body: Object.freeze({ code: code || "task_unavailable" }), headers: Object.freeze({ "Cache-Control": "no-store" }), status });
+}
+
+@Controller("tasks")
+class TaskController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Post(":sourceType/:sourceTaskId/complete")
+  async complete(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const sourceType = typeof request.params["sourceType"] === "string" ? request.params["sourceType"] : undefined;
+      const sourceTaskId = typeof request.params["sourceTaskId"] === "string" ? request.params["sourceTaskId"] : undefined;
+      const idempotencyKey = singleHeader(request, "idempotency-key", 255, 1);
+      const credential = credentialFromRequest(request);
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      if (sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value)) {
+        sendPlatformResponse(response, { body: { code: "task_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
+        return;
+      }
+      const traceId = extractTraceContext({ traceparent: platformHeader(request, "traceparent", 512) }).traceId;
+      const authorized = await platform(this.composition).authorize({
+        at: new Date().toISOString(), credential, traceId,
+        permission: { action: "complete", resource: "platform.task-center.task-projection" },
+      });
+      const complete = platform(this.composition).tasks?.complete;
+      if (typeof complete !== "function") throw new Error("task_completion_binding_missing");
+      const result = await complete({
+        actor: { principalId: stableActorId(authorized), activeAssignmentIds: authorized.workforce.assignments.map((assignment) => assignment.assignmentId) },
+        sourceType, sourceTaskId, idempotencyKey: idempotencyKey.value,
+      });
+      sendPlatformResponse(response, { body: result, headers: { "Cache-Control": "no-store" }, status: 202 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+}
+
 const unavailableDependency = Object.freeze([{ name: "dependency-check", required: true, healthy: false }]);
 function apiDependencies(composition: ApiComposition): readonly HealthDependency[] {
   try {
@@ -354,7 +399,7 @@ class ApiLifecycle implements OnApplicationShutdown {
 class ApiModule {}
 
 const createApiModule = (composition: ApiComposition, state: ApiRuntimeState): DynamicModule => ({
-  controllers: [HealthController, PcAuthenticationController, ApplicationRegistryController, FormSchemaController, FileCenterController],
+  controllers: [HealthController, PcAuthenticationController, ApplicationRegistryController, FormSchemaController, FileCenterController, TaskController],
   module: ApiModule,
   providers: [
     { provide: API_COMPOSITION, useValue: composition },

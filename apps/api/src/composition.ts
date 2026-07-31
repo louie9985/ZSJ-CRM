@@ -54,7 +54,7 @@ export interface ApiQueryBindings {
   readonly fileCenter: Pick<FileCenterService, "authorizeDownload" | "completeUpload" | "createUploadSession">;
   readonly forms: FormSchemaQueryService;
   readonly notifications: Pick<NotificationCenter, "get" | "list" | "unreadCount">;
-  readonly tasks: Pick<TaskCenter, "get" | "list">;
+  readonly tasks: Pick<TaskCenter, "get" | "list"> & Partial<Pick<TaskCenter, "complete">>;
 }
 
 export interface ApiPlatformBindings {
@@ -79,6 +79,7 @@ export interface ApiPlatformHttpComposition {
   readonly authorize: ApiPlatformComposition["authorize"];
   readonly fileCenter: FileCenterHttpAdapter;
   readonly forms: FormSchemaHttpAdapter;
+  readonly tasks?: Pick<TaskCenter, "complete">;
 }
 
 export interface ApiPlatformComposition {
@@ -218,6 +219,11 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
     authorize,
     fileCenter,
     forms,
+    tasks: { complete: async (command: Parameters<NonNullable<ApiQueryBindings["tasks"]["complete"]>>[0]) => {
+      const result = await bindings.queries.tasks.complete?.(command);
+      if (result === undefined) throw new Error("task_completion_binding_missing");
+      return result;
+    } },
   });
 
   return Object.freeze({
