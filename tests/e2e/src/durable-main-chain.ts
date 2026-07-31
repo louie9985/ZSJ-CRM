@@ -8,7 +8,7 @@ import { createPrismaNotificationStore } from "@ai-crm/platform-notifications";
 import { createPrismaTaskCenterStore } from "@ai-crm/platform-task-center";
 
 import { createPostgresMainChainEvidence } from "./durable-evidence.js";
-import { createMainChainIntegrationFactory, runMainChainIntegration } from "./main-chain.js";
+import { createMainChainIntegrationFactory, externalMainChainInputFromEnvironment, runMainChainIntegration } from "./main-chain.js";
 import { createPostgresWalkingSkeletonSource } from "./postgres-walking-skeleton-source.js";
 import { createPostgresWorkflowCommandLedger } from "./postgres-workflow-ledger.js";
 
@@ -31,6 +31,8 @@ const runtime = createDatabaseRuntime({
   maxConnections: 8,
   statementTimeoutMs: 10_000,
 });
+const requireExternalEvidence = process.env["AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE"] === "true";
+const externalInput = externalMainChainInputFromEnvironment(process.env, requireExternalEvidence);
 try {
   await runMainChainIntegration(createMainChainIntegrationFactory({
     createEventingStore: () => createPrismaEventingStore(runtime),
@@ -41,6 +43,11 @@ try {
     createWorkflowLedger: () => createPostgresWorkflowCommandLedger({ leaseMs: 30_000, runtime }),
     durable: true,
     evidence: createPostgresMainChainEvidence(runtime),
+    externalEvidence: externalInput !== undefined,
+    ...(externalInput === undefined ? {} : {
+      resolveFileReference: () => externalInput.fileReference,
+      resolveTraceContext: () => Object.freeze({ traceId: externalInput.traceId, traceparent: externalInput.traceparent }),
+    }),
   }));
 } finally {
   await runtime.close();

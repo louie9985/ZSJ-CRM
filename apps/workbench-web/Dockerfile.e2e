@@ -1,11 +1,12 @@
-# syntax=docker/dockerfile:1.7
 FROM node:24.15.0-bookworm-slim AS build
 
 WORKDIR /workspace
 RUN npm install --global pnpm@9.15.0
 COPY . .
 ENV VITE_AI_CRM_E2E=true
-RUN pnpm install --frozen-lockfile \
+RUN --mount=type=cache,id=ai-crm-e2e-pnpm-store,target=/pnpm/store,sharing=locked \
+    pnpm config set store-dir /pnpm/store \
+    && pnpm install --frozen-lockfile \
     && pnpm --filter @ai-crm/workbench-web build \
     && test -f apps/workbench-web/dist/web/index.html
 

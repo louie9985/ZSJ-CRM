@@ -102,6 +102,12 @@ const cleanCommand = { ...metadata(cleanOperationId), contentVersionId: cleanUpl
 const cleanResult = await clean.service.scanContentVersion(cleanCommand);
 assert.equal(cleanResult.contentVersion.status, "available");
 assert.equal(cleanResult.replayed, false);
+const cleanResource = { resourceId: "synthetic:clamav-clean", resourceType: "platform.resource" };
+await clean.service.linkResource({ ...metadata(), fileReference: cleanUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: cleanResource });
+const cleanReference = await clean.service.resolveFileReference({ ...metadata(), fileReference: cleanUpload.created.fileReference, resource: cleanResource });
+assert.equal(cleanReference.fileId, cleanUpload.created.fileReference.fileId);
+assert.equal(cleanReference.contentVersionId, cleanUpload.created.fileReference.contentVersionId);
+assert.equal(cleanReference.sizeBytes, CLEAN_BYTES.byteLength);
 const cleanReplay = await clean.service.scanContentVersion(cleanCommand);
 assert.equal(cleanReplay.contentVersion.status, "available");
 assert.equal(cleanReplay.replayed, true);
@@ -115,6 +121,7 @@ const maliciousOperationId = nextId();
 const maliciousCommand = { ...metadata(maliciousOperationId), contentVersionId: maliciousUpload.completed.contentVersion.contentVersionId };
 const maliciousResult = await malicious.service.scanContentVersion(maliciousCommand);
 assert.equal(maliciousResult.contentVersion.status, "quarantined");
+await assert.rejects(malicious.service.linkResource({ ...metadata(), fileReference: maliciousUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: { resourceId: "synthetic:malicious", resourceType: "platform.resource" } }), (error) => error?.code === "file_center_not_ready");
 assert.equal(maliciousResult.replayed, false);
 assert.ok(malicious.storage.quarantined.has(maliciousUpload.handle));
 const maliciousReplay = await malicious.service.scanContentVersion(maliciousCommand);
@@ -131,11 +138,13 @@ await assert.rejects(
 );
 const unavailableState = await unavailable.store.findContentVersion(unavailableUpload.completed.contentVersion.contentVersionId);
 assert.equal(unavailableState?.contentVersion.status, "pending_scan");
+await assert.rejects(unavailable.service.linkResource({ ...metadata(), fileReference: unavailableUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: { resourceId: "synthetic:pending", resourceType: "platform.resource" } }), (error) => error?.code === "file_center_not_ready");
 assert.equal(unavailable.storage.quarantined.size, 0);
 assert.ok(unavailable.audits.some((entry) => entry.action === "file:scan" && entry.result === "failed"));
 
 process.stdout.write(`${JSON.stringify({
   cleanStatus: cleanResult.contentVersion.status,
+  cleanFileReference: cleanReference,
   maliciousStatus: maliciousResult.contentVersion.status,
   replayedClean: cleanReplay.replayed,
   replayedMalicious: maliciousReplay.replayed,

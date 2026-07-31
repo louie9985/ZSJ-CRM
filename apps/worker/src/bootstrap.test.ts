@@ -15,7 +15,38 @@ const productionConfiguration: Readonly<WorkerRuntimeConfiguration> = Object.fre
   startupTimeoutMs: 100,
 });
 
+const testConfiguration: Readonly<WorkerRuntimeConfiguration> = Object.freeze({
+  ...productionConfiguration,
+  environment: "test",
+});
+
 describe("production Worker bootstrap gate", () => {
+  it("uses the signal-aware production lifecycle for an explicitly injected E2E resource factory", async () => {
+    const assertDatabaseCompatible = vi.fn(() => Promise.reject(new Error("synthetic compatibility failure")));
+    const close = vi.fn(() => Promise.resolve());
+    const productionResourceFactory = vi.fn((signal: AbortSignal, cleanupTimeoutMs: number) => {
+      void signal;
+      void cleanupTimeoutMs;
+      return Promise.resolve({
+        assertDatabaseCompatible,
+        close,
+        handlers: [],
+        readiness: () => [],
+      } satisfies ProductionWorkerResources);
+    });
+
+    await expect(bootstrapWorker({
+      configuration: testConfiguration,
+      logger: { log: vi.fn() },
+      productionResourceFactory,
+    })).resolves.toBe(1);
+
+    expect(productionResourceFactory).toHaveBeenCalledOnce();
+    expect(productionResourceFactory.mock.calls[0]?.[0]).toBeInstanceOf(AbortSignal);
+    expect(assertDatabaseCompatible).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it("validates resources, registers the production handler, and fails closed when it terminates", async () => {
     const close = vi.fn(() => Promise.resolve());
     const assertDatabaseCompatible = vi.fn(() => Promise.resolve());

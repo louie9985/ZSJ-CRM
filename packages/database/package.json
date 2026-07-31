@@ -9,11 +9,8 @@
   "scripts": {
     "prisma:generate": "node ../../scripts/prisma/compose-schema.mjs && prisma generate --config ../../prisma.config.ts",
     "build": "pnpm prisma:generate && tsc -b",
-    "prelint": "pnpm prisma:generate",
     "lint": "eslint src --max-warnings 0",
-    "pretypecheck": "pnpm prisma:generate",
     "typecheck": "tsc -p tsconfig.json --noEmit --composite false",
-    "pretest": "pnpm prisma:generate",
     "test": "vitest run --config ../../vitest.config.ts",
     "contracts:check": "node ../../scripts/check/verify-package.mjs",
     "migrate": "node ../../scripts/migration/run.mjs"

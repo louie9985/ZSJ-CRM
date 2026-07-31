@@ -19,7 +19,7 @@ export interface StorageAdapter {
   readObject(input: { readonly maximumBytes: number; readonly objectHandle: string }): Promise<Uint8Array>;
 }
 export interface MalwareScanner { scan(input: { readonly bytes: Uint8Array; readonly maximumBytes: number }): Promise<{ readonly outcome: "clean" | "malicious" | "unscannable"; readonly scannerVersion: string }> }
-export interface FileAuthorizationRequest { readonly action: "file:cleanup" | "file:download" | "file:link" | "file:reconcile" | "file:scan" | "file:upload"; readonly actor: FileActor; readonly ownerModule?: string; readonly resourceReference: string }
+export interface FileAuthorizationRequest { readonly action: "file:cleanup" | "file:download" | "file:link" | "file:reconcile" | "file:reference" | "file:scan" | "file:upload"; readonly actor: FileActor; readonly ownerModule?: string; readonly resourceReference: string }
 export interface FileAuthorizer { authorize(input: FileAuthorizationRequest): Promise<{ readonly allowed: boolean; readonly decisionId: string }> }
 export interface FileAudit { record(input: { readonly action: string; readonly actor: FileActor; readonly authorizationDecisionId: string; readonly operationId: string; readonly reason: string; readonly resourceReference: string; readonly result: "attempted" | "denied" | "failed" | "succeeded"; readonly traceId: string }): Promise<void> }
 export interface FileLifecycleEvent { readonly eventId: string; readonly eventType: "file.content.available" | "file.content.quarantined" | "file.resource.linked" | "file.resource.unlinked" | "file.upload.completed"; readonly occurredAt: string; readonly resourceId: string; readonly version: 1 }
@@ -28,6 +28,7 @@ export interface CreateUploadSessionCommand extends FileCommandMetadata { readon
 export interface CreateContentVersionUploadCommand extends FileCommandMetadata { readonly declaredMediaType: string; readonly declaredSizeBytes: number; readonly fileId: string }
 export interface CompleteUploadCommand extends FileCommandMetadata { readonly sessionId: string }
 export interface ScanContentCommand extends FileCommandMetadata { readonly contentVersionId: string }
+export interface ResolveFileReferenceCommand extends FileCommandMetadata { readonly fileReference: FileReference; readonly resource: ResourceReference }
 export interface LinkResourceCommand extends FileCommandMetadata { readonly fileReference: FileReference; readonly linkId: string; readonly ownerModule: string; readonly relationType: string; readonly resource: ResourceReference }
 export interface UnlinkResourceCommand extends FileCommandMetadata { readonly linkId: string }
 export interface FileCenterService {
@@ -38,6 +39,7 @@ export interface FileCenterService {
   createUploadSession(command: CreateUploadSessionCommand): Promise<{ readonly fileReference: FileReference; readonly replayed: boolean; readonly session: UploadSession; readonly uploadGrant: UploadGrant }>;
   linkResource(command: LinkResourceCommand): Promise<{ readonly link: ResourceLink; readonly replayed: boolean }>;
   reconcileContentVersion(command: FileCommandMetadata & { readonly contentVersionId: string }): Promise<{ readonly contentVersion: ContentVersion; readonly replayed: boolean }>;
+  resolveFileReference(command: ResolveFileReferenceCommand): Promise<FileReference>;
   scanContentVersion(command: ScanContentCommand): Promise<{ readonly contentVersion: ContentVersion; readonly replayed: boolean }>;
   unlinkResource(command: UnlinkResourceCommand): Promise<{ readonly link: ResourceLink; readonly replayed: boolean }>;
 }

@@ -106,12 +106,15 @@ if (actualE2eServices.length !== expectedE2eServices.length || actualE2eServices
   errors.push("E2E Compose must contain the seven dependencies plus API, Worker, and Workbench test processes.");
 }
 for (const [name, service] of Object.entries(effectiveE2e.services ?? {})) {
-  if (service?.ports) errors.push(`${name} must not publish ports in the isolated E2E composition.`);
+  for (const port of service?.ports ?? []) {
+    if (name !== "postgres" || !String(port).startsWith("127.0.0.1:")) errors.push(`${name} publishes a non-loopback or unreviewed E2E port.`);
+  }
 }
 if (effectiveE2e.services?.["api-e2e"]?.environment?.AI_CRM_E2E_PROCESS_ENTRYPOINT !== "api" ||
   effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_E2E_PROCESS_ENTRYPOINT !== "worker" ||
-  effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED !== undefined) {
-  errors.push("E2E process entry points must be explicit and must not activate the production Task consumer.");
+  effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_E2E_WORKER_REAL_INFRA !== "true" ||
+  effectiveE2e.services?.["worker-e2e"]?.environment?.AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED !== "true") {
+  errors.push("E2E process entry points must be explicit and the isolated Worker must activate the real Task consumer.");
 }
 for (const [name, service] of Object.entries(authTest.services ?? {})) {
   for (const port of service.ports ?? []) {
@@ -255,8 +258,8 @@ for (const requiredText of ["listeners.tcp = none", "listeners.ssl.default = 567
 }
 if (!productionRabbitEntrypoint.includes('"write":"^(ai-crm\\\\.platform\\\\.(events|retry|dead-letter)') ||
   !productionRabbitEntrypoint.includes('"read":"^(ai-crm\\\\.platform\\\\.(events|retry|dead-letter)') ||
-  !productionRabbitEntrypoint.includes('task-center\\\\.projection\\\\.v1)$"')) {
-  errors.push("RabbitMQ production consumer permissions must cover the reviewed declarations, bindings, retry publishing and main queue consumption.");
+  !productionRabbitEntrypoint.includes('task-center\\\\.projection(\\\\.retry\\\\.(30s|300s)|\\\\.dead)?\\\\.v1)$"')) {
+  errors.push("RabbitMQ production consumer permissions must cover the reviewed declarations, bindings, retry publishing and every queue declared by the sealed consumer.");
 }
 if (productionKeycloakEntrypoint.includes("start-dev") || productionKeycloakEntrypoint.includes("realm-dev") ||
   !productionKeycloakEntrypoint.includes("/run/secrets/postgres_keycloak_password")) {

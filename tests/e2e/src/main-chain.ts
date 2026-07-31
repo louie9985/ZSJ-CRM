@@ -49,11 +49,11 @@ const notificationActor: NotificationActor = actor;
 const actorContextReference = "actor-context.synthetic";
 const definitionKey = "syntheticHumanTaskV1";
 const sourceTaskId = "source-task.main-chain-synthetic";
-const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
-const traceparent = `00-${traceId}-00f067aa0ba902b7-01`;
+const defaultTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+const defaultTraceparent = `00-${defaultTraceId}-00f067aa0ba902b7-01`;
 const formDefinitionId = "platform.synthetic.task-completion";
 const submissionReference = "submission.main-chain-synthetic-0001";
-const fileReference: FileReference = Object.freeze({
+const defaultFileReference: FileReference = Object.freeze({
   contentVersionId: "93000000-0000-4000-8000-000000000002",
   displayName: "synthetic-clean-fixture.txt",
   fileId: "93000000-0000-4000-8000-000000000001",
@@ -61,6 +61,63 @@ const fileReference: FileReference = Object.freeze({
   sizeBytes: 24,
   version: 1,
 });
+const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/u;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseExternalMainChainInput(input: Readonly<{
+  readonly fileReferenceJson: string;
+  readonly traceId: string;
+  readonly traceparent: string;
+}>): Readonly<{ readonly fileReference: FileReference; readonly traceId: string; readonly traceparent: string }> {
+  const match = TRACEPARENT.exec(input.traceparent);
+  if (match === null || match[1] !== input.traceId || /^0+$/u.test(input.traceId) || /^0+$/u.test(match[2] ?? "")) {
+    throw new Error("e2e_main_chain_external_trace_invalid");
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(input.fileReferenceJson) as unknown; }
+  catch { throw new Error("e2e_main_chain_external_file_reference_invalid"); }
+  const allowed = ["contentVersionId", "displayName", "fileId", "mediaType", "sizeBytes", "version"];
+  if (!record(parsed) || Object.keys(parsed).some((key) => !allowed.includes(key)) ||
+    typeof parsed["contentVersionId"] !== "string" || !UUID.test(parsed["contentVersionId"]) ||
+    typeof parsed["fileId"] !== "string" || !UUID.test(parsed["fileId"]) ||
+    typeof parsed["displayName"] !== "string" || parsed["displayName"].length < 1 || parsed["displayName"].length > 255 || /[\0\r\n]/u.test(parsed["displayName"]) ||
+    parsed["version"] !== 1 ||
+    (parsed["mediaType"] !== undefined && (typeof parsed["mediaType"] !== "string" || parsed["mediaType"].length < 1 || parsed["mediaType"].length > 255 || /[\0\r\n]/u.test(parsed["mediaType"]))) ||
+    (parsed["sizeBytes"] !== undefined && (!Number.isSafeInteger(parsed["sizeBytes"]) || (parsed["sizeBytes"] as number) < 0))) {
+    throw new Error("e2e_main_chain_external_file_reference_invalid");
+  }
+  const fileReference: FileReference = Object.freeze({
+    contentVersionId: parsed["contentVersionId"], displayName: parsed["displayName"], fileId: parsed["fileId"], version: 1,
+    ...(typeof parsed["mediaType"] === "string" ? { mediaType: parsed["mediaType"] } : {}),
+    ...(parsed["sizeBytes"] === undefined ? {} : { sizeBytes: Number(parsed["sizeBytes"]) }),
+  });
+  return Object.freeze({ fileReference, traceId: input.traceId, traceparent: input.traceparent });
+}
+
+export function externalMainChainInputFromEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+  requireExternalEvidence: boolean,
+): ReturnType<typeof parseExternalMainChainInput> | undefined {
+  const values = {
+    fileReferenceJson: environment["AI_CRM_E2E_FILE_REFERENCE_JSON"],
+    traceId: environment["AI_CRM_E2E_BROWSER_TRACE_ID"],
+    traceparent: environment["AI_CRM_E2E_BROWSER_TRACEPARENT"],
+  };
+  const count = Object.values(values).filter((value) => value !== undefined).length;
+  if (count !== 0 && count !== 3) throw new Error("e2e_durable_main_chain_external_evidence_incomplete");
+  if (requireExternalEvidence && count !== 3) throw new Error("e2e_durable_main_chain_external_evidence_required");
+  return count === 3
+    ? parseExternalMainChainInput({
+        fileReferenceJson: values.fileReferenceJson ?? "",
+        traceId: values.traceId ?? "",
+        traceparent: values.traceparent ?? "",
+      })
+    : undefined;
+}
 
 type SourceOptions = Parameters<typeof createWalkingSkeletonSource>[0];
 
@@ -78,6 +135,9 @@ export interface MainChainIntegrationFactory {
   readonly createWorkflowLedger: () => WorkflowCommandLedger;
   readonly durable: boolean;
   readonly evidence?: MainChainEvidence;
+  readonly externalEvidence: boolean;
+  readonly resolveFileReference: () => FileReference | Promise<FileReference>;
+  readonly resolveTraceContext: () => Readonly<{ readonly traceId: string; readonly traceparent: string }> | Promise<Readonly<{ readonly traceId: string; readonly traceparent: string }>>;
 }
 
 export function createMainChainIntegrationFactory(overrides: Partial<MainChainIntegrationFactory> = {}): MainChainIntegrationFactory {
@@ -89,6 +149,9 @@ export function createMainChainIntegrationFactory(overrides: Partial<MainChainIn
     createTaskStore: overrides.createTaskStore ?? (() => new InMemoryTaskCenterStore()),
     createWorkflowLedger: overrides.createWorkflowLedger ?? createMemoryWorkflowCommandLedger,
     durable: overrides.durable ?? false,
+    externalEvidence: overrides.externalEvidence ?? false,
+    resolveFileReference: overrides.resolveFileReference ?? (() => defaultFileReference),
+    resolveTraceContext: overrides.resolveTraceContext ?? (() => Object.freeze({ traceId: defaultTraceId, traceparent: defaultTraceparent })),
     ...(overrides.evidence === undefined ? {} : { evidence: overrides.evidence }),
   });
 }
@@ -122,7 +185,7 @@ async function waitUntil(assertion: () => Promise<boolean> | boolean, timeoutMs 
   }
 }
 
-function job(input: { readonly id: "source" | "notification"; readonly workflowEventId: string; readonly workflowTaskId: string }): JobEnvelope {
+function job(input: { readonly fileReference: FileReference; readonly id: "source" | "notification"; readonly traceparent: string; readonly workflowEventId: string; readonly workflowTaskId: string }): JobEnvelope {
   const source = input.id === "source";
   return Object.freeze({
     correlationId: source ? "91000000-0000-4000-8000-000000000003" : "92000000-0000-4000-8000-000000000003",
@@ -132,7 +195,7 @@ function job(input: { readonly id: "source" | "notification"; readonly workflowE
     jobVersion: 1,
     payload: source ? Object.freeze({
       action: "complete", actorContextReference, commandId: "91000000-0000-4000-8000-000000000002",
-      expectedSourceVersion: 1, fileReferences: [fileReference.fileId], formSubmissionReference: submissionReference, sourceTaskId, sourceType: walkingSkeletonSourceType,
+      expectedSourceVersion: 1, fileReferences: [input.fileReference.fileId], formSubmissionReference: submissionReference, sourceTaskId, sourceType: walkingSkeletonSourceType,
       workflowCompletionEventId: input.workflowEventId, workflowTaskId: input.workflowTaskId,
     }) : Object.freeze({
       actorContextReference,
@@ -145,7 +208,7 @@ function job(input: { readonly id: "source" | "notification"; readonly workflowE
       }),
     }),
     policy: Object.freeze({ backoffSeconds: walkingSkeletonJobPolicy.backoffSeconds, failureDisposition: "isolate", maxAttempts: 3, timeoutMs: 10_000 }),
-    requestedAt: at, source: "urn:ai-crm:tests.walking-skeleton", traceparent,
+    requestedAt: at, source: "urn:ai-crm:tests.walking-skeleton", traceparent: input.traceparent,
   });
 }
 
@@ -159,9 +222,9 @@ function classify(error: unknown): "retryable" | "terminal" {
     : "terminal";
 }
 
-function requireWorkerTrace(handler: MessageHandler, observed: Set<string>): MessageHandler {
+function requireWorkerTrace(handler: MessageHandler, observed: Set<string>, expectedTraceparent: string): MessageHandler {
   const check = (message: Parameters<MessageHandler["handle"]>[0]): void => {
-    if (message.traceparent !== traceparent) throw new EventingError("eventing_invalid_input");
+    if (message.traceparent !== expectedTraceparent) throw new EventingError("eventing_invalid_input");
     observed.add(message.messageId);
   };
   return Object.freeze({
@@ -182,6 +245,8 @@ function lifecycleEventId(eventKey: string): string {
 }
 
 export async function runMainChainIntegration(factory = createMainChainIntegrationFactory()): Promise<void> {
+  const fileReference = await factory.resolveFileReference();
+  const { traceId, traceparent } = await factory.resolveTraceContext();
   const config = configuration();
   const password = (await readFile(config.flowablePasswordFile, "utf8")).trim();
   if (password.length < 20) throw new Error("e2e_main_chain_flowable_secret_invalid");
@@ -330,8 +395,8 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   try {
     const consumer = await createAmqplibConsumerAdapter(await rabbitConnection("consumer"), [walkingSkeletonSourceRabbitTopology, walkingSkeletonNotificationRabbitTopology], { concurrency: walkingSkeletonJobPolicy.concurrency, prefetch: walkingSkeletonJobPolicy.prefetch });
     const bindings: readonly RabbitInboxBinding[] = Object.freeze([
-      Object.freeze({ bindingId: walkingSkeletonSourceBindingId, classify, consumer: walkingSkeletonSourceConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonSourceCommandMessageHandler(source), workerTraceMessages) }),
-      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(notificationActor) }), workerTraceMessages) }),
+      Object.freeze({ bindingId: walkingSkeletonSourceBindingId, classify, consumer: walkingSkeletonSourceConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonSourceCommandMessageHandler(source), workerTraceMessages, traceparent) }),
+      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(notificationActor) }), workerTraceMessages, traceparent) }),
     ]);
     worker = createRabbitInboxHandler(core, consumer, bindings);
     publisherAdapter = await createAmqplibPublisherAdapter(await rabbitConnection("publisher"));
@@ -343,8 +408,8 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     await worker.ready(controller.signal);
     running = Promise.resolve(worker.run(controller.signal)).catch((error: unknown) => { runFailure = error; });
     const workflowEventId = lifecycleEventId(completion.data.eventKey);
-    const sourceEnvelope = job({ id: "source", workflowEventId, workflowTaskId: workflowTask.taskId });
-    const notificationEnvelope = job({ id: "notification", workflowEventId, workflowTaskId: workflowTask.taskId });
+    const sourceEnvelope = job({ fileReference, id: "source", traceparent, workflowEventId, workflowTaskId: workflowTask.taskId });
+    const notificationEnvelope = job({ fileReference, id: "notification", traceparent, workflowEventId, workflowTaskId: workflowTask.taskId });
     await core.submitJob(sourceEnvelope);
     await core.submitJob(notificationEnvelope);
     const published = await publisher.publishBatch();
@@ -359,13 +424,13 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     const finalTaskEvent: TaskLifecycleEvent = Object.freeze({ ...openTaskEvent, eventId: lifecycleEventId(completion.data.eventKey), sourceVersion: finalSource.sourceVersion, status: finalSource.status });
     const finalTaskApply = await taskCenter.apply(finalTaskEvent);
     const finalTaskProjection = await taskStore.get({ sourceTaskId, sourceType: walkingSkeletonSourceType });
-    const durableEvidence = await factory.evidence?.inspect(traceId, traceparent);
+    const durableEvidence = await factory.evidence?.inspect(traceId, traceparent, fileReference);
     if (runFailure !== undefined) {
       throw runFailure instanceof Error ? runFailure : new Error("e2e_main_chain_worker_failed", { cause: runFailure });
     }
     if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || finalTaskApply.status !== "applied" || finalTaskProjection?.status !== "completed" || finalTaskProjection.sourceVersion !== 2 || finalTaskProjection.assigneeReference !== openTaskEvent.assigneeReference || sourceAuthorizations !== 1 || await notifications.unreadCount(notificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
     if (factory.durable && (durableEvidence === undefined || durableEvidence.submissionCount !== 1 || durableEvidence.outboxTraceCount !== 2 || durableEvidence.inboxCount !== 2 || durableEvidence.auditCount !== 30 || durableEvidence.auditFactCount !== 2 || workerTraceMessages.size !== 2)) throw new Error("e2e_main_chain_durable_evidence_invalid");
-    process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, durable: factory.durable, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, mainWalkingSkeletonReady: false, notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, workerTraceMessages: workerTraceMessages.size })}\n`);
+    process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, durable: factory.durable, externalEvidence: factory.externalEvidence, fileReference, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, mainWalkingSkeletonReady: false, notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, traceparent, workerTraceMessages: workerTraceMessages.size })}\n`);
   } finally {
     controller.abort();
     await running;

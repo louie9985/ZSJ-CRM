@@ -355,10 +355,15 @@ try {
   if (!fixation.success) throw new Error("e2e_browser_auth_fixation_setup_failed");
   await browserLogin(browser, username, password);
 
-  const session = await browser.evaluate(`fetch("/auth/pc/session", { credentials: "include" }).then(async response => ({
-    body: await response.json(), status: response.status
+  const browserTraceId = randomBytes(16).toString("hex");
+  const browserTraceparent = `00-${browserTraceId}-${randomBytes(8).toString("hex")}-01`;
+  const session = await browser.evaluate(`fetch("/auth/pc/session", {
+    credentials: "include", headers: { traceparent: ${JSON.stringify(browserTraceparent)} }
+  }).then(async response => ({
+    body: await response.json(), status: response.status, traceId: response.headers.get("X-Trace-Id")
   }))`);
-  if (session.status !== 200 || session.body?.client !== "pc-web" || typeof session.body?.csrfToken !== "string") {
+  if (session.status !== 200 || session.body?.client !== "pc-web" || typeof session.body?.csrfToken !== "string" ||
+    session.traceId !== browserTraceId) {
     throw new Error("e2e_browser_auth_session_missing");
   }
   const cookies = (await browser.command("Network.getAllCookies")).cookies;
@@ -404,6 +409,8 @@ try {
 
   process.stdout.write(`${JSON.stringify({
     callbackRejected: true,
+    browserTraceId,
+    browserTraceparent,
     csrfRejected: true,
     expiredSessionRejected: true,
     httpOnlyCookie: true,
@@ -428,7 +435,7 @@ try {
       const response = await fetch(`http://localhost:${String(keycloakPort)}/admin/realms/ai-crm-dev/users/${syntheticUserId}`, {
         headers: { authorization: `Bearer ${adminAccessToken}` }, method: "DELETE",
       });
-      if (response.status !== 204) throw new Error("e2e_browser_auth_user_cleanup_failed");
+      if (response.status !== 204) failures.push(new Error("e2e_browser_auth_user_cleanup_failed"));
     } catch (error) { failures.push(error); }
   }
   if (compose && environment) {

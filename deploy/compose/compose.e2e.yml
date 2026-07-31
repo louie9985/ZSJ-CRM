@@ -1,6 +1,14 @@
 name: ai-crm-e2e
 
 services:
+  postgres:
+    ports:
+      - "127.0.0.1:${AI_CRM_TEST_POSTGRES_PORT:?set an isolated PostgreSQL test port}:5432"
+
+  rabbitmq:
+    entrypoint: [docker-entrypoint.sh]
+    command: [rabbitmq-server]
+
   api-e2e:
     build:
       context: ../..
@@ -36,21 +44,53 @@ services:
     build:
       context: ../..
       dockerfile: tests/e2e/Dockerfile
-    command: [node, dist/worker-main.js]
+    command: [/bin/sh, ./worker-entrypoint.sh]
     environment:
       AI_CRM_E2E_PROCESS_ENTRYPOINT: worker
+      AI_CRM_E2E_WORKER_REAL_INFRA: "true"
       AI_CRM_INSTANCE_ID: worker-e2e
       AI_CRM_RELEASE: e2e-process-skeleton
+      AI_CRM_MIGRATIONS_ROOT: /app
+      AI_CRM_POSTGRES_URL_FILE: /run/secrets/runtime/e2e_worker_postgres_url
+      AI_CRM_RABBIT_ACQUIRE_TIMEOUT_MS: "10000"
+      AI_CRM_RABBIT_CA_FILE: /run/secrets/runtime/e2e_rabbit_ca
+      AI_CRM_RABBIT_CONSUMER_PASSWORD_FILE: /run/secrets/runtime/e2e_rabbit_consumer_password
+      AI_CRM_RABBIT_CONSUMER_USERNAME_FILE: /run/secrets/runtime/e2e_rabbit_consumer_username
+      AI_CRM_RABBIT_HEARTBEAT_SECONDS: "10"
+      AI_CRM_RABBIT_HOST: rabbitmq
+      AI_CRM_RABBIT_PORT: "5671"
+      AI_CRM_RABBIT_PUBLISHER_PASSWORD_FILE: /run/secrets/runtime/e2e_rabbit_publisher_password
+      AI_CRM_RABBIT_PUBLISHER_USERNAME_FILE: /run/secrets/runtime/e2e_rabbit_publisher_username
+      AI_CRM_RABBIT_SERVERNAME: rabbitmq.integration.test
+      AI_CRM_RABBIT_TLS: "true"
+      AI_CRM_RABBIT_VHOST: ai-crm-integration
       AI_CRM_WORKER_DRAIN_TIMEOUT_SECONDS: "15"
       AI_CRM_WORKER_HEALTH_FILE: /tmp/ai-crm-worker-ready.json
+      AI_CRM_WORKER_OUTBOX_BACKOFF_SECONDS: "1,2"
+      AI_CRM_WORKER_OUTBOX_BATCH_SIZE: "10"
+      AI_CRM_WORKER_OUTBOX_CLAIM_LEASE_SECONDS: "5"
+      AI_CRM_WORKER_OUTBOX_INTERVAL_MS: "50"
+      AI_CRM_WORKER_OUTBOX_MAX_ATTEMPTS: "3"
+      AI_CRM_WORKER_SCHEMA_VERSION: "0.0.0"
+      AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED: "true"
       NODE_ENV: test
+    secrets:
+      - e2e_worker_postgres_url
+      - e2e_rabbit_ca
+      - e2e_rabbit_consumer_username
+      - e2e_rabbit_consumer_password
+      - e2e_rabbit_publisher_username
+      - e2e_rabbit_publisher_password
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
     networks: [backend]
     restart: "no"
     stop_grace_period: 20s
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     read_only: true
-    tmpfs: [/tmp]
+    tmpfs: [/tmp, "/run/secrets/runtime:mode=0700,uid=1000,gid=1000"]
     deploy:
       resources:
         limits: { cpus: "1.00", memory: 512M }
@@ -92,3 +132,17 @@ services:
     depends_on:
       api-e2e: { condition: service_healthy }
       workbench-e2e: { condition: service_healthy }
+
+secrets:
+  e2e_worker_postgres_url:
+    file: ${AI_CRM_COMPOSE_SECRET_DIR:?set the E2E Secret directory}/worker_runtime_url
+  e2e_rabbit_ca:
+    file: ${AI_CRM_RABBITMQ_FIXTURE_DIR:?set the RabbitMQ fixture directory}/ca.pem
+  e2e_rabbit_consumer_username:
+    file: ${AI_CRM_RABBITMQ_FIXTURE_DIR:?set the RabbitMQ fixture directory}/consumer_username
+  e2e_rabbit_consumer_password:
+    file: ${AI_CRM_RABBITMQ_FIXTURE_DIR:?set the RabbitMQ fixture directory}/consumer_password
+  e2e_rabbit_publisher_username:
+    file: ${AI_CRM_RABBITMQ_FIXTURE_DIR:?set the RabbitMQ fixture directory}/publisher_username
+  e2e_rabbit_publisher_password:
+    file: ${AI_CRM_RABBITMQ_FIXTURE_DIR:?set the RabbitMQ fixture directory}/publisher_password

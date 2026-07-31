@@ -25,7 +25,7 @@ export interface DurableEvidenceSnapshot {
 
 export interface MainChainEvidence {
   readonly audit: AuditService;
-  inspect(traceId: string, traceparent: string): Promise<DurableEvidenceSnapshot>;
+  inspect(traceId: string, traceparent: string, fileReference?: FileReference): Promise<DurableEvidenceSnapshot>;
   saveSubmission(input: DurableSubmissionInput): Promise<{ readonly replayed: boolean }>;
 }
 
@@ -77,13 +77,15 @@ export function createPostgresMainChainEvidence(runtime: E2ePostgresRuntime): Ma
   );
   return Object.freeze({
     audit,
-    async inspect(traceId: string, traceparent: string) {
+    async inspect(traceId: string, traceparent: string, fileReference?: FileReference) {
       const [audits, auditFacts, inbox, outbox, submissions] = await Promise.all([
         runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1", [traceId]),
         runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1 and ((operation_id=$2 and action='form.submission.validate' and result='failed' and reason_code='inactive_release' and resource_type='form_definition') or (operation_id=$3 and action='form.submission.validate' and result='succeeded' and reason_code='synthetic_e2e' and resource_type='form_submission'))", [traceId, auditOperationId("form:inactive-validation", "failed"), auditOperationId("form:submission-validation", "succeeded")]),
         runtime.execute<CountRow>("select count(*)::text as count from platform_eventing.inbox_receipts where (message_id=$1 and consumer=$3) or (message_id=$2 and consumer=$4)", ["91000000-0000-4000-8000-000000000001", "92000000-0000-4000-8000-000000000001", "tests.walking-skeleton-source.v1", "tests.notification-intent.v1"]),
         runtime.execute<CountRow>("select count(*)::text as count from platform_eventing.outbox_messages where traceparent=$1 and status='published' and message_kind='job' and message_version=1 and ((message_id=$2 and message_type='tests.walking-skeleton.source-command') or (message_id=$3 and message_type='platform.notifications.intent-submit'))", [traceparent, "91000000-0000-4000-8000-000000000001", "92000000-0000-4000-8000-000000000001"]),
-        runtime.execute<CountRow>("select count(*)::text as count from e2e_walking_skeleton.form_submissions where trace_id=$1 and traceparent=$2", [traceId, traceparent]),
+        fileReference === undefined
+          ? runtime.execute<CountRow>("select count(*)::text as count from e2e_walking_skeleton.form_submissions where trace_id=$1 and traceparent=$2", [traceId, traceparent])
+          : runtime.execute<CountRow>("select count(*)::text as count from e2e_walking_skeleton.form_submissions where trace_id=$1 and traceparent=$2 and file_id=$3 and content_version_id=$4 and file_reference_version=$5 and display_name=$6 and media_type is not distinct from $7 and size_bytes is not distinct from $8", [traceId, traceparent, fileReference.fileId, fileReference.contentVersionId, fileReference.version, fileReference.displayName, fileReference.mediaType ?? null, fileReference.sizeBytes ?? null]),
       ]);
       return Object.freeze({ auditCount: count(audits.rows[0]), auditFactCount: count(auditFacts.rows[0]), inboxCount: count(inbox.rows[0]), outboxTraceCount: count(outbox.rows[0]), submissionCount: count(submissions.rows[0]) });
     },

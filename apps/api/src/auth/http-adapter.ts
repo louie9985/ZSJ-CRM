@@ -13,11 +13,12 @@ export interface BrowserRequestContext {
   readonly csrfToken: string | undefined;
   readonly origin: string | undefined;
   readonly referer: string | undefined;
+  readonly traceId?: string;
 }
 
 export interface PcAuthenticationHttpAdapter {
-  beginLogin(returnTo: string | undefined): Promise<Readonly<AuthenticationHttpResponse>>;
-  completeLogin(callbackUrl: string): Promise<Readonly<AuthenticationHttpResponse>>;
+  beginLogin(returnTo: string | undefined, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>>;
+  completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>>;
   currentSession(cookieHeader: string | undefined): Promise<Readonly<AuthenticationHttpResponse>>;
   logout(context: BrowserRequestContext): Promise<Readonly<AuthenticationHttpResponse>>;
   refresh(context: BrowserRequestContext): Promise<Readonly<AuthenticationHttpResponse>>;
@@ -110,18 +111,18 @@ export function createPcAuthenticationHttpAdapter(
   options: PcAuthenticationHttpAdapterOptions,
 ): Readonly<PcAuthenticationHttpAdapter> {
   return Object.freeze({
-    async beginLogin(returnTo: string | undefined): Promise<Readonly<AuthenticationHttpResponse>> {
+    async beginLogin(returnTo: string | undefined, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>> {
       try {
-        const result = await options.service.beginLogin(returnTo ?? "/");
+        const result = await options.service.beginLogin(returnTo ?? "/", traceId);
         return Object.freeze({ headers: noStoreHeaders({ Location: result.authorizationUrl }), status: 302 });
       } catch (error) {
         return errorResponse(error);
       }
     },
 
-    async completeLogin(callbackUrl: string): Promise<Readonly<AuthenticationHttpResponse>> {
+    async completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>> {
       try {
-        const result = await options.service.completeLogin(callbackUrl);
+        const result = await options.service.completeLogin(callbackUrl, traceId);
         return Object.freeze({
           headers: noStoreHeaders({
             Location: result.returnTo,
@@ -155,7 +156,7 @@ export function createPcAuthenticationHttpAdapter(
             origin: context.origin,
             referer: context.referer,
           });
-          const result = await options.service.logout(credential, session.sessionReference);
+          const result = await options.service.logout(credential, session.sessionReference, context.traceId);
           const headers = result.endSessionUrl === undefined
             ? { "Set-Cookie": clearPcSessionCookie() }
             : { Location: result.endSessionUrl, "Set-Cookie": clearPcSessionCookie() };
@@ -191,7 +192,7 @@ export function createPcAuthenticationHttpAdapter(
           origin: context.origin,
           referer: context.referer,
         });
-        const refreshed = await options.service.refresh(credential);
+        const refreshed = await options.service.refresh(credential, context.traceId);
         return Object.freeze({
           headers: noStoreHeaders({
             "Set-Cookie": serializePcSessionCookie(refreshed.credential, options.cookieMaxAgeSeconds),

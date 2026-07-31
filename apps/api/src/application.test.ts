@@ -20,6 +20,20 @@ function requestStatus(url: URL, options: { readonly headers?: OutgoingHttpHeade
   });
 }
 
+function requestResult(url: URL, options: { readonly headers?: OutgoingHttpHeaders | readonly string[]; readonly method?: string }): Promise<Readonly<{ readonly status: number; readonly traceId?: string }>> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { headers: options.headers, method: options.method }, (response) => {
+      response.resume();
+      response.on("end", () => {
+        const traceId = response.headers["x-trace-id"];
+        resolve(Object.freeze({ status: response.statusCode ?? 0, ...(typeof traceId === "string" ? { traceId } : {}) }));
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 describe("API composition root", () => {
   it("exposes contract-shaped liveness and readiness", async () => {
     const app = createApiApplication({ dependencies: () => [{ name: "database", required: true, healthy: false }], logger });
@@ -69,7 +83,8 @@ describe("API composition root", () => {
       location: "https://identity.invalid/login",
       status: 302,
     });
-    expect(authentication.beginLogin).toHaveBeenCalledWith("/workspace");
+    expect(response.headers.get("x-trace-id")).toMatch(/^(?!0{32})[0-9a-f]{32}$/u);
+    expect(authentication.beginLogin).toHaveBeenCalledWith("/workspace", response.headers.get("x-trace-id"));
     await app.stop();
   });
 
@@ -145,6 +160,7 @@ describe("API composition root", () => {
       traceparent: `00-${requestTraceId}-00f067aa0ba902b7-01`,
     } });
     expect(registryResponse.status).toBe(200);
+    expect(registryResponse.headers.get("x-trace-id")).toMatch(/^(?!0{32})[0-9a-f]{32}$/u);
     expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
       credential: "a".repeat(43),
       permission: { action: "read", resource: "platform.app-registry.registry" },
@@ -154,6 +170,24 @@ describe("API composition root", () => {
       workforcePersonId: "20000000-0000-4000-8000-000000000001",
       traceId: requestTraceId,
     }));
+
+    for (const traceparent of [undefined, "malformed"] as const) {
+      const response = await fetch(`${address}/application-registry`, { headers: {
+        cookie,
+        ...(traceparent === undefined ? {} : { traceparent }),
+      } });
+      const responseTraceId = response.headers.get("x-trace-id");
+      expect(response.status).toBe(200);
+      expect(responseTraceId).toMatch(/^(?!0{32})[0-9a-f]{32}$/u);
+      expect(authorize).toHaveBeenLastCalledWith(expect.objectContaining({ traceId: responseTraceId }));
+      expect(applicationRegistry.loadRegistry).toHaveBeenLastCalledWith(expect.objectContaining({ traceId: responseTraceId }));
+    }
+    const authorizationCallsBeforeRepeated = authorize.mock.calls.length;
+    const repeated = await requestResult(new URL("/application-registry", address), {
+      headers: ["Cookie", cookie, "traceparent", `00-${requestTraceId}-00f067aa0ba902b7-01`, "traceparent", `00-${"a".repeat(32)}-00f067aa0ba902b7-01`],
+    });
+    expect(repeated).toEqual({ status: 400 });
+    expect(authorize).toHaveBeenCalledTimes(authorizationCallsBeforeRepeated);
 
     const rawFormBody = JSON.stringify({ data: { synthetic: "value" } });
     const formResponse = await fetch(`${address}/form-definitions/platform.synthetic/releases/1/validate`, {

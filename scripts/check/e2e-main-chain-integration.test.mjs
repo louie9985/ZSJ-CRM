@@ -30,8 +30,8 @@ test("keeps the combined slice test-only and readiness-fail-closed", () => {
   assert.match(chain, /AI_CRM_E2E_MAIN_CHAIN_INTEGRATION/u);
   assert.match(chain, /mainWalkingSkeletonReady: false/u);
   assert.doesNotMatch(chain, /AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED/u);
-  assert.match(durableChain, /createPostgresEventingStore/u);
-  assert.match(durableChain, /createPostgresNotificationStore/u);
+  assert.match(durableChain, /createPrismaEventingStore/u);
+  assert.match(durableChain, /createPrismaNotificationStore/u);
   assert.match(durableChain, /createPostgresWalkingSkeletonSource/u);
   assert.match(durableChain, /createPostgresWorkflowCommandLedger/u);
   assert.match(runner, /scripts\/migration\/run\.mjs/u);

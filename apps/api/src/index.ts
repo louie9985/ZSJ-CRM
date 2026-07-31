@@ -4,8 +4,8 @@ import { Controller, Get, Inject, Injectable, Module, Post, Req, Res, type OnApp
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { DynamicModule, INestApplication } from "@nestjs/common";
-import type { Request, Response } from "express";
-import { evaluateHealth, extractTraceContext, type ApplicationLogger, type HealthDependency, type HealthResult } from "@ai-crm/observability";
+import type { NextFunction, Request, Response } from "express";
+import { evaluateHealth, extractTraceContext, injectTraceContext, type ApplicationLogger, type HealthDependency, type HealthResult, type TraceContext } from "@ai-crm/observability";
 import type { PermissionRequest } from "@ai-crm/platform-authorization";
 import { BrowserSessionFailure } from "./auth/errors.js";
 import { parsePcSessionCredential, type AuthenticationHttpResponse, type BrowserRequestContext, type PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
@@ -25,6 +25,7 @@ export {
 export const applicationId = "@ai-crm/api" as const;
 const API_COMPOSITION = Symbol("api-composition");
 const API_RUNTIME_STATE = Symbol("api-runtime-state");
+const REQUEST_TRACE_CONTEXT = Symbol("api-request-trace-context");
 interface ApiRuntimeState { ready: boolean; }
 
 export interface ApiComposition {
@@ -93,6 +94,42 @@ function singleQuery(request: Request, name: string, maximumLength: number, mini
   return { valid: value.length >= minimumLength && value.length <= maximumLength, value };
 }
 
+/**
+ * Establishes the HTTP trace boundary for every BFF/API request. The
+ * propagator validates the W3C value and creates a local child when absent or
+ * malformed; only the opaque trace id is exposed back to callers. Cookies,
+ * credentials and request bodies never enter this response header.
+ */
+function traceBoundary(request: Request, response: Response, next: NextFunction): void {
+  const traceparent = singleHeader(request, "traceparent", 512);
+  if (!traceparent.valid) {
+    response.status(400).send();
+    return;
+  }
+  const context = extractTraceContext({ traceparent: traceparent.value });
+  Reflect.set(request, REQUEST_TRACE_CONTEXT, context);
+  response.setHeader("X-Trace-Id", context.traceId);
+  next();
+}
+
+function requestTraceContext(request: Request): TraceContext {
+  const context = Reflect.get(request, REQUEST_TRACE_CONTEXT) as unknown;
+  if (typeof context !== "object" || context === null) throw new Error("api_request_trace_context_missing");
+  const traceId = Reflect.get(context, "traceId") as unknown;
+  const spanId = Reflect.get(context, "spanId") as unknown;
+  const traceFlags = Reflect.get(context, "traceFlags") as unknown;
+  if (typeof traceId !== "string" || typeof spanId !== "string" || typeof traceFlags !== "number") {
+    throw new Error("api_request_trace_context_missing");
+  }
+  return Object.freeze({ spanId, traceFlags, traceId });
+}
+
+function requestTraceparent(request: Request): string {
+  const traceparent = injectTraceContext(requestTraceContext(request))["traceparent"];
+  if (traceparent === undefined) throw new Error("api_request_trace_context_invalid");
+  return traceparent;
+}
+
 function sendAuthenticationResponse(response: Response, result: AuthenticationHttpResponse): void {
   for (const [name, value] of Object.entries(result.headers)) response.setHeader(name, value);
   if (result.body === undefined) response.status(result.status).send();
@@ -131,7 +168,7 @@ class PcAuthenticationController {
       sendAuthenticationResponse(response, invalidCallbackResponse);
       return;
     }
-    sendAuthenticationResponse(response, await this.adapter().beginLogin(returnTo.value));
+    sendAuthenticationResponse(response, await this.adapter().beginLogin(returnTo.value, requestTraceContext(request).traceId));
   }
 
   @Get("callback")
@@ -144,7 +181,7 @@ class PcAuthenticationController {
     }
     const callbackUrl = this.composition.authenticationCallbackUrl?.(request.originalUrl);
     if (callbackUrl === undefined) throw new Error("api_authentication_callback_binding_missing");
-    sendAuthenticationResponse(response, await this.adapter().completeLogin(callbackUrl));
+    sendAuthenticationResponse(response, await this.adapter().completeLogin(callbackUrl, requestTraceContext(request).traceId));
   }
 
   @Get("session")
@@ -186,7 +223,7 @@ class PcAuthenticationController {
     const origin = singleHeader(request, "origin", 512);
     const referer = singleHeader(request, "referer", 2048);
     if (!csrfToken.valid || !origin.valid || !referer.valid) return { error: invalidCsrfResponse };
-    return { value: { cookie: cookie.value, csrfToken: csrfToken.value, origin: origin.value, referer: referer.value } };
+    return { value: { cookie: cookie.value, csrfToken: csrfToken.value, origin: origin.value, referer: referer.value, traceId: requestTraceContext(request).traceId } };
   }
 }
 
@@ -222,7 +259,7 @@ class ApplicationRegistryController {
   }>> {
     const credential = credentialFromRequest(request);
     if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-    const traceId = extractTraceContext({ traceparent: platformHeader(request, "traceparent", 512) }).traceId;
+    const traceId = requestTraceContext(request).traceId;
     const authorized = await platform(this.composition).authorize({
       at: new Date().toISOString(),
       credential,
@@ -262,7 +299,7 @@ class FormSchemaController {
     const rawBody = Reflect.get(request, "rawBody") as unknown;
     const contentType = platformHeader(request, "content-type", 128);
     const credential = credentialFromRequest(request);
-    const traceparent = platformHeader(request, "traceparent", 512);
+    const traceparent = requestTraceparent(request);
     return {
       at: new Date().toISOString(),
       ...(rawBody instanceof Uint8Array ? { body: rawBody } : {}),
@@ -270,7 +307,7 @@ class FormSchemaController {
       ...(credential === undefined ? {} : { credential }),
       method: request.method,
       path: request.path,
-      ...(traceparent === undefined ? {} : { traceparent }),
+      traceparent,
     };
   }
 
@@ -296,7 +333,7 @@ class FileCenterController {
       idempotencyKey: platformHeader(request, "idempotency-key", 64),
       origin: platformHeader(request, "origin", 512),
       referer: platformHeader(request, "referer", 2048),
-      traceparent: platformHeader(request, "traceparent", 512),
+      traceparent: requestTraceparent(request),
     });
   }
 
@@ -357,7 +394,7 @@ class TaskController {
         ...(origin.value === undefined ? {} : { origin: origin.value }),
         ...(referer.value === undefined ? {} : { referer: referer.value }),
       });
-      const traceId = extractTraceContext({ traceparent: platformHeader(request, "traceparent", 512) }).traceId;
+      const traceId = requestTraceContext(request).traceId;
       const authorized = await platform(this.composition).authorize({
         at: new Date().toISOString(), credential, traceId,
         permission: { action: "complete", resource: "platform.task-center.task-projection" },
@@ -502,6 +539,8 @@ export const createApiApplication = (composition: ApiComposition): ApiApplicatio
             rawBody: true,
           });
           created.useBodyParser("json", { limit: 262_144 });
+          const useMiddleware = Reflect.get(created, "use");
+          if (typeof useMiddleware === "function") useMiddleware.call(created, traceBoundary);
           candidate = created;
           if (cancelled()) {
             await closeCandidate();

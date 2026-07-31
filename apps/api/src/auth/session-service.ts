@@ -81,11 +81,11 @@ export interface BrowserMutationSession extends BrowserSessionView {
 }
 
 export interface PcBffSessionService {
-  beginLogin(returnTo: string): Promise<Readonly<LoginRedirect>>;
-  completeLogin(callbackUrl: string): Promise<Readonly<CompletedLogin>>;
+  beginLogin(returnTo: string, traceId?: string): Promise<Readonly<LoginRedirect>>;
+  completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<CompletedLogin>>;
   currentSession(credential: string): Promise<Readonly<BrowserSessionView>>;
-  logout(credential: string | undefined, sessionReference?: string): Promise<Readonly<LogoutResult>>;
-  refresh(credential: string): Promise<Readonly<RefreshedSession>>;
+  logout(credential: string | undefined, sessionReference?: string, traceId?: string): Promise<Readonly<LogoutResult>>;
+  refresh(credential: string, traceId?: string): Promise<Readonly<RefreshedSession>>;
   resolvePrincipal(credential: string): Promise<Readonly<AuthenticatedPrincipal>>;
   sessionForMutation(credential: string): Promise<Readonly<BrowserMutationSession>>;
 }
@@ -93,6 +93,13 @@ export interface PcBffSessionService {
 const MAX_TTL_SECONDS = 31_536_000;
 const MAX_DECRYPTION_KEYS = 2;
 const SAFE_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
+
+function requestTraceId(value?: string): string {
+  if (value === undefined) return createTraceContext().traceId;
+  if (!TRACE_ID.test(value)) throw new BrowserSessionFailure("authentication_session_invalid");
+  return value;
+}
 
 function secondsToMilliseconds(value: number): number {
   if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TTL_SECONDS) {
@@ -258,8 +265,8 @@ export function createPcBffSessionService(
   }
 
   return Object.freeze({
-    async beginLogin(returnTo: string): Promise<Readonly<LoginRedirect>> {
-      const traceId = createTraceContext().traceId;
+    async beginLogin(returnTo: string, requestTrace?: string): Promise<Readonly<LoginRedirect>> {
+      const traceId = requestTraceId(requestTrace);
       const result = await options.oidc.beginLogin(returnTo);
       const stateIndex = createSessionIndex(result.transaction.state, securityKeys.indexingKey);
       await options.store.storeLoginTransaction(stateIndex, result.transaction, loginTtlMs);
@@ -272,8 +279,8 @@ export function createPcBffSessionService(
       return Object.freeze({ authorizationUrl: result.authorizationUrl });
     },
 
-    async completeLogin(callbackUrl: string): Promise<Readonly<CompletedLogin>> {
-      const traceId = createTraceContext().traceId;
+    async completeLogin(callbackUrl: string, requestTrace?: string): Promise<Readonly<CompletedLogin>> {
+      const traceId = requestTraceId(requestTrace);
       const state = stateFromCallback(callbackUrl);
       let stateIndex: string;
       try {
@@ -313,9 +320,9 @@ export function createPcBffSessionService(
       return sessionView((await loadVerifiedSession(credential)).session);
     },
 
-    async logout(credential: string | undefined, expectedSessionReference?: string): Promise<Readonly<LogoutResult>> {
+    async logout(credential: string | undefined, expectedSessionReference?: string, requestTrace?: string): Promise<Readonly<LogoutResult>> {
       if (credential === undefined) return Object.freeze({});
-      const traceId = createTraceContext().traceId;
+      const traceId = requestTraceId(requestTrace);
       const sessionIndex = createSessionIndex(credential, securityKeys.indexingKey);
       const current = expectedSessionReference === undefined
         ? await options.store.getSession(sessionIndex, idleTtlMs, now())
@@ -330,8 +337,8 @@ export function createPcBffSessionService(
       return Object.freeze(endSessionUrl === undefined ? {} : { endSessionUrl });
     },
 
-    async refresh(credential: string): Promise<Readonly<RefreshedSession>> {
-      const traceId = createTraceContext().traceId;
+    async refresh(credential: string, requestTrace?: string): Promise<Readonly<RefreshedSession>> {
+      const traceId = requestTraceId(requestTrace);
       const previousIndex = createSessionIndex(credential, securityKeys.indexingKey);
       const initial = await options.store.getSession(previousIndex, idleTtlMs, now());
       if (!initial) throw new BrowserSessionFailure("authentication_session_invalid");

@@ -16,11 +16,14 @@ const [composeSource, runtimeDockerfile, workbenchDockerfile, edgeNginx, runner]
 const compose = YAML.parse(composeSource);
 
 test("seals the explicit test-only API, Worker, and Workbench process services", () => {
-  assert.deepEqual(Object.keys(compose.services).sort(), ["api-e2e", "nginx", "workbench-e2e", "worker-e2e"]);
-  for (const service of Object.values(compose.services)) assert.equal(service.ports, undefined);
+  assert.deepEqual(Object.keys(compose.services).sort(), ["api-e2e", "nginx", "postgres", "rabbitmq", "workbench-e2e", "worker-e2e"]);
+  assert.match(compose.services.postgres.ports[0], /^127\.0\.0\.1:/u);
   assert.equal(compose.services["api-e2e"].environment.AI_CRM_E2E_PROCESS_ENTRYPOINT, "api");
   assert.equal(compose.services["worker-e2e"].environment.AI_CRM_E2E_PROCESS_ENTRYPOINT, "worker");
-  assert.equal(compose.services["worker-e2e"].environment.AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED, undefined);
+  assert.deepEqual(compose.services["worker-e2e"].command, ["/bin/sh", "./worker-entrypoint.sh"]);
+  assert.equal(compose.services["worker-e2e"].environment.NODE_ENV, "test");
+  assert.equal(compose.services["worker-e2e"].environment.AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED, "true");
+  assert.equal(compose.services["worker-e2e"].environment.AI_CRM_E2E_WORKER_REAL_INFRA, "true");
   assert.equal(compose.services.nginx.depends_on["api-e2e"].condition, "service_healthy");
   assert.equal(compose.services.nginx.depends_on["workbench-e2e"].condition, "service_healthy");
 });
@@ -38,5 +41,7 @@ test("uses a unique project and always removes its Volumes and temporary Secrets
   assert.match(runner, /ai-crm-test-e2e-/u);
   assert.match(runner, /"down", "--volumes", "--remove-orphans"/u);
   assert.match(runner, /rm\(secretDirectory, \{ force: true, recursive: true \}\)/u);
-  assert.doesNotMatch(runner, /AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED/u);
+  assert.match(runner, /platform_task_center\.task_projections/u);
+  assert.match(runner, /platform_eventing\.inbox_receipts/u);
+  assert.ok(runner.includes('write: "^ai-crm\\\\.platform\\\\.(?:events|retry|dead-letter)\\\\.v1$|^ai-crm\\\\.platform\\\\.task-center'));
 });

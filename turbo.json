@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE"],
   "tasks": {
     "dev": {
       "cache": false,
@@ -24,4 +25,3 @@
     }
   }
 }
-

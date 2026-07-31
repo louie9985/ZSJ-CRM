@@ -246,6 +246,17 @@ describe("createPcBffSessionService", () => {
       .rejects.toMatchObject({ code: "authentication_callback_invalid" });
   });
 
+  it("uses the request Trace ID for authentication audit evidence", async () => {
+    const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const service = createPcBffSessionService(options);
+    await service.beginLogin("/tasks", traceId);
+    const completed = await service.completeLogin(`https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`, traceId);
+    const refreshed = await service.refresh(completed.credential, traceId);
+    const mutation = await service.sessionForMutation(refreshed.credential);
+    await service.logout(refreshed.credential, mutation.sessionReference, traceId);
+    expect(audit.events.map((event) => event.traceId)).toEqual([traceId, traceId, traceId, traceId]);
+  });
+
   it("rotates the opaque credential and invalidates the old session on refresh", async () => {
     const service = createPcBffSessionService(options);
     await service.beginLogin("/tasks");

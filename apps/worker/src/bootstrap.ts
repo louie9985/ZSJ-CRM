@@ -27,7 +27,11 @@ export async function bootstrapWorker(options: WorkerBootstrapOptions = {}): Pro
     const healthReporter = createFileWorkerHealthReporter(config.healthFile);
     healthReporter.report("unavailable");
     const composition = options.composition ?? {};
-    if (config.environment === "production") {
+    // An explicitly injected production resource factory is also the supported
+    // integration seam. It exercises the same signal-aware startup and cleanup
+    // lifecycle without weakening production-only Secret ownership checks by
+    // pretending that an E2E container is a production deployment.
+    if (config.environment === "production" || options.productionResourceFactory !== undefined) {
       const controller = new AbortController();
       const abort = (): void => { controller.abort(); };
       process.once("SIGTERM", abort);

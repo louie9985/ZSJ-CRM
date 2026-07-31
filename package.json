@@ -9,9 +9,9 @@
     "preinstall": "node scripts/check/verify-runtime.mjs",
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "test": "turbo run test",
-    "lint": "eslint scripts --max-warnings 0 && turbo run lint",
-    "typecheck": "turbo run typecheck",
+    "test": "pnpm prisma:generate && turbo run test",
+    "lint": "pnpm prisma:generate && eslint scripts --max-warnings 0 && turbo run lint",
+    "typecheck": "pnpm prisma:generate && turbo run typecheck",
     "repo:check": "node scripts/check/verify-runtime.mjs && node scripts/check/verify-repository.mjs && node scripts/check/check-boundaries.mjs && pnpm prisma:schema:check && pnpm prisma:boundaries:check && node --test scripts/check/*.test.mjs",
     "prisma:generate": "node scripts/prisma/compose-schema.mjs && prisma generate --config prisma.config.ts",
     "prisma:schema:check": "node scripts/prisma/compose-schema.mjs --check",
@@ -36,7 +36,8 @@
     "e2e:flowable-workflow:integration": "node scripts/check/run-e2e-flowable-workflow-integration.mjs",
     "e2e:main-chain:integration": "node scripts/check/run-e2e-main-chain-integration.mjs",
     "e2e:file-clamav:integration": "node scripts/check/run-e2e-file-clamav-integration.mjs",
-    "check": "pnpm repo:check && pnpm compose:check && pnpm e2e:check && node scripts/contracts/generate.mjs --check && turbo run build lint typecheck test contracts:check"
+    "e2e:combined-evidence:integration": "node scripts/check/run-e2e-combined-evidence.mjs",
+    "check": "pnpm repo:check && pnpm compose:check && pnpm e2e:check && node scripts/contracts/generate.mjs --check && turbo run build && turbo run lint typecheck test contracts:check"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "12.0.0",

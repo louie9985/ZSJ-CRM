@@ -70,6 +70,22 @@ describe("File Center service", () => {
     const before = runtime.authorizer.authorize.mock.calls.length; const grant = await runtime.service.authorizeDownload({ ...meta(), fileReference: created.fileReference, resource }); expect(grant.downloadUrl).toMatch(/^https:\/\/download\.invalid\//u); expect(runtime.authorizer.authorize.mock.calls.length - before).toBe(2); expect(linked.link.unlinkedAt).toBeUndefined();
   });
 
+  it("issues a trusted FileReference only after malware scanning makes the version available", async () => {
+    const runtime = setup(); const created = await create(runtime.service);
+    await upload(runtime, created);
+    await runtime.service.scanContentVersion({ ...meta(), contentVersionId: created.fileReference.contentVersionId });
+    const resource = { resourceId: "synthetic:reference", resourceType: "platform.resource" };
+    await runtime.service.linkResource({ ...meta(), fileReference: created.fileReference, linkId: randomUUID(), ownerModule: "platform.synthetic", relationType: "platform.attachment", resource });
+    const reference = await runtime.service.resolveFileReference({ ...meta(), fileReference: created.fileReference, resource });
+    expect(reference).toMatchObject({ contentVersionId: created.fileReference.contentVersionId, fileId: created.fileReference.fileId, mediaType: "text/plain", sizeBytes: 7, version: 1 });
+    expect(runtime.authorizer.authorize).toHaveBeenCalledWith({ action: "file:reference", actor, resourceReference: "platform.resource:synthetic:reference" });
+    expect(runtime.authorizer.authorize).toHaveBeenCalledWith({ action: "file:reference", actor, ownerModule: "platform.synthetic", resourceReference: "platform.resource:synthetic:reference" });
+    expect(runtime.audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "file:reference", resourceReference: "platform.resource:synthetic:reference", result: "succeeded" }));
+    await expect(runtime.service.resolveFileReference({ ...meta(), fileReference: created.fileReference, resource: { resourceId: "synthetic:other", resourceType: "platform.resource" } })).rejects.toMatchObject({ code: "file_center_denied" });
+    expect(runtime.audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "file:reference", resourceReference: "platform.resource:synthetic:other", result: "denied" }));
+    await expect(runtime.service.resolveFileReference({ ...meta(), fileReference: { ...created.fileReference, contentVersionId: randomUUID() }, resource })).rejects.toMatchObject({ code: "file_center_denied" });
+  });
+
   it("quarantines malicious content and never signs a download", async () => {
     const runtime = setup({ scan: "malicious" }); const created = await create(runtime.service); const completed = await upload(runtime, created); const result = await runtime.service.scanContentVersion({ ...meta(), contentVersionId: completed.contentVersion.contentVersionId }); expect(result.contentVersion.status).toBe("quarantined"); expect(runtime.storage.quarantineObject).toHaveBeenCalledOnce();
     await expect(runtime.service.linkResource({ ...meta(), fileReference: created.fileReference, linkId: randomUUID(), ownerModule: "platform.synthetic", relationType: "platform.attachment", resource: { resourceId: "synthetic:1", resourceType: "platform.resource" } })).rejects.toMatchObject({ code: "file_center_not_ready" }); expect(runtime.storage.createDownloadGrant).not.toHaveBeenCalled();
