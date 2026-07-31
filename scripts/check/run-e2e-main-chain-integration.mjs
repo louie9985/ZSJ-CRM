@@ -34,6 +34,7 @@ const environment = {
   AI_CRM_E2E_MAIN_CHAIN_INTEGRATION: "true",
   AI_CRM_E2E_MAIN_CHAIN_MODE: "durable",
   AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE: process.env.AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE ?? "false",
+  ...(process.env.AI_CRM_E2E_TASK_COMMAND_FILE === undefined ? {} : { AI_CRM_E2E_TASK_COMMAND_FILE: process.env.AI_CRM_E2E_TASK_COMMAND_FILE }),
   AI_CRM_RABBITMQ_FIXTURE_DIR: rabbitDirectory,
   AI_CRM_TEST_FLOWABLE_PORT: String(flowablePort),
   AI_CRM_TEST_POSTGRES_PORT: String(postgresPort),

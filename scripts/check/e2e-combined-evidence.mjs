@@ -19,7 +19,7 @@ export function parseFinalJsonObject(output, accepts, scenario) {
   throw new Error(`e2e_combined_${scenario}_evidence_missing`);
 }
 
-export function externalEvidenceEnvironment(browserEvidence, fileEvidence) {
+export function externalEvidenceEnvironment(browserEvidence, fileEvidence, taskCommandFile) {
   assert.equal(browserEvidence.status, browserStatus, "browser authentication evidence did not pass");
   assert.match(browserEvidence.browserTraceId, /^[0-9a-f]{32}$/u, "browser trace id is invalid");
   assert.match(
@@ -28,18 +28,22 @@ export function externalEvidenceEnvironment(browserEvidence, fileEvidence) {
     "browser traceparent is invalid or does not match its trace id",
   );
   assert.ok(fileEvidence.cleanFileReference && typeof fileEvidence.cleanFileReference === "object", "clean FileReference is missing");
+  assert.equal(browserEvidence.taskCompletionAccepted, true, "browser Task completion was not accepted");
+  assert.equal(typeof taskCommandFile, "string", "browser Task command file is missing");
 
   return Object.freeze({
     AI_CRM_E2E_BROWSER_TRACE_ID: browserEvidence.browserTraceId,
     AI_CRM_E2E_BROWSER_TRACEPARENT: browserEvidence.browserTraceparent,
     AI_CRM_E2E_FILE_REFERENCE_JSON: JSON.stringify(fileEvidence.cleanFileReference),
     AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE: "true",
+    AI_CRM_E2E_TASK_COMMAND_FILE: taskCommandFile,
   });
 }
 
 export function assertCombinedEvidence(browserEvidence, fileEvidence, mainChainEvidence) {
   assert.equal(mainChainEvidence.status, mainChainStatus);
   assert.equal(mainChainEvidence.externalEvidence, true);
+  assert.equal(mainChainEvidence.browserTaskApiEvidence, true);
   assert.equal(mainChainEvidence.traceId, browserEvidence.browserTraceId);
   assert.equal(mainChainEvidence.traceparent, browserEvidence.browserTraceparent);
   assert.deepEqual(mainChainEvidence.fileReference, fileEvidence.cleanFileReference);
@@ -47,20 +51,20 @@ export function assertCombinedEvidence(browserEvidence, fileEvidence, mainChainE
     browserTraceId: browserEvidence.browserTraceId,
     externalEvidence: true,
     fileReference: fileEvidence.cleanFileReference,
-    mainWalkingSkeletonReady: false,
-    status: "e2e-combined-external-evidence-passed",
+    mainWalkingSkeletonReady: true,
+    status: "e2e-browser-to-worker-causal-evidence-passed",
     traceparent: browserEvidence.browserTraceparent,
   });
 }
 
-export async function executeCombinedEvidence(runScenario) {
-  const browserOutput = await runScenario("browser-auth", "scripts/check/run-e2e-browser-authentication.mjs", {});
+export async function executeCombinedEvidence(runScenario, taskCommandFile) {
+  const browserOutput = await runScenario("browser-auth", "scripts/check/run-e2e-browser-authentication.mjs", { AI_CRM_E2E_TASK_COMMAND_FILE: taskCommandFile });
   const browserEvidence = parseFinalJsonObject(browserOutput, (value) => value.status === browserStatus, "browser_auth");
 
   const fileOutput = await runScenario("file-clamav", "scripts/check/run-e2e-file-clamav-integration.mjs", {});
   const fileEvidence = parseFinalJsonObject(fileOutput, (value) => value.cleanFileReference !== undefined, "file_clamav");
 
-  const evidenceEnvironment = externalEvidenceEnvironment(browserEvidence, fileEvidence);
+  const evidenceEnvironment = externalEvidenceEnvironment(browserEvidence, fileEvidence, taskCommandFile);
   const mainOutput = await runScenario("main-chain", "scripts/check/run-e2e-main-chain-integration.mjs", evidenceEnvironment);
   const mainChainEvidence = parseFinalJsonObject(mainOutput, (value) => value.status === mainChainStatus, "main_chain");
   return assertCombinedEvidence(browserEvidence, fileEvidence, mainChainEvidence);

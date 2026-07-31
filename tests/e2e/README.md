@@ -25,13 +25,13 @@ This is an in-process joint test, not the main E2E. It does not start a browser,
 
 Run `pnpm e2e:main-chain:integration` to execute the test-only durable chain against disposable PostgreSQL, real Flowable, and real TLS RabbitMQ. The slice publishes and validates a versioned synthetic Form Schema release, persists a submission reference with a stable `FileReference`, completes the projected task through Task Center, retries after a synthetic dependency failure, publishes trace-bearing Jobs through Outbox/RabbitMQ/Worker/Inbox, and queries durable Audit correlation. It also proves denied access, inactive-release rejection, command replay, duplicate delivery, and cleanup.
 
-By default the stable FileReference and Trace remain synthetic fixtures. The chain accepts `AI_CRM_E2E_FILE_REFERENCE_JSON`, `AI_CRM_E2E_BROWSER_TRACE_ID`, and `AI_CRM_E2E_BROWSER_TRACEPARENT`; setting `AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE=true` fails closed unless all three valid external values are supplied. `pnpm e2e:combined-evidence:integration` collects the ClamAV `cleanFileReference` and browser `browserTraceId`/`browserTraceparent`, injects them into the durable chain, and requires exact equality in durable submission, Outbox, Worker, Inbox, and Audit evidence. This closes the `17-09` evidence join. It remains an orchestrated bridge: the authenticated browser does not yet submit the Task-completion request that starts the durable chain, so `17-16` and `mainWalkingSkeletonReady=false` remain.
+By default the stable FileReference and Trace remain synthetic fixtures. The chain accepts `AI_CRM_E2E_FILE_REFERENCE_JSON`, `AI_CRM_E2E_BROWSER_TRACE_ID`, and `AI_CRM_E2E_BROWSER_TRACEPARENT`; setting `AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE=true` fails closed unless all three valid external values are supplied. `pnpm e2e:combined-evidence:integration` now drives the authenticated browser through a real Task completion POST with the live HttpOnly BFF Session and CSRF token, records a bounded causal command, and requires that command plus the ClamAV `cleanFileReference` and browser Trace to match durable submission, Outbox, Worker, Inbox, and Audit evidence. This closes `17-09` and `17-16`; the preflight may report `mainWalkingSkeletonReady=true` only after this combined run passes.
 
 ## Browser authentication slice
 
 Run `pnpm e2e:browser-auth:integration` to build the E2E Workbench, start disposable PostgreSQL, Redis, Keycloak, and Nginx services, and drive an installed headless Chromium browser through the real PC BFF Authorization Code + PKCE login path. The runner creates and deletes one synthetic Keycloak user at runtime and checks callback validation, the browser Token boundary, CSRF, session fixation, refresh rotation, old-Cookie rejection, and session expiry.
 
-The runner binds only loopback dependency/edge ports and a short-lived host BFF port used by the isolated Nginx container. It removes its Compose project, Volumes, browser profile, build output, temporary Secrets, and synthetic user. It emits the safe W3C Trace inputs needed by the durable chain. This proves `17-01`; it does not itself perform the combined browser-to-Worker run and does not set `mainWalkingSkeletonReady` to `true`.
+The runner binds only loopback dependency/edge ports and a short-lived host BFF port used by the isolated Nginx container. It removes its Compose project, Volumes, browser profile, build output, temporary Secrets, and synthetic user. In combined mode it also calls the Task completion endpoint with the live browser session and records the accepted command evidence. This proves `17-01` independently and supplies the browser leg for the causal 17-16 run.
 
 ## Isolated Task Projection Worker
 
@@ -57,7 +57,7 @@ Forbidden assumptions:
 - Healthy dependencies imply a working cross-component business flow.
 - Generic Event, Job, Workflow, Task, or Notification infrastructure supplies an owning source command or business authority.
 - A fake ClamAV protocol server proves the real daemon/file chain.
-- Separate successful slices or implementation anchors prove the combined Browser → BFF → API → Outbox → Worker evidence chain.
+- A Trace ID match without the accepted browser Task command does not prove the combined Browser → BFF → API → Outbox → Worker evidence chain.
 
 Non-goals:
 

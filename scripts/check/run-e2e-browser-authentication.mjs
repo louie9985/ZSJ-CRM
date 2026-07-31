@@ -26,6 +26,7 @@ let publicOrigin;
 let redisPort;
 let secretDirectory;
 let syntheticUserId = "";
+let taskCompletionAccepted = false;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { env: environment, shell: false, stdio: "inherit", ...options });
@@ -326,6 +327,7 @@ try {
     publicOrigin,
     redisPasswordFile: resolve(secretDirectory, "redis_password"),
     redisUrl: `redis://127.0.0.1:${String(redisPort)}`,
+    ...(process.env.AI_CRM_E2E_TASK_COMMAND_FILE === undefined ? {} : { taskCompletionCommandFile: process.env.AI_CRM_E2E_TASK_COMMAND_FILE }),
   });
   const localBff = await fetch(`http://127.0.0.1:${String(bffPort)}/health/ready`);
   if (localBff.status !== 200) throw new Error("e2e_browser_auth_local_bff_not_ready");
@@ -365,6 +367,29 @@ try {
   if (session.status !== 200 || session.body?.client !== "pc-web" || typeof session.body?.csrfToken !== "string" ||
     session.traceId !== browserTraceId) {
     throw new Error("e2e_browser_auth_session_missing");
+  }
+  if (process.env.AI_CRM_E2E_TASK_COMMAND_FILE !== undefined) {
+    const taskUrl = "/tasks/tests.walking-skeleton/source-task.main-chain-synthetic/complete";
+    const rejectedTask = await browser.evaluate(`fetch(${JSON.stringify(taskUrl)}, {
+      credentials: "include", headers: {
+        "Idempotency-Key": "task-complete.browser-causal-rejected",
+        traceparent: ${JSON.stringify(browserTraceparent)},
+        "X-CSRF-Token": "${"x".repeat(43)}"
+      }, method: "POST"
+    }).then(response => response.status)`);
+    if (rejectedTask !== 403) throw new Error("e2e_browser_task_csrf_not_rejected");
+    const taskCompletion = await browser.evaluate(`fetch(${JSON.stringify(taskUrl)}, {
+      credentials: "include", headers: {
+        "Idempotency-Key": "task-complete.browser-causal-0001",
+        traceparent: ${JSON.stringify(browserTraceparent)},
+        "X-CSRF-Token": ${JSON.stringify(session.body.csrfToken)}
+      }, method: "POST"
+    }).then(async response => ({ body: await response.json(), status: response.status, traceId: response.headers.get("X-Trace-Id") }))`);
+    if (taskCompletion.status !== 202 || taskCompletion.body?.status !== "accepted" ||
+      taskCompletion.body?.sourceCommandId !== "94000000-0000-5000-8000-000000000001" || taskCompletion.traceId !== browserTraceId) {
+      throw new Error("e2e_browser_task_completion_not_accepted");
+    }
+    taskCompletionAccepted = true;
   }
   const cookies = (await browser.command("Network.getAllCookies")).cookies;
   const sessionCookie = cookies.find((cookie) => cookie.name === "__Host-ai_crm_pc_session" && cookie.domain === "localhost");
@@ -419,6 +444,7 @@ try {
     sessionRotated: true,
     status: "e2e-browser-authentication-passed",
     syntheticUser: true,
+    taskCompletionAccepted,
     tokenExposedToBrowser: false,
   })}\n`);
 } catch (error) {

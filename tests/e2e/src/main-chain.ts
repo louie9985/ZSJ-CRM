@@ -18,7 +18,7 @@ import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing"
 import { createFormSchemaService, createMemoryFormSchemaStore, FormSchemaError, type FormAudit, type FormSchemaStore } from "@ai-crm/platform-form-schema";
 import type { FileReference } from "@ai-crm/platform-file-center";
 import { createNotificationCenter, InMemoryNotificationStore, NotificationError, type NotificationActor, type NotificationStore } from "@ai-crm/platform-notifications";
-import { createTaskCenter, InMemoryTaskCenterStore, TaskCenterError, type TaskAudit, type TaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
+import { createTaskCenter, InMemoryTaskCenterStore, TaskCenterError, type CompleteTaskCommand, type TaskAudit, type TaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
 import { createFlowableRestEngine, createWorkflowFacade, type WorkflowAuditRecord, type WorkflowCommandLedger, type WorkflowLifecycleEvent } from "@ai-crm/platform-workflow";
 import { createMemoryWorkflowCommandLedger } from "@ai-crm/platform-workflow/testing";
 import {
@@ -127,6 +127,7 @@ export interface MainChainSourcePort extends WalkingSkeletonSourceCommandPort {
 }
 
 export interface MainChainIntegrationFactory {
+  readonly browserTaskApiEvidence: boolean;
   readonly createFormStore: () => FormSchemaStore;
   readonly createEventingStore: () => EventingStore;
   readonly createNotificationStore: () => NotificationStore;
@@ -137,11 +138,13 @@ export interface MainChainIntegrationFactory {
   readonly evidence?: MainChainEvidence;
   readonly externalEvidence: boolean;
   readonly resolveFileReference: () => FileReference | Promise<FileReference>;
+  readonly resolveCompletionCommand: () => CompleteTaskCommand | Promise<CompleteTaskCommand>;
   readonly resolveTraceContext: () => Readonly<{ readonly traceId: string; readonly traceparent: string }> | Promise<Readonly<{ readonly traceId: string; readonly traceparent: string }>>;
 }
 
 export function createMainChainIntegrationFactory(overrides: Partial<MainChainIntegrationFactory> = {}): MainChainIntegrationFactory {
   return Object.freeze({
+    browserTaskApiEvidence: overrides.browserTaskApiEvidence ?? false,
     createFormStore: overrides.createFormStore ?? createMemoryFormSchemaStore,
     createEventingStore: overrides.createEventingStore ?? (() => new InMemoryEventingStore()),
     createNotificationStore: overrides.createNotificationStore ?? (() => new InMemoryNotificationStore()),
@@ -150,6 +153,7 @@ export function createMainChainIntegrationFactory(overrides: Partial<MainChainIn
     createWorkflowLedger: overrides.createWorkflowLedger ?? createMemoryWorkflowCommandLedger,
     durable: overrides.durable ?? false,
     externalEvidence: overrides.externalEvidence ?? false,
+    resolveCompletionCommand: overrides.resolveCompletionCommand ?? (() => Object.freeze({ actor, idempotencyKey: "task-complete.main-chain-0001", sourceTaskId, sourceType: walkingSkeletonSourceType })),
     resolveFileReference: overrides.resolveFileReference ?? (() => defaultFileReference),
     resolveTraceContext: overrides.resolveTraceContext ?? (() => Object.freeze({ traceId: defaultTraceId, traceparent: defaultTraceparent })),
     ...(overrides.evidence === undefined ? {} : { evidence: overrides.evidence }),
@@ -246,6 +250,7 @@ function lifecycleEventId(eventKey: string): string {
 
 export async function runMainChainIntegration(factory = createMainChainIntegrationFactory()): Promise<void> {
   const fileReference = await factory.resolveFileReference();
+  const completionCommand = await factory.resolveCompletionCommand();
   const { traceId, traceparent } = await factory.resolveTraceContext();
   const config = configuration();
   const password = (await readFile(config.flowablePasswordFile, "utf8")).trim();
@@ -351,7 +356,6 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     () => { throw new Error("e2e_main_chain_denied_task_accepted"); },
     (error: unknown) => { if (!(error instanceof TaskCenterError) || error.code !== "TASK_OPERATION_DENIED") throw error; },
   );
-  const completionCommand = { actor, idempotencyKey: "task-complete.main-chain-0001", sourceTaskId, sourceType: walkingSkeletonSourceType } as const;
   await taskCenter.complete(completionCommand).then(
     () => { throw new Error("e2e_main_chain_dependency_failure_not_observed"); },
     (error: unknown) => { if (!(error instanceof TaskCenterError) || error.code !== "TASK_SOURCE_UNAVAILABLE" || !error.retryable) throw error; },
@@ -430,7 +434,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     }
     if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || finalTaskApply.status !== "applied" || finalTaskProjection?.status !== "completed" || finalTaskProjection.sourceVersion !== 2 || finalTaskProjection.assigneeReference !== openTaskEvent.assigneeReference || sourceAuthorizations !== 1 || await notifications.unreadCount(notificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
     if (factory.durable && (durableEvidence === undefined || durableEvidence.submissionCount !== 1 || durableEvidence.outboxTraceCount !== 2 || durableEvidence.inboxCount !== 2 || durableEvidence.auditCount !== 30 || durableEvidence.auditFactCount !== 2 || workerTraceMessages.size !== 2)) throw new Error("e2e_main_chain_durable_evidence_invalid");
-    process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, durable: factory.durable, externalEvidence: factory.externalEvidence, fileReference, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, mainWalkingSkeletonReady: false, notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, traceparent, workerTraceMessages: workerTraceMessages.size })}\n`);
+    process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, browserTaskApiEvidence: factory.browserTaskApiEvidence, durable: factory.durable, externalEvidence: factory.externalEvidence, fileReference, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, ...(factory.browserTaskApiEvidence ? { mainWalkingSkeletonReady: true } : { mainWalkingSkeletonReady: false }), notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, traceparent, workerTraceMessages: workerTraceMessages.size })}\n`);
   } finally {
     controller.abort();
     await running;

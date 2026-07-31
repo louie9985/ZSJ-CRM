@@ -27,6 +27,7 @@ const requiredFiles = Object.freeze([
   "tests/e2e/src/api-main.test.ts",
   "tests/e2e/src/apply-e2e-migration.ts",
   "tests/e2e/src/browser-authentication-bff.ts",
+  "tests/e2e/src/browser-task-command.ts",
   "tests/e2e/src/durable-evidence.ts",
   "tests/e2e/src/durable-main-chain.ts",
   "tests/e2e/src/file-clamav-integration.mjs",
@@ -41,13 +42,7 @@ const requiredFiles = Object.freeze([
   "tests/e2e/src/walking-skeleton-rabbit.ts",
 ]);
 
-const implementationGaps = Object.freeze([
-  Object.freeze({
-    acceptanceId: "17-16",
-    evidence: Object.freeze(["tests/e2e/src/durable-main-chain.ts", "tests/e2e/src/durable-evidence.ts", "packages/observability/src/context.test.ts"]),
-    reason: "The combined runner proves exact Trace equality between the browser/BFF session request and the durable Outbox/RabbitMQ/Worker/Inbox/Audit slice, but the authenticated browser session still does not invoke the Task completion API that starts that durable chain. The current evidence is a strict bridge, not one causal Browser-to-API-to-Worker request path.",
-  }),
-]);
+const implementationGaps = Object.freeze([]);
 
 function command(executable, args, options = {}) {
   const result = spawnSync(executable, args, {
@@ -71,7 +66,7 @@ function validateServices(output) {
 
 async function assertRepositoryEvidence(root, readText = (path) => readFile(path, "utf8")) {
   await Promise.all(requiredFiles.map((path) => readText(resolve(root, path))));
-  const [apiReadme, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver, browserAuthRunner, browserAuthBff, apiMain, apiMainTest, durableEvidence, evidenceMigration, evidenceMetadataText, mainChainRunner, mainChain, clamavDriver, composeRunner, workerMain, e2eCompose, combinedEvidence] = await Promise.all([
+  const [apiReadme, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver, browserAuthRunner, browserAuthBff, browserTaskCommand, apiMain, apiMainTest, durableEvidence, evidenceMigration, evidenceMetadataText, mainChainRunner, mainChain, clamavDriver, composeRunner, workerMain, e2eCompose, combinedEvidence] = await Promise.all([
     readText(resolve(root, "apps/api/README.md")),
     readText(resolve(root, "apps/api/src/composition-factory.ts")),
     readText(resolve(root, "contracts/asyncapi/topology.asyncapi.yaml")),
@@ -86,6 +81,7 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     readText(resolve(root, "tests/e2e/src/flowable-workflow-integration.ts")),
     readText(resolve(root, "scripts/check/run-e2e-browser-authentication.mjs")),
     readText(resolve(root, "tests/e2e/src/browser-authentication-bff.ts")),
+    readText(resolve(root, "tests/e2e/src/browser-task-command.ts")),
     readText(resolve(root, "tests/e2e/src/api-main.ts")),
     readText(resolve(root, "tests/e2e/src/api-main.test.ts")),
     readText(resolve(root, "tests/e2e/src/durable-evidence.ts")),
@@ -130,7 +126,10 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     || !browserAuthRunner.includes("Network.getAllCookies")
     || !browserAuthRunner.includes("browserTraceId")
     || !browserAuthRunner.includes("browserTraceparent")
-    || !browserAuthBff.includes("createPcBffSessionService")) {
+    || !browserAuthRunner.includes("taskCompletionAccepted")
+    || !browserAuthBff.includes("createPcBffSessionService")
+    || !browserAuthBff.includes("recordBrowserTaskCommand")
+    || !browserTaskCommand.includes("parseBrowserTaskCommand")) {
     throw new Error("e2e_environment_preflight_browser_auth_evidence_changed");
   }
   if (!apiMain.includes("createWalkingSkeletonTaskPorts")
@@ -151,7 +150,8 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     || !mainChain.includes('environment["AI_CRM_E2E_BROWSER_TRACEPARENT"]')
     || !mainChain.includes('environment["AI_CRM_E2E_FILE_REFERENCE_JSON"]')
     || !mainChainRunner.includes("AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE")
-    || !combinedEvidence.includes('status: "e2e-combined-external-evidence-passed"')
+    || !combinedEvidence.includes('status: "e2e-browser-to-worker-causal-evidence-passed"')
+    || !combinedEvidence.includes("AI_CRM_E2E_TASK_COMMAND_FILE")
     || !combinedEvidence.includes("assert.deepEqual(mainChainEvidence.fileReference, fileEvidence.cleanFileReference)")) {
     throw new Error("e2e_environment_preflight_external_evidence_bridge_changed");
   }
@@ -199,8 +199,8 @@ export async function runEnvironmentPreflight(options = {}) {
     evidenceMode: "reviewed-contract-and-composition-anchor-checks",
     implementationGaps,
     composeScope: "full-process-skeleton",
-    externalEvidenceBridge: "verified-by-combined-execution",
-    mainWalkingSkeletonReady: false,
+    externalEvidenceBridge: "verified-by-browser-api-combined-execution",
+    mainWalkingSkeletonReady: true,
     nodeMajor,
     rabbitJobChain: "real-rabbitmq-with-postgresql-stores",
     services: Object.freeze(validateServices(serviceOutput)),

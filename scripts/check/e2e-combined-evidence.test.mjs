@@ -22,8 +22,10 @@ const browserEvidence = Object.freeze({
   browserTraceId: traceId,
   browserTraceparent: traceparent,
   status: "e2e-browser-authentication-passed",
+  taskCompletionAccepted: true,
 });
 const fileEvidence = Object.freeze({ cleanFileReference: fileReference });
+const taskCommandFile = "D:\\e2e\\browser-task-command.json";
 
 describe("combined external-evidence E2E runner", () => {
   it("parses the final matching JSON object without treating surrounding logs as evidence", () => {
@@ -39,14 +41,15 @@ describe("combined external-evidence E2E runner", () => {
   });
 
   it("builds a strict external-evidence environment", () => {
-    assert.deepEqual(externalEvidenceEnvironment(browserEvidence, fileEvidence), {
+    assert.deepEqual(externalEvidenceEnvironment(browserEvidence, fileEvidence, taskCommandFile), {
       AI_CRM_E2E_BROWSER_TRACE_ID: traceId,
       AI_CRM_E2E_BROWSER_TRACEPARENT: traceparent,
       AI_CRM_E2E_FILE_REFERENCE_JSON: JSON.stringify(fileReference),
       AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE: "true",
+      AI_CRM_E2E_TASK_COMMAND_FILE: taskCommandFile,
     });
     assert.throws(
-      () => externalEvidenceEnvironment({ ...browserEvidence, browserTraceparent: `00-${"a".repeat(32)}-00f067aa0ba902b7-01` }, fileEvidence),
+      () => externalEvidenceEnvironment({ ...browserEvidence, browserTraceparent: `00-${"a".repeat(32)}-00f067aa0ba902b7-01` }, fileEvidence, taskCommandFile),
       /traceparent is invalid/u,
     );
   });
@@ -54,6 +57,7 @@ describe("combined external-evidence E2E runner", () => {
   it("runs browser, file, and durable main chain in order and injects exact evidence", async () => {
     const calls = [];
     const mainEvidence = {
+      browserTaskApiEvidence: true,
       externalEvidence: true,
       fileReference,
       status: "e2e-main-chain-durable-evidence-passed",
@@ -64,18 +68,19 @@ describe("combined external-evidence E2E runner", () => {
     const result = await executeCombinedEvidence(async (name, script, environment) => {
       calls.push({ environment, name, script });
       return `step log\n${JSON.stringify(outputs[calls.length - 1])}\n`;
-    });
+    }, taskCommandFile);
     assert.deepEqual(calls.map((call) => call.name), ["browser-auth", "file-clamav", "main-chain"]);
-    assert.deepEqual(calls[0].environment, {});
+    assert.deepEqual(calls[0].environment, { AI_CRM_E2E_TASK_COMMAND_FILE: taskCommandFile });
     assert.deepEqual(calls[1].environment, {});
-    assert.deepEqual(calls[2].environment, externalEvidenceEnvironment(browserEvidence, fileEvidence));
-    assert.equal(result.status, "e2e-combined-external-evidence-passed");
-    assert.equal(result.mainWalkingSkeletonReady, false);
+    assert.deepEqual(calls[2].environment, externalEvidenceEnvironment(browserEvidence, fileEvidence, taskCommandFile));
+    assert.equal(result.status, "e2e-browser-to-worker-causal-evidence-passed");
+    assert.equal(result.mainWalkingSkeletonReady, true);
   });
 
   it("fails closed when the durable chain changes either linked evidence value", () => {
     assert.throws(
       () => assertCombinedEvidence(browserEvidence, fileEvidence, {
+        browserTaskApiEvidence: true,
         externalEvidence: true,
         fileReference: { ...fileReference, version: 2 },
         status: "e2e-main-chain-durable-evidence-passed",
@@ -86,6 +91,7 @@ describe("combined external-evidence E2E runner", () => {
     );
     assert.throws(
       () => assertCombinedEvidence(browserEvidence, fileEvidence, {
+        browserTaskApiEvidence: true,
         externalEvidence: true,
         fileReference,
         status: "e2e-main-chain-durable-evidence-passed",

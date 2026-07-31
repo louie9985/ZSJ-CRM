@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 import {
   connectRedisSessionStore,
@@ -7,9 +8,13 @@ import {
   createPcAuthenticationHttpAdapter,
   createPcBffSessionService,
   createRedisBrowserSessionStore,
+  validateBrowserMutation,
+  type ApiComposition,
   type RedisSessionConnection,
 } from "@ai-crm/api";
 import { createOidcTokenVerifier } from "@ai-crm/platform-auth-context";
+
+import { recordBrowserTaskCommand } from "./browser-task-command.js";
 
 export interface BrowserAuthenticationBffOptions {
   readonly clientSecretFile: string;
@@ -20,12 +25,17 @@ export interface BrowserAuthenticationBffOptions {
   readonly publicOrigin: string;
   readonly redisPasswordFile: string;
   readonly redisUrl: string;
+  readonly taskCompletionCommandFile?: string;
 }
 
 export interface RunningBrowserAuthenticationBff {
   advanceClock(milliseconds: number): void;
   close(): Promise<void>;
 }
+
+type BrowserPlatformHttp = NonNullable<ApiComposition["platformHttp"]>;
+type BrowserTaskCommand = Parameters<NonNullable<BrowserPlatformHttp["tasks"]>["complete"]>[0];
+type BrowserTaskMutation = Parameters<BrowserPlatformHttp["validateTaskMutation"]>[0];
 
 export async function closeBrowserAuthenticationBffResources(
   application: Readonly<{ stop(): Promise<void> }>,
@@ -106,6 +116,51 @@ export async function startBrowserAuthenticationBff(
       cookieMaxAgeSeconds: 120,
       service,
     });
+    const traceByActor = new Map<string, string>();
+    const platformHttp: ApiComposition["platformHttp"] = options.taskCompletionCommandFile === undefined ? undefined : Object.freeze({
+      applicationRegistry: {} as BrowserPlatformHttp["applicationRegistry"],
+      authorize: async (input: Parameters<BrowserPlatformHttp["authorize"]>[0]) => {
+        if (input.permission.action !== "complete" || input.permission.resource !== "platform.task-center.task-projection" || input.traceId === undefined) {
+          throw new Error("e2e_browser_task_authorization_denied");
+        }
+        const principal = await service.resolvePrincipal(input.credential);
+        const subject = principal.authenticationSubject;
+        const actorId = `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
+        if (traceByActor.has(actorId)) throw new Error("e2e_browser_task_request_concurrent");
+        traceByActor.set(actorId, input.traceId);
+        return Object.freeze({
+          decision: Object.freeze({ allowed: true, decisionId: "decision.e2e-browser-task-complete", evaluatedAt: input.at, policyVersion: "e2e-browser-task-v1", reason: "allowed" }),
+          principal,
+          workforce: Object.freeze({
+            assignments: Object.freeze([{ assignmentId: "assignment.synthetic", employmentId: "employment.synthetic", organizationUnitId: "unit.synthetic", positionId: "position.synthetic" }]),
+            employmentIds: Object.freeze(["employment.synthetic"]),
+            resolvedAt: input.at,
+            subject,
+            workforcePersonId: "person.synthetic",
+          }),
+        });
+      },
+      fileCenter: {} as BrowserPlatformHttp["fileCenter"],
+      forms: {} as BrowserPlatformHttp["forms"],
+      tasks: Object.freeze({
+        complete: async (command: BrowserTaskCommand) => {
+          const traceId = traceByActor.get(command.actor.principalId);
+          if (traceId === undefined) throw new Error("e2e_browser_task_trace_unavailable");
+          traceByActor.delete(command.actor.principalId);
+          return recordBrowserTaskCommand(options.taskCompletionCommandFile ?? "", command, traceId);
+        },
+      }),
+      validateTaskMutation: async (input: BrowserTaskMutation) => {
+        const session = await service.sessionForMutation(input.credential);
+        validateBrowserMutation({
+          allowedOrigins: [options.publicOrigin],
+          csrfHeader: input.csrfToken,
+          csrfSessionValue: session.csrfToken,
+          origin: input.origin,
+          referer: input.referer,
+        });
+      },
+    });
     const application = createApiApplication({
       authentication,
       authenticationCallbackUrl: (pathAndQuery) => new URL(pathAndQuery, options.publicOrigin).href,
@@ -113,6 +168,7 @@ export async function startBrowserAuthenticationBff(
         { healthy: connection.isReady(), name: "redis-session-store", required: true },
       ],
       logger: { log: () => undefined },
+      ...(platformHttp === undefined ? {} : { platformHttp }),
     });
     // Docker Desktop reaches the test-only host BFF through host.docker.internal.
     await application.start(options.port, "0.0.0.0");

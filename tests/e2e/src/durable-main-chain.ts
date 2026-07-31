@@ -8,6 +8,7 @@ import { createPrismaNotificationStore } from "@ai-crm/platform-notifications";
 import { createPrismaTaskCenterStore } from "@ai-crm/platform-task-center";
 
 import { createPostgresMainChainEvidence } from "./durable-evidence.js";
+import { readBrowserTaskCommand } from "./browser-task-command.js";
 import { createMainChainIntegrationFactory, externalMainChainInputFromEnvironment, runMainChainIntegration } from "./main-chain.js";
 import { createPostgresWalkingSkeletonSource } from "./postgres-walking-skeleton-source.js";
 import { createPostgresWorkflowCommandLedger } from "./postgres-workflow-ledger.js";
@@ -33,8 +34,15 @@ const runtime = createDatabaseRuntime({
 });
 const requireExternalEvidence = process.env["AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE"] === "true";
 const externalInput = externalMainChainInputFromEnvironment(process.env, requireExternalEvidence);
+const taskCommandPath = process.env["AI_CRM_E2E_TASK_COMMAND_FILE"];
+const browserTaskCommand = taskCommandPath === undefined ? undefined : await readBrowserTaskCommand(taskCommandPath);
+if ((externalInput === undefined) !== (browserTaskCommand === undefined) ||
+  (externalInput !== undefined && browserTaskCommand !== undefined && externalInput.traceId !== browserTaskCommand.traceId)) {
+  throw new Error("e2e_durable_main_chain_browser_task_evidence_invalid");
+}
 try {
   await runMainChainIntegration(createMainChainIntegrationFactory({
+    browserTaskApiEvidence: browserTaskCommand !== undefined,
     createEventingStore: () => createPrismaEventingStore(runtime),
     createFormStore: () => createPrismaFormSchemaStore(runtime),
     createNotificationStore: () => createPrismaNotificationStore(runtime),
@@ -44,6 +52,7 @@ try {
     durable: true,
     evidence: createPostgresMainChainEvidence(runtime),
     externalEvidence: externalInput !== undefined,
+    ...(browserTaskCommand === undefined ? {} : { resolveCompletionCommand: () => browserTaskCommand }),
     ...(externalInput === undefined ? {} : {
       resolveFileReference: () => externalInput.fileReference,
       resolveTraceContext: () => Object.freeze({ traceId: externalInput.traceId, traceparent: externalInput.traceparent }),
