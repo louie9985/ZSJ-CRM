@@ -1,0 +1,70 @@
+// CHECK constraints and the partial isolations index remain governed by
+// migration 0000000003. SKIP LOCKED claims stay in the repository raw query.
+model EventingOutboxMessage {
+  messageId       String    @id @db.Uuid @map("message_id")
+  messageKind     String    @db.Text @map("message_kind")
+  messageType     String    @db.VarChar(160) @map("message_type")
+  messageVersion  Int       @map("message_version")
+  producer        String    @db.VarChar(256)
+  occurredAt      DateTime  @db.Timestamptz(6) @map("occurred_at")
+  availableAt     DateTime  @db.Timestamptz(6) @map("available_at")
+  correlationId   String    @db.Uuid @map("correlation_id")
+  causationId     String?   @db.Uuid @map("causation_id")
+  traceparent     String?   @db.VarChar(55)
+  tracestate      String?   @db.VarChar(512)
+  payload         Json
+  payloadSha256   String    @db.VarChar(64) @map("payload_sha256")
+  attemptCount    Int       @default(0) @map("attempt_count")
+  status          String    @db.Text
+  claimToken      String?   @db.Uuid @map("claim_token")
+  claimedAt       DateTime? @db.Timestamptz(6) @map("claimed_at")
+  publishedAt     DateTime? @db.Timestamptz(6) @map("published_at")
+  isolatedAt      DateTime? @db.Timestamptz(6) @map("isolated_at")
+  lastErrorCode   String?   @db.VarChar(128) @map("last_error_code")
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([status, availableAt, createdAt], map: "outbox_dispatch_idx")
+  @@map("outbox_messages")
+  @@schema("platform_eventing")
+}
+
+model EventingInboxReceipt {
+  messageId     String   @db.Uuid @map("message_id")
+  consumer      String   @db.VarChar(128)
+  payloadSha256 String   @db.VarChar(64) @map("payload_sha256")
+  completedAt   DateTime @db.Timestamptz(6) @map("completed_at")
+
+  @@id([messageId, consumer])
+  @@map("inbox_receipts")
+  @@schema("platform_eventing")
+}
+
+model EventingJobRequest {
+  jobId          String   @id @db.Uuid @map("job_id")
+  idempotencyKey String   @unique @db.VarChar(128) @map("idempotency_key")
+  fingerprint    String   @db.VarChar(64)
+  status         String   @db.Text
+  envelope       Json
+  cancelReason   String?  @db.VarChar(512) @map("cancel_reason")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
+
+  @@map("job_requests")
+  @@schema("platform_eventing")
+}
+
+model EventingIsolation {
+  isolationId     String    @id @db.Uuid @map("isolation_id")
+  messageId       String    @db.Uuid @map("message_id")
+  consumer        String    @db.VarChar(128)
+  payloadSha256   String    @db.VarChar(64) @map("payload_sha256")
+  reasonCode      String    @db.VarChar(64) @map("reason_code")
+  attemptCount    Int       @map("attempt_count")
+  isolatedAt      DateTime  @db.Timestamptz(6) @map("isolated_at")
+  releasedAt      DateTime? @db.Timestamptz(6) @map("released_at")
+  replayMessageId String?   @db.Uuid @map("replay_message_id")
+
+  @@unique([messageId, consumer, payloadSha256, reasonCode])
+  @@map("isolations")
+  @@schema("platform_eventing")
+}

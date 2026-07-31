@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { createDatabaseRuntime, runMigrations, type DatabaseRuntime } from "@ai-crm/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { createBusinessConfigurationService, createPostgresBusinessConfigurationStore, type ParameterDefinition } from "./index.js";
+import { createBusinessConfigurationService, createPrismaBusinessConfigurationStore, type ParameterDefinition } from "./index.js";
 
 const urlFile = process.env.TEST_BUSINESS_CONFIGURATION_DATABASE_URL_FILE;
 const suite = describe.skipIf(!urlFile);
@@ -95,4 +95,4 @@ suite("PostgreSQL business configuration", () => {
 const actor = { actorId: "system.synthetic", actorType: "system" as const };
 const meta = () => ({ actor, operationId: randomUUID(), reason: "synthetic integration", traceId: "1234567890abcdef1234567890abcdef" });
 const definition = (parameterKey: string): Omit<ParameterDefinition, "definitionVersion"> => ({ allowedScopes: [{ priority: 1, scopeType: "context.synthetic" }], missingPolicy: "fail_closed", ownerModule: "platform.synthetic", parameterKey, valueSchema: { $schema: "https://json-schema.org/draft/2020-12/schema", maximum: 100, minimum: 0, type: "integer" }, valueType: "integer" });
-const service = (runtime: DatabaseRuntime) => createBusinessConfigurationService(createPostgresBusinessConfigurationStore(runtime), { authorize: vi.fn(() => Promise.resolve({ allowed: true, decisionId: randomUUID() })) }, { record: vi.fn(() => Promise.resolve()) }, { get: vi.fn(() => Promise.resolve(undefined)), invalidate: vi.fn(() => Promise.resolve()), set: vi.fn(() => Promise.resolve()) }, { clock: () => new Date("2026-07-26T00:00:00.000Z"), id: randomUUID });
+const service = (runtime: DatabaseRuntime) => createBusinessConfigurationService(createPrismaBusinessConfigurationStore(runtime), { authorize: vi.fn(() => Promise.resolve({ allowed: true, decisionId: randomUUID() })) }, { record: vi.fn(() => Promise.resolve()) }, { get: vi.fn(() => Promise.resolve(undefined)), invalidate: vi.fn(() => Promise.resolve()), set: vi.fn(() => Promise.resolve()) }, { clock: () => new Date("2026-07-26T00:00:00.000Z"), id: randomUUID });

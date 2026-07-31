@@ -28,7 +28,7 @@ const persistenceError = (error: unknown): never => {
   throw error;
 };
 
-export function createPostgresBusinessConfigurationStore(runtime: ConfigurationPersistenceRuntime): BusinessConfigurationStore {
+export function createPrismaBusinessConfigurationStore(runtime: ConfigurationPersistenceRuntime): BusinessConfigurationStore {
   const receipt = async (operationId: string, fingerprint: string): Promise<ReceiptRow | undefined> => {
     const query = await runtime.execute<ReceiptRow>("select fingerprint,result from business_configuration.operation_receipts where operation_id=$1 for update", [operationId]);
     const row = query.rows[0];
@@ -154,3 +154,6 @@ export function createPostgresBusinessConfigurationStore(runtime: ConfigurationP
     }),
   };
 }
+
+/** @deprecated Use createPrismaBusinessConfigurationStore. */
+export const createPostgresBusinessConfigurationStore = createPrismaBusinessConfigurationStore;

@@ -1,5 +1,5 @@
 export { OrganizationError, type OrganizationErrorCode } from "./errors.js";
-export { createMemoryOrganizationService, createPostgresOrganizationService } from "./factory.js";
+export { createMemoryOrganizationService, createPostgresOrganizationService, createPrismaOrganizationService } from "./factory.js";
 export type { OrganizationPersistenceResult, OrganizationPersistenceRuntime } from "./postgres-store.js";
 export type {
   ActorReference,

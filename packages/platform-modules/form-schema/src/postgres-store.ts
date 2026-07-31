@@ -17,7 +17,8 @@ const requiredRow = <T>(rows: readonly T[]): T => {
   return row;
 };
 
-export function createPostgresFormSchemaStore(runtime: FormPersistenceRuntime): FormSchemaStore {
+/** Prisma persistence adapter using the narrow runtime supplied by packages/database. */
+export function createPrismaFormSchemaStore(runtime: FormPersistenceRuntime): FormSchemaStore {
   const lock = (key: string) => runtime.execute("select pg_advisory_xact_lock(hashtextextended($1,0))", [key]);
   const receipt = async (operationId: string, fingerprint: string): Promise<ReceiptRow | undefined> => {
     const result = await runtime.execute<ReceiptRow>("select fingerprint,result from form_schema.operation_receipts where operation_id=$1 for update", [operationId]);
@@ -85,3 +86,6 @@ export function createPostgresFormSchemaStore(runtime: FormPersistenceRuntime): 
     }),
   };
 }
+
+/** Compatibility alias for existing application composition. */
+export const createPostgresFormSchemaStore = createPrismaFormSchemaStore;

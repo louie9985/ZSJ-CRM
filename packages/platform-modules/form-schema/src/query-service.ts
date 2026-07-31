@@ -1,5 +1,5 @@
 import { FormSchemaError } from "./errors.js";
-import { createPostgresFormSchemaStore } from "./postgres-store.js";
+import { createPrismaFormSchemaStore } from "./postgres-store.js";
 import type { FormPersistenceRuntime } from "./store.js";
 import type {
   FormQueryAuthorizer,
@@ -69,11 +69,11 @@ const permission = (action: "read" | "validate") => Object.freeze({
   resource: "platform.form-schema.form-release" as const,
 });
 
-export function createPostgresFormSchemaQueryService(
+export function createPrismaFormSchemaQueryService(
   runtime: FormPersistenceRuntime,
   authorizer: FormQueryAuthorizer,
 ): FormSchemaQueryService {
-  const store = createPostgresFormSchemaStore(runtime);
+  const store = createPrismaFormSchemaStore(runtime);
   const authorize = async (
     context: FormQueryContext,
     action: "read" | "validate",
@@ -133,3 +133,6 @@ export function createPostgresFormSchemaQueryService(
     },
   });
 }
+
+/** Compatibility alias for existing application composition. */
+export const createPostgresFormSchemaQueryService = createPrismaFormSchemaQueryService;

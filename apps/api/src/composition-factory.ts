@@ -5,32 +5,32 @@ import {
   createPostgresApplicationRegistryCapabilityProbe,
   createPostgresApplicationRegistryQueryService,
 } from "@ai-crm/platform-app-registry";
-import { createAuditService, createPostgresAuditCapabilityProbe, createPostgresAuditStore } from "@ai-crm/platform-audit";
+import { createAuditService, createPostgresAuditCapabilityProbe, createPrismaAuditStore } from "@ai-crm/platform-audit";
 import {
   AuthorizationUnavailableError,
   createAuthorizationService,
-  createPostgresAuthorizationPersistence,
+  createPrismaAuthorizationPersistence,
   type AuthorizationPolicyStore,
 } from "@ai-crm/platform-authorization";
 import { createOidcTokenVerifier, type TokenVerifier } from "@ai-crm/platform-auth-context";
 import {
   createPostgresFormSchemaCapabilityProbe,
-  createPostgresFormSchemaQueryService,
+  createPrismaFormSchemaQueryService,
 } from "@ai-crm/platform-form-schema";
 import {
   createNotificationCenter,
-  createPostgresNotificationStore,
+  createPrismaNotificationStore,
   type NotificationAudit,
   type NotificationAuthorization,
 } from "@ai-crm/platform-notifications";
 import {
-  createPostgresOrganizationService,
+  createPrismaOrganizationService,
   type OrganizationCommandAuthorizer,
   type OrganizationPersistenceRuntime,
 } from "@ai-crm/platform-organization";
 import {
   createFileCenterService,
-  createPostgresFileCenterStore,
+  createPrismaFileCenterStore,
   FileCenterError,
   type FileAudit,
   type FileAuthorizationRequest,
@@ -38,7 +38,7 @@ import {
   type StorageAdapter,
 } from "@ai-crm/platform-file-center";
 import {
-  createPostgresTaskCenterStore,
+  createPrismaTaskCenterStore,
   createTaskCenter,
   type TaskAudit,
   type TaskAuthorization,
@@ -428,7 +428,7 @@ export async function createProductionApiPlatformBindings(
   const activeOidc = oidc;
   try {
   const authorizationTrace = new AsyncLocalStorage<string>();
-  const authorizationPersistence = createPostgresAuthorizationPersistence(activeDatabase);
+  const authorizationPersistence = createPrismaAuthorizationPersistence(activeDatabase);
   const authorization = createAuthorizationService({
     recorder: authorizationPersistence.recorder,
     store: authorizationPersistence.store,
@@ -437,7 +437,7 @@ export async function createProductionApiPlatformBindings(
     traceId: () => authorizationTrace.getStore() ?? createTraceContext().traceId,
   });
   const audit = createAuditService(
-    createPostgresAuditStore(activeDatabase),
+    createPrismaAuditStore(activeDatabase),
     { authorize: () => Promise.reject(new Error("audit_read_authorization_unavailable")) },
     { fieldPolicies: {} },
   );
@@ -475,7 +475,7 @@ export async function createProductionApiPlatformBindings(
       });
     },
   });
-  const fileCenterStore = createPostgresFileCenterStore(activeDatabase);
+  const fileCenterStore = createPrismaFileCenterStore(activeDatabase);
   const fileCenter = createFileCenterService(
     fileCenterStore,
     fileStorage,
@@ -494,14 +494,14 @@ export async function createProductionApiPlatformBindings(
       { action: request.permission.action, resource: request.permission.resource },
     )),
   });
-  const formQueries = createPostgresFormSchemaQueryService(activeDatabase, {
+  const formQueries = createPrismaFormSchemaQueryService(activeDatabase, {
     authorize: (request) => authorizationTrace.run(request.traceId, () => authorization.check(
       request.subject,
       { action: request.permission.action, resource: request.permission.resource },
     )),
   });
-  const taskStore = createPostgresTaskCenterStore(activeDatabase);
-  const notificationStore = createPostgresNotificationStore(activeDatabase);
+  const taskStore = createPrismaTaskCenterStore(activeDatabase);
+  const notificationStore = createPrismaNotificationStore(activeDatabase);
   const queryDecisionTraces = new Map<string, string>();
   const taskAuthorization: TaskAuthorization = Object.freeze({
     authorize: async ({ actor, operation }: Parameters<TaskAuthorization["authorize"]>[0]) => {
@@ -549,7 +549,7 @@ export async function createProductionApiPlatformBindings(
     resolver: { resolve: () => Promise.reject(new Error("notification_recipient_resolver_unavailable")) },
     store: notificationStore,
   });
-  const organization = createPostgresOrganizationService(
+  const organization = createPrismaOrganizationService(
     organizationRuntime(activeDatabase),
     failClosedOrganizationAuthorizer,
   );

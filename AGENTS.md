@@ -31,8 +31,8 @@ For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.
 - Domain modules may depend on `platform-sdk` and contracts. They must not depend directly on Keycloak, Flowable, RabbitMQ, Redis, or storage vendors.
 - No module may query another module's tables directly.
 - No deep imports across module boundaries. Import only through each package's public entry point.
-- PostgreSQL data is partitioned by module-owned schemas and repositories. Database row types, Drizzle schema objects, query builders, and transaction handles are not public module contracts.
-- Production schema changes use reviewed, versioned Drizzle SQL migrations. Application startup and deployment must not use automatic schema synchronization or `drizzle-kit push`.
+- PostgreSQL data is partitioned by module-owned schemas and repositories. Database row types, Prisma generated models/inputs, query arguments, raw queries, and transaction clients are not public module contracts.
+- Production schema changes use reviewed, versioned Prisma migration SQL. Application startup and deployment must not use automatic schema synchronization or `prisma db push`; already-applied historical SQL migrations remain immutable.
 - HTTP and event contracts are changed before implementations.
 - Source OpenAPI files are split by module. The bundled OpenAPI document is generated and must not be edited manually.
 - Domain events are transport-neutral. RabbitMQ topology and private worker job payloads belong in `contracts/asyncapi/` and `contracts/jobs/`, not `contracts/events/`.

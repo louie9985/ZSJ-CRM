@@ -9,10 +9,10 @@ import {
 import {
   createEventingCore,
   createOutboxPublisher,
-  createPostgresEventingStore,
+  createPrismaEventingStore,
   createRabbitConfirmTransport,
 } from "@ai-crm/platform-eventing-outbox";
-import { createPostgresTaskCenterStore } from "@ai-crm/platform-task-center";
+import { createPrismaTaskCenterStore } from "@ai-crm/platform-task-center";
 import {
   createAmqplibPublisherAdapter,
   createAmqplibConsumerAdapter,
@@ -180,9 +180,9 @@ export async function createProductionWorkerResources(
   if (startupAborted(signal)) throw new Error("worker_start_cancelled");
   if (!configuration.taskProjectionConsumerEnabled) throw new Error("worker_task_projection_activation_required");
   const database = dependencies.createDatabase(configuration.database);
-  const eventingStore = createPostgresEventingStore(database);
+  const eventingStore = createPrismaEventingStore(database);
   const eventing = createEventingCore(eventingStore);
-  const taskStore = createPostgresTaskCenterStore(database);
+  const taskStore = createPrismaTaskCenterStore(database);
   const runtimeRoleProbe = dependencies.createRuntimeRoleProbe(database);
   let publisher: RabbitPublisherAdapter | undefined;
   let consumer: AbortableRabbitConsumerAdapter | undefined;

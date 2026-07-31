@@ -1,0 +1,57 @@
+// CHECK/FK constraints and immutable-fact triggers remain governed by
+// migration 0000000012. Atomic publication stays in the repository.
+model AuthorizationPolicyVersion {
+  version         String   @id @db.VarChar(128)
+  contractVersion String   @db.VarChar(64) @map("contract_version")
+  contentDigest   String   @db.Char(64) @map("content_digest")
+  snapshot        Json
+  createdAt       DateTime @db.Timestamptz(6) @map("created_at")
+
+  @@unique([version, contentDigest])
+  @@map("policy_versions")
+  @@schema("authorization_core")
+}
+
+model AuthorizationPolicyPublication {
+  publicationId        String   @id @db.Uuid @map("publication_id")
+  fingerprint          String   @db.Char(64)
+  policyVersion        String   @db.VarChar(128) @map("policy_version")
+  contentDigest        String   @db.Char(64) @map("content_digest")
+  publishedAt          DateTime @db.Timestamptz(6) @map("published_at")
+  previousPolicyVersion String? @db.VarChar(128) @map("previous_policy_version")
+  result               Json
+
+  @@unique([publicationId, policyVersion, contentDigest])
+  @@map("policy_publications")
+  @@schema("authorization_core")
+}
+
+model AuthorizationCurrentPolicy {
+  singleton     Boolean  @id @default(true)
+  version       String   @db.VarChar(128)
+  contentDigest String   @db.Char(64) @map("content_digest")
+  publicationId String   @db.Uuid @map("publication_id")
+  updatedAt     DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("current_policy")
+  @@schema("authorization_core")
+}
+
+model AuthorizationDecisionRecord {
+  decisionId           String   @id @db.Uuid @map("decision_id")
+  recordDigest         String   @db.Char(64) @map("record_digest")
+  evaluatedAt          DateTime @db.Timestamptz(6) @map("evaluated_at")
+  operation            String   @db.VarChar(32)
+  resource             String   @db.VarChar(128)
+  action               String   @db.VarChar(64)
+  permissionCode       String   @db.VarChar(193) @map("permission_code")
+  allowed              Boolean
+  reason               String   @db.VarChar(32)
+  policyVersion        String   @db.VarChar(128) @map("policy_version")
+  workforcePersonId    String?  @db.Uuid @map("workforce_person_id")
+  selectedAssignmentId String?  @db.Uuid @map("selected_assignment_id")
+  traceId              String   @db.Char(32) @map("trace_id")
+
+  @@map("decision_records")
+  @@schema("authorization_core")
+}

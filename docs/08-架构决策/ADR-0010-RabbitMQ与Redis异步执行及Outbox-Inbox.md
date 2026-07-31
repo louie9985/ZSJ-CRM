@@ -126,7 +126,7 @@ Publisher 在“RabbitMQ 已接收但数据库尚未标记完成”时崩溃会�
 
 ## 后续决策
 
-- 数据库、ORM、迁移和应用数据库内的 Outbox/Inbox 所有权已由 ADR-0011 确认。
+- 数据库、ORM、迁移和应用数据库内的 Outbox/Inbox 所有权当前由 ADR-0028 及 ADR-0011 中未被替代的治理约束共同确认。
 - RabbitMQ 与 Redis 的版本、客户端库、部署拓扑、高可用、备份和容量基线。
 - 一次性延迟采用 RabbitMQ 插件还是 `TTL + DLX`。
 - 通用调度入口、运行策略 Schema、死信管理和人工重放授权契约。

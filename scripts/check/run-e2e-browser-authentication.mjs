@@ -5,7 +5,6 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -279,9 +278,9 @@ try {
   publicOrigin = `http://localhost:${String(edgePort)}`;
   issuer = `http://localhost:${String(keycloakPort)}/realms/ai-crm-dev`;
   project = `ai-crm-test-e2e-browser-auth-${randomUUID().slice(0, 8)}`;
-  secretDirectory = await mkdtemp(resolve(tmpdir(), "ai-crm-e2e-browser-auth-secrets-"));
-  chromeProfile = await mkdtemp(resolve(tmpdir(), "ai-crm-e2e-browser-auth-chrome-"));
-  harnessBuildDirectory = await mkdtemp(resolve(tmpdir(), "ai-crm-e2e-browser-auth-harness-"));
+  secretDirectory = await mkdtemp(resolve("tests/e2e/.ai-crm-e2e-browser-auth-secrets-"));
+  chromeProfile = await mkdtemp(resolve("tests/e2e/.ai-crm-e2e-browser-auth-chrome-"));
+  harnessBuildDirectory = await mkdtemp(resolve("tests/e2e/.ai-crm-e2e-browser-auth-harness-"));
   chromePort = await availablePort();
 
   environment = {

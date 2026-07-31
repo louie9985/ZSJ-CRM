@@ -7,6 +7,7 @@ node_modules/
 dist/
 build/
 coverage/
+packages/database/src/generated/prisma/
 playwright-report/
 test-results/
 

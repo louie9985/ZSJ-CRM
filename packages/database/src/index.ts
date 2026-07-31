@@ -1,6 +1,12 @@
 export const packageId = "@ai-crm/database" as const;
 export { validateDatabaseConfig, type DatabaseConfig } from "./config.js";
-export { createDatabaseRuntime, type DatabaseHealth, type DatabaseQueryResult, type DatabaseRuntime } from "./runtime.js";
+export { createLegacyPostgresRuntime, PostgresRuntime, type DatabaseHealth, type DatabaseQueryResult, type DatabaseRuntime } from "./runtime.js";
+export {
+  createPrismaDatabaseRuntime as createDatabaseRuntime,
+  createPrismaDatabaseRuntime,
+  DatabasePersistenceError,
+  type PrismaPersistenceRuntime,
+} from "./prisma-runtime.js";
 export {
   createPostgresRuntimeRoleCapabilityProbe,
   createPostgresWorkerRuntimeRoleCapabilityProbe,

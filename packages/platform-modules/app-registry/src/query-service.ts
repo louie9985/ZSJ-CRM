@@ -1,5 +1,5 @@
 import { AppRegistryError } from "./errors.js";
-import { createPostgresApplicationRegistryStore } from "./postgres-store.js";
+import { createPrismaApplicationRegistryStore } from "./postgres-store.js";
 import { createApplicationRegistryService } from "./service.js";
 import type { AppRegistryPersistenceRuntime } from "./store.js";
 import type {
@@ -87,7 +87,7 @@ export function createPostgresApplicationRegistryQueryService(
   runtime: AppRegistryPersistenceRuntime,
   authorizer: RegistryQueryAuthorizer,
 ): ApplicationRegistryQueryService {
-  const store = createPostgresApplicationRegistryStore(runtime);
+  const store = createPrismaApplicationRegistryStore(runtime);
   const invoke = (rawContext: RegistryQueryContext) => {
     const context = queryContext(rawContext);
     const service = createApplicationRegistryService(store, {

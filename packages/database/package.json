@@ -3,17 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "scripts": {
-    "build": "tsc -b",
+    "prisma:generate": "node ../../scripts/prisma/compose-schema.mjs && prisma generate --config ../../prisma.config.ts",
+    "build": "pnpm prisma:generate && tsc -b",
+    "prelint": "pnpm prisma:generate",
     "lint": "eslint src --max-warnings 0",
+    "pretypecheck": "pnpm prisma:generate",
     "typecheck": "tsc -p tsconfig.json --noEmit --composite false",
+    "pretest": "pnpm prisma:generate",
     "test": "vitest run --config ../../vitest.config.ts",
     "contracts:check": "node ../../scripts/check/verify-package.mjs",
     "migrate": "node ../../scripts/migration/run.mjs"
   },
   "dependencies": {
-    "drizzle-orm": "0.45.2",
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
     "pg": "8.16.3"
   }
 }

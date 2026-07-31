@@ -15,7 +15,7 @@ const session = (row: SessionRow): UploadSession => ({ contentVersionId: row.con
 const link = (row: LinkRow): ResourceLink => ({ contentVersionId: row.content_version_id, fileId: row.file_id, linkedAt: iso(row.linked_at), linkId: row.link_id, ownerModule: row.owner_module, relationType: row.relation_type, resource: { resourceId: row.resource_id, resourceType: row.resource_type }, ...(row.unlinked_at === null ? {} : { unlinkedAt: iso(row.unlinked_at) }), version: 1 });
 const persistenceError = (error: unknown): never => { const code = String((error as { code?: unknown }).code); if (code === "23503") throw new FileCenterError("file_center_not_found", { cause: error }); if (["23505", "23514", "55000"].includes(code)) throw new FileCenterError("file_center_operation_conflict", { cause: error }); throw error; };
 
-export function createPostgresFileCenterStore(runtime: FileCenterPersistenceRuntime): FileCenterStore {
+export function createPrismaFileCenterStore(runtime: FileCenterPersistenceRuntime): FileCenterStore {
   const transaction = <T>(work: () => Promise<T>) => runtime.withTransaction(async () => { try { return await work(); } catch (error) { return persistenceError(error); } });
   const lock = (key: string) => runtime.execute("select pg_advisory_xact_lock(hashtextextended($1,0))", [key]);
   const receipt = async (operationId: string, fingerprint: string): Promise<ReceiptRow | undefined> => { const row = (await runtime.execute<ReceiptRow>("select fingerprint,result from file_center.operation_receipts where operation_id=$1 for update", [operationId])).rows[0]; if (row && row.fingerprint !== fingerprint) throw new FileCenterError("file_center_operation_conflict"); return row; };
@@ -77,3 +77,6 @@ export function createPostgresFileCenterStore(runtime: FileCenterPersistenceRunt
     }),
   };
 }
+
+/** @deprecated Use createPrismaFileCenterStore. */
+export const createPostgresFileCenterStore = createPrismaFileCenterStore;

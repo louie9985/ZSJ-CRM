@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { performance } from "node:perf_hooks";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { Client, Pool, type ClientConfig } from "pg";
 import { validateDatabaseConfig, type DatabaseConfig } from "./config.js";
 
@@ -77,7 +76,6 @@ export class PostgresRuntime implements DatabaseRuntime {
       max: valid.maxConnections,
       statement_timeout: valid.statementTimeoutMs,
     });
-    drizzle(postgresPool);
     this.#pool = postgresPool;
   }
 
@@ -229,6 +227,6 @@ function abortError(): Error {
   return new DOMException("The database operation was aborted.", "AbortError");
 }
 
-export function createDatabaseRuntime(config: DatabaseConfig): DatabaseRuntime {
+export function createLegacyPostgresRuntime(config: DatabaseConfig): DatabaseRuntime {
   return new PostgresRuntime(config);
 }

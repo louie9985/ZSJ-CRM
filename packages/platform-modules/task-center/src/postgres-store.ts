@@ -4,16 +4,11 @@ import { fingerprint } from "./validation.js";
 import type { ProjectionApplyResult, TaskCenterStore, TaskCommandClaim, TaskCommandResult, TaskLifecycleEvent, TaskPage, TaskProjection, TaskProjectionKey, TaskProjectionStatus } from "./types.js";
 
 export interface TaskCenterPersistenceRuntime {
-  readonly abortSignalSupport: true;
-  execute<Row = Record<string, unknown>>(sql: string, values?: readonly unknown[], signal?: AbortSignal): Promise<DatabaseQueryResult<Row>>;
-  withTransaction<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T>;
-}
-interface TaskCenterPersistenceRuntimeCandidate {
   readonly abortSignalSupport?: true;
+  readonly queryInterruptionSupport?: false;
   execute<Row = Record<string, unknown>>(sql: string, values?: readonly unknown[], signal?: AbortSignal): Promise<DatabaseQueryResult<Row>>;
   withTransaction<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T>;
 }
-const supportsAbortSignals=(runtime:TaskCenterPersistenceRuntimeCandidate):runtime is TaskCenterPersistenceRuntime=>runtime.abortSignalSupport===true;
 
 interface ProjectionRow { projection_id:string;source_type:string;source_task_id:string;source_version:number;status:TaskProjectionStatus;app_id:string;route_id:string;assignee_reference:string|null;candidate_scope_reference:string|null;due_at:Date|string|null;created_at:Date|string;updated_at:Date|string }
 interface CommandRow { fingerprint:string;status:"accepted"|"running";source_command_id:string|null;command_lease_token:string|null;command_lease_expires_at:Date|string|null }
@@ -22,7 +17,8 @@ const map=(row:ProjectionRow):TaskProjection=>({projectionId:row.projection_id,s
 const decodeCursor=(value:string|undefined):readonly [string|null,string|null]=>{if(value===undefined)return[null,null];try{const parsed=JSON.parse(Buffer.from(value,"base64url").toString("utf8")) as unknown;if(!Array.isArray(parsed)||parsed.length!==2||parsed.some(item=>typeof item!=="string"))throw new Error("invalid");return[parsed[0] as string,parsed[1] as string];}catch{throw new TaskCenterError("TASK_INPUT_INVALID");}};
 const encodeCursor=(sourceType:string,sourceTaskId:string):string=>Buffer.from(JSON.stringify([sourceType,sourceTaskId]),"utf8").toString("base64url");
 
-class PostgresTaskCenterStore implements TaskCenterStore {
+/** Prisma persistence adapter using parameterized raw queries for concurrency semantics. */
+class PrismaTaskCenterStore implements TaskCenterStore {
   public constructor(private readonly db:TaskCenterPersistenceRuntime){}
 
   private async execute<Row = Record<string, unknown>>(sql:string,values:readonly unknown[]|undefined,signal?:AbortSignal):Promise<DatabaseQueryResult<Row>>{
@@ -67,7 +63,7 @@ class PostgresTaskCenterStore implements TaskCenterStore {
   public async acceptCommand(input:{idempotencyKey:string;leaseToken:string;result:TaskCommandResult}):Promise<boolean>{const updated=await this.db.execute("update platform_task_center.task_commands set status='accepted',source_command_id=$3,command_lease_token=null,command_lease_expires_at=null,updated_at=now() where idempotency_key=$1 and status='running' and command_lease_token=$2",[input.idempotencyKey,input.leaseToken,input.result.sourceCommandId]);return updated.rowCount===1;}
   public async releaseCommand(input:{idempotencyKey:string;leaseToken:string}):Promise<void>{await this.db.execute("delete from platform_task_center.task_commands where idempotency_key=$1 and status='running' and command_lease_token=$2",[input.idempotencyKey,input.leaseToken]);}
 }
-export const createPostgresTaskCenterStore=(runtime:TaskCenterPersistenceRuntimeCandidate):TaskCenterStore=>{
-  if(!supportsAbortSignals(runtime))throw new TaskCenterError("TASK_STORAGE_UNAVAILABLE",{retryable:false});
-  return new PostgresTaskCenterStore(runtime);
-};
+export const createPrismaTaskCenterStore=(runtime:TaskCenterPersistenceRuntime):TaskCenterStore=>new PrismaTaskCenterStore(runtime);
+
+/** Compatibility alias for existing application composition. */
+export const createPostgresTaskCenterStore=createPrismaTaskCenterStore;

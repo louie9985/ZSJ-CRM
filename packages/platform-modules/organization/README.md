@@ -10,7 +10,7 @@ See [ADR-0008](../../../docs/08-架构决策/ADR-0008-自研有效期化人员�
 
 ## Public Boundary
 
-The package root exports transport-neutral IDs, half-open effective intervals, stable errors, the `OrganizationServiceApi`, and factories for memory or PostgreSQL composition. The PostgreSQL factory accepts a module-specific ambient-transaction persistence runtime; it never exports Drizzle tables, database rows, query builders, or transaction handles. Stores and write representations remain package-private so callers cannot bypass the service authorization boundary through the public entry point.
+The package root exports transport-neutral IDs, half-open effective intervals, stable errors, the `OrganizationServiceApi`, and factories for memory or PostgreSQL composition. The PostgreSQL factory accepts a module-specific ambient-transaction persistence runtime; it must never export Prisma Client, generated models/inputs, query arguments, database rows, raw queries, or transaction clients. Stores and write representations remain package-private so callers cannot bypass the service authorization boundary through the public entry point.
 
 `resolveWorkforceContext` requires an explicit evaluation time. It fails closed for no association, conflicting association, or no active Employment. Multiple active Assignments are returned as separate contexts; callers may request one explicit Assignment ID, but the service never selects an implicit first Assignment.
 
@@ -20,7 +20,7 @@ Every write command requires an idempotency operation ID plus actor, reason, and
 
 ## Persistence And Migration
 
-The private Drizzle Schema and PostgreSQL adapter live inside this package. Migration `0000000002_organization_effective_dated_core` is additive and creates only the `organization` schema. PostgreSQL triggers serialize and reject overlapping effective subject associations and unit placements; composite foreign keys prevent an Assignment from referencing another person's Employment or a Position from another unit.
+The package owns a private Prisma Schema source fragment and Prisma-backed adapter. Historical migration `0000000002_organization_effective_dated_core` remains immutable and creates only the `organization` schema. PostgreSQL triggers serialize and reject overlapping effective subject associations and unit placements; composite foreign keys prevent an Assignment from referencing another person's Employment or a Position from another unit.
 
 Application rollback leaves the additive schema and history in place. Recovery or repairs use a reviewed forward migration; populated organization history must not be dropped as a routine rollback.
 

@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 import { fileURLToPath } from "node:url";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "contracts/generated/**", "deploy/compose/.runtime/**"] },
+  { ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**", "**/src/generated/prisma/**", "contracts/generated/**", "deploy/compose/.runtime/**"] },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

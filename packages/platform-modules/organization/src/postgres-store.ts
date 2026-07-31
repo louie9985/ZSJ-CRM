@@ -46,7 +46,8 @@ interface IntervalRow {
   readonly effective_to: Date | string | null;
 }
 
-class PostgresOrganizationStore implements OrganizationStore {
+/** Prisma persistence adapter using the narrow runtime supplied by packages/database. */
+class PrismaOrganizationStore implements OrganizationStore {
   constructor(private readonly executor: OrganizationPersistenceRuntime) {}
 
   async commit(command: OrganizationCommit): Promise<OrganizationCommitResult> {
@@ -242,6 +243,9 @@ const position = (row: PositionRow): Position => ({ ...interval(row), organizati
 const assignment = (row: AssignmentRow): Assignment => ({ ...interval(row), assignmentId: row.assignment_id, employmentId: row.employment_id, organizationUnitId: row.organization_unit_id, positionId: row.position_id, workforcePersonId: row.workforce_person_id });
 const association = (row: AssociationRow): SubjectAssociation => ({ ...interval(row), associationId: row.association_id, issuer: row.issuer, subject: row.subject, workforcePersonId: row.workforce_person_id });
 
-export function createPostgresOrganizationStore(executor: OrganizationPersistenceRuntime): OrganizationStore {
-  return new PostgresOrganizationStore(executor);
+export function createPrismaOrganizationStore(executor: OrganizationPersistenceRuntime): OrganizationStore {
+  return new PrismaOrganizationStore(executor);
 }
+
+/** Compatibility alias for existing application composition. */
+export const createPostgresOrganizationStore = createPrismaOrganizationStore;

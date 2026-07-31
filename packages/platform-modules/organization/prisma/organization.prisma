@@ -1,0 +1,90 @@
+// CHECK constraints, composite foreign keys, overlap/cycle triggers and their
+// advisory-lock behavior remain governed by migrations 0000000002/0000000015.
+model OrganizationWorkforcePerson {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("workforce_people")
+  @@schema("organization")
+}
+
+model OrganizationEmployment {
+  employmentId      String    @id @db.Uuid @map("employment_id")
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([employmentId, workforcePersonId], map: "employments_id_person_unique")
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "employments_person_time_idx")
+  @@map("employments")
+  @@schema("organization")
+}
+
+model OrganizationUnit {
+  organizationUnitId String    @id @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@map("organization_units")
+  @@schema("organization")
+}
+
+model OrganizationUnitPlacement {
+  placementId              String    @id @db.Uuid @map("placement_id")
+  organizationUnitId       String    @db.Uuid @map("organization_unit_id")
+  parentOrganizationUnitId String?   @db.Uuid @map("parent_organization_unit_id")
+  effectiveFrom            DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo              DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([organizationUnitId, effectiveFrom, effectiveTo], map: "organization_unit_placements_time_idx")
+  @@map("organization_unit_placements")
+  @@schema("organization")
+}
+
+model OrganizationPosition {
+  positionId         String    @id @db.Uuid @map("position_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([positionId, organizationUnitId], map: "positions_id_unit_unique")
+  @@map("positions")
+  @@schema("organization")
+}
+
+model OrganizationAssignment {
+  assignmentId       String    @id @db.Uuid @map("assignment_id")
+  workforcePersonId  String    @db.Uuid @map("workforce_person_id")
+  employmentId       String    @db.Uuid @map("employment_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  positionId         String    @db.Uuid @map("position_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "assignments_person_time_idx")
+  @@map("assignments")
+  @@schema("organization")
+}
+
+model OrganizationSubjectAssociation {
+  associationId     String    @id @db.Uuid @map("association_id")
+  issuer            String    @db.Text
+  subject           String    @db.Text
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([issuer, subject, effectiveFrom, effectiveTo], map: "subject_associations_subject_time_idx")
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "subject_associations_person_time_idx")
+  @@map("subject_associations")
+  @@schema("organization")
+}
+
+model OrganizationOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("operation_receipts")
+  @@schema("organization")
+}

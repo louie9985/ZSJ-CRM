@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createDatabaseRuntime } from "./runtime.js";
+import { createLegacyPostgresRuntime } from "./runtime.js";
 
 const urlFile = process.env.TEST_DATABASE_MIGRATION_URL_FILE;
 
@@ -11,7 +11,7 @@ describe.skipIf(!urlFile)("PostgreSQL runtime cancellation", () => {
     if (!urlFile) throw new Error("TEST_DATABASE_MIGRATION_URL_FILE is required for this integration test.");
     const connectionString = (await readFile(resolve(urlFile), "utf8")).trim();
     const table = `database_abort_probe_${randomUUID().replaceAll("-", "")}`;
-    const runtime = createDatabaseRuntime({
+    const runtime = createLegacyPostgresRuntime({
       applicationName: "database_abort_integration",
       connectionString,
       connectionTimeoutMs: 5_000,

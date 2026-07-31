@@ -100,7 +100,7 @@ const publicationResult = (value: unknown, replayed: boolean): AuthorizationPoli
   };
 };
 
-class PostgresAuthorizationPolicyStore implements AuthorizationPolicyStore {
+class PrismaAuthorizationPolicyStore implements AuthorizationPolicyStore {
   public constructor(private readonly runtime: AuthorizationPersistenceRuntime) {}
   public async currentVersion(): Promise<string> {
     try {
@@ -138,7 +138,7 @@ class PostgresAuthorizationPolicyStore implements AuthorizationPolicyStore {
   }
 }
 
-class PostgresAuthorizationPolicyPublisher implements AuthorizationPolicyPublisher {
+class PrismaAuthorizationPolicyPublisher implements AuthorizationPolicyPublisher {
   public constructor(private readonly runtime: AuthorizationPersistenceRuntime) {}
   public publish(command: PublishAuthorizationPolicyCommand): Promise<AuthorizationPolicyPublication> {
     let publicationId: string; let publishedAt: string; let contractVersion: string; let snapshot: AuthorizationPolicySnapshot;
@@ -219,7 +219,7 @@ class PostgresAuthorizationPolicyPublisher implements AuthorizationPolicyPublish
   }
 }
 
-class PostgresAuthorizationDecisionRecorder implements AuthorizationDecisionRecorder {
+class PrismaAuthorizationDecisionRecorder implements AuthorizationDecisionRecorder {
   public constructor(private readonly runtime: AuthorizationPersistenceRuntime) {}
   public async record(input: AuthorizationDecisionRecord): Promise<void> {
     const decisionId = uuid(input.decisionId, "authorization_decision_conflict");
@@ -242,7 +242,7 @@ class PostgresAuthorizationDecisionRecorder implements AuthorizationDecisionReco
       if (normalized.policyVersion === UNAVAILABLE_POLICY_VERSION) {
         if (normalized.allowed || !unavailableReason) return fail("authorization_decision_conflict");
       } else {
-        await new PostgresAuthorizationPolicyStore(this.runtime).load(normalized.policyVersion);
+        await new PrismaAuthorizationPolicyStore(this.runtime).load(normalized.policyVersion);
       }
       const inserted = await this.runtime.execute<DecisionRow>(
         "insert into authorization_core.decision_records(decision_id,record_digest,evaluated_at,operation,resource,action,permission_code,allowed,reason,policy_version,workforce_person_id,selected_assignment_id,trace_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict(decision_id) do nothing returning record_digest",
@@ -260,16 +260,22 @@ class PostgresAuthorizationDecisionRecorder implements AuthorizationDecisionReco
   }
 }
 
-export interface PostgresAuthorizationPersistence {
+export interface PrismaAuthorizationPersistence {
   readonly publisher: AuthorizationPolicyPublisher;
   readonly recorder: AuthorizationDecisionRecorder;
   readonly store: AuthorizationPolicyStore;
 }
 
-export function createPostgresAuthorizationPersistence(runtime: AuthorizationPersistenceRuntime): PostgresAuthorizationPersistence {
+/** Prisma persistence adapter using parameterized raw queries for atomic publication. */
+export function createPrismaAuthorizationPersistence(runtime: AuthorizationPersistenceRuntime): PrismaAuthorizationPersistence {
   return {
-    publisher: new PostgresAuthorizationPolicyPublisher(runtime),
-    recorder: new PostgresAuthorizationDecisionRecorder(runtime),
-    store: new PostgresAuthorizationPolicyStore(runtime),
+    publisher: new PrismaAuthorizationPolicyPublisher(runtime),
+    recorder: new PrismaAuthorizationDecisionRecorder(runtime),
+    store: new PrismaAuthorizationPolicyStore(runtime),
   };
 }
+
+/** Compatibility alias for existing application composition. */
+export type PostgresAuthorizationPersistence = PrismaAuthorizationPersistence;
+/** Compatibility alias for existing application composition. */
+export const createPostgresAuthorizationPersistence = createPrismaAuthorizationPersistence;

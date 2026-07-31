@@ -1,0 +1,55 @@
+// CHECK constraints and the two partial feed indexes remain governed by
+// migration 0000000009; Prisma must not recreate or drop them.
+model NotificationTemplateRelease {
+  templateKey      String   @map("template_key") @db.VarChar(255)
+  version          Int
+  ownerReference   String   @map("owner_reference") @db.VarChar(255)
+  notificationType String   @map("notification_type") @db.VarChar(255)
+  variableSchema   Json     @map("variable_schema")
+  titleTemplate    String   @map("title_template") @db.VarChar(8000)
+  bodyTemplate     String   @map("body_template") @db.VarChar(8000)
+  contentDigest    String   @map("content_digest") @db.Char(64)
+  publishedAt      DateTime @map("published_at") @db.Timestamptz(6)
+  @@id([templateKey, version])
+  @@map("template_releases")
+  @@schema("platform_notifications")
+}
+
+model NotificationIntentRow {
+  intentId       String   @id @map("intent_id") @db.Uuid
+  producer       String   @db.VarChar(255)
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(255)
+  fingerprint    String   @db.Char(64)
+  resultJson     Json     @map("result_json")
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([producer, idempotencyKey], map: "notification_intents_producer_idempotency_key_key")
+  @@map("notification_intents")
+  @@schema("platform_notifications")
+}
+
+model InAppNotificationRow {
+  notificationId      String    @id @map("notification_id") @db.Uuid
+  intentId            String    @map("intent_id") @db.Uuid
+  principalId         String    @map("principal_id") @db.VarChar(255)
+  recipientReference  String    @map("recipient_reference") @db.VarChar(255)
+  resolutionReference String    @map("resolution_reference") @db.VarChar(255)
+  resolutionVersion   String    @map("resolution_version") @db.VarChar(255)
+  templateKey         String    @map("template_key") @db.VarChar(255)
+  templateVersion     Int       @map("template_version")
+  notificationType    String    @map("notification_type") @db.VarChar(255)
+  title               String    @db.VarChar(512)
+  body                String    @db.VarChar(8000)
+  sourceType           String    @map("source_type") @db.VarChar(255)
+  sourceId             String    @map("source_id") @db.VarChar(255)
+  deepLink             Json      @map("deep_link")
+  preferenceDecision   String    @map("preference_decision") @db.VarChar(16)
+  preferenceReason     String    @map("preference_reason") @db.VarChar(255)
+  preferenceVersion    String    @map("preference_version") @db.VarChar(255)
+  createdAt            DateTime  @map("created_at") @db.Timestamptz(6)
+  readAt               DateTime? @map("read_at") @db.Timestamptz(6)
+  archivedAt           DateTime? @map("archived_at") @db.Timestamptz(6)
+  // PostgreSQL truncates the migration's generated constraint identifier to 63 bytes.
+  @@unique([intentId, principalId, recipientReference], map: "in_app_notifications_intent_id_principal_id_recipient_reference")
+  @@map("in_app_notifications")
+  @@schema("platform_notifications")
+}

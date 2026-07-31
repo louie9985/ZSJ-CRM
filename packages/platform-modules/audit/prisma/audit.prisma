@@ -1,0 +1,35 @@
+// Append-only triggers and CHECK constraints remain governed by migration
+// 0000000005 and are intentionally not approximated in Prisma Schema.
+model AuditRecordRow {
+  auditId                 String   @id @map("audit_id") @db.Uuid
+  occurredAt              DateTime @map("occurred_at") @db.Timestamptz(6)
+  action                  String   @db.VarChar(128)
+  actorId                 String   @map("actor_id") @db.VarChar(255)
+  actorType               String   @map("actor_type") @db.VarChar(32)
+  workforcePersonId       String?  @map("workforce_person_id") @db.Uuid
+  assignmentId            String?  @map("assignment_id") @db.Uuid
+  resourceType            String   @map("resource_type") @db.VarChar(128)
+  resourceId              String   @map("resource_id") @db.VarChar(255)
+  result                  String   @db.VarChar(16)
+  reasonCode              String   @map("reason_code") @db.VarChar(128)
+  reasonDetail            String?  @map("reason_detail") @db.VarChar(500)
+  traceId                 String   @map("trace_id") @db.VarChar(32)
+  authorizationDecisionId String?  @map("authorization_decision_id") @db.Uuid
+  operationId             String   @map("operation_id") @db.Uuid
+  changes                 Json
+
+  @@index([resourceType, resourceId, occurredAt], map: "audit_records_resource_time_idx")
+  @@index([actorId, occurredAt], map: "audit_records_actor_time_idx")
+  @@map("records")
+  @@schema("audit")
+}
+
+model AuditOperationReceipt {
+  operationId String   @id @map("operation_id") @db.Uuid
+  auditId     String   @map("audit_id") @db.Uuid
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@map("operation_receipts")
+  @@schema("audit")
+}

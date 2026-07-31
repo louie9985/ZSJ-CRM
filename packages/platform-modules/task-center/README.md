@@ -19,6 +19,6 @@ Run the additive migration through the repository migration runner. Runtime star
 
 Telemetry contains operation, outcome, and duration only. Authorization denial, storage/audit failure, a source outage, and an in-progress command are explicit failures; none is reported as task completion. PostgreSQL integration tests run in an isolated Compose project with `pnpm --filter @ai-crm/platform-task-center test:integration`.
 
-The PostgreSQL store requires a persistence runtime that explicitly advertises `abortSignalSupport: true`. A timeout wrapper that only races Promises is not compatible: abort must cancel the active database operation, prevent commit, and either roll back normally or destroy the connection so it cannot be reused.
+The Prisma persistence runtime performs AbortSignal checks before and after statements and before transaction commit. It explicitly reports `queryInterruptionSupport: false`, so cancellation does not claim to interrupt an already executing PostgreSQL query; `statement_timeout` bounds that wait and an observed abort still prevents commit. The legacy PostgreSQL runtime may advertise `abortSignalSupport: true`, in which case active-query interruption is additionally verified.
 
 See [ADR-0009](../../../docs/08-架构决策/ADR-0009-Flowable审批引擎与职责分离.md) and the [module description](../../../docs/03-模块说明/统一任务中心.md).

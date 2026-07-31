@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@ai-crm/database": "workspace:*",
-    "drizzle-orm": "0.45.2",
     "pg": "8.16.3"
   }
 }

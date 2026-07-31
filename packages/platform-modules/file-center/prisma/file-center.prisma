@@ -1,0 +1,81 @@
+// CHECK constraints, composite foreign keys and immutability triggers remain
+// governed by migration 0000000010.
+model FileCenterFile {
+  fileId                  String   @id @map("file_id") @db.Uuid
+  ownerModule             String   @map("owner_module") @db.VarChar(128)
+  displayName             String   @map("display_name") @db.VarChar(255)
+  classificationReference String? @map("classification_reference") @db.VarChar(128)
+  uploadedBy              Json     @map("uploaded_by")
+  createdAt               DateTime @map("created_at") @db.Timestamptz(6)
+  @@map("files")
+  @@schema("file_center")
+}
+
+model FileCenterContentVersion {
+  contentVersionId String    @id @map("content_version_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  versionNumber    Int       @map("version_number")
+  objectHandle     String    @unique(map: "content_versions_object_handle_key") @map("object_handle") @db.VarChar(255)
+  declaredMediaType String   @map("declared_media_type") @db.VarChar(255)
+  declaredSizeBytes BigInt   @map("declared_size_bytes")
+  actualSizeBytes   BigInt?  @map("actual_size_bytes")
+  detectedMediaType String?  @map("detected_media_type") @db.VarChar(255)
+  checksumSha256    String?  @map("checksum_sha256") @db.VarChar(64)
+  status            String   @db.VarChar(32)
+  createdAt         DateTime @map("created_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  scannedAt         DateTime? @map("scanned_at") @db.Timestamptz(6)
+  scannerVersion    String?  @map("scanner_version") @db.VarChar(128)
+  @@unique([fileId, versionNumber], map: "content_versions_file_id_version_number_key")
+  @@unique([contentVersionId, fileId], map: "content_versions_content_version_id_file_id_key")
+  @@map("content_versions")
+  @@schema("file_center")
+}
+
+model FileCenterUploadSession {
+  sessionId        String    @id @map("session_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  contentVersionId String    @map("content_version_id") @db.Uuid
+  status           String    @db.VarChar(32)
+  createdAt        DateTime  @map("created_at") @db.Timestamptz(6)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@index([status, expiresAt], map: "file_center_upload_expiry_index")
+  @@map("upload_sessions")
+  @@schema("file_center")
+}
+
+model FileCenterResourceLink {
+  linkId           String    @id @map("link_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  contentVersionId String    @map("content_version_id") @db.Uuid
+  ownerModule      String    @map("owner_module") @db.VarChar(128)
+  resourceType     String    @map("resource_type") @db.VarChar(128)
+  resourceId       String    @map("resource_id") @db.VarChar(255)
+  relationType     String    @map("relation_type") @db.VarChar(128)
+  linkedAt         DateTime  @map("linked_at") @db.Timestamptz(6)
+  unlinkedAt       DateTime? @map("unlinked_at") @db.Timestamptz(6)
+  @@index([resourceType, resourceId, unlinkedAt], map: "file_center_active_resource_link_lookup")
+  @@map("resource_links")
+  @@schema("file_center")
+}
+
+model FileCenterOperationReceipt {
+  operationId String @id @map("operation_id") @db.Uuid
+  fingerprint String @db.VarChar(64)
+  result      Json
+  @@map("operation_receipts")
+  @@schema("file_center")
+}
+
+model FileCenterOutboxEvent {
+  eventId     String    @id @map("event_id") @db.Uuid
+  eventType   String    @map("event_type") @db.VarChar(80)
+  resourceId  String    @map("resource_id") @db.Uuid
+  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz(6)
+  payload     Json
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  lastError   String?   @map("last_error")
+  @@map("outbox_events")
+  @@schema("file_center")
+}

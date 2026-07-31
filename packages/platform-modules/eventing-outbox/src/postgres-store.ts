@@ -14,7 +14,8 @@ const mapOutbox = (row: OutboxRow): OutboxRecord => ({ messageId: row.message_id
 const mapJob = (row: JobRow): JobRecord => ({ jobId: row.job_id, idempotencyKey: row.idempotency_key, fingerprint: row.fingerprint, status: row.status, envelope: typeof row.envelope === "string" ? JSON.parse(row.envelope) as JobEnvelope : row.envelope, ...optional("cancelReason", row.cancel_reason) });
 const conflict = (error: unknown): never => { if ((error as { code?: string }).code === "23505") throw new EventingError("eventing_conflict"); throw error; };
 
-class PostgresEventingStore implements EventingStore {
+/** Prisma persistence adapter; SKIP LOCKED and Inbox serialization stay parameterized raw SQL. */
+class PrismaEventingStore implements EventingStore {
   constructor(private readonly db: EventingPersistenceRuntime) {}
   transaction<T>(work: () => Promise<T>): Promise<T> { return this.db.withTransaction(work); }
   withInboxTransaction<T>(messageId:string,consumer:string,work:()=>Promise<T>):Promise<T>{return this.db.withTransaction(async()=>{await this.db.execute("select pg_advisory_xact_lock(hashtextextended($1,0))",[`${messageId}:${consumer}`]);return work();});}
@@ -38,4 +39,6 @@ class PostgresEventingStore implements EventingStore {
   async reconcile(input:EventingReconciliationInput):Promise<EventingReconciliationReport>{const missingOutboxMessageIds:string[]=[];const isolatedOutboxMessageIds:string[]=[];for(const id of input.expectedOutboxMessageIds){const row=await this.getOutbox(id);if(!row)missingOutboxMessageIds.push(id);else if(row.status==="isolated")isolatedOutboxMessageIds.push(id);}const missingInbox=[];for(const expected of input.expectedInbox)if(!await this.findInboxReceipt(expected.messageId,expected.consumer))missingInbox.push(expected);return{missingOutboxMessageIds,isolatedOutboxMessageIds,missingInbox};}
 }
 
-export const createPostgresEventingStore = (runtime: EventingPersistenceRuntime): EventingStore => new PostgresEventingStore(runtime);
+export const createPrismaEventingStore = (runtime: EventingPersistenceRuntime): EventingStore => new PrismaEventingStore(runtime);
+/** Compatibility alias for existing application composition. */
+export const createPostgresEventingStore = createPrismaEventingStore;

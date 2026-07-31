@@ -1,0 +1,58 @@
+// CHECK/FK constraints and immutable-release trigger remain governed by
+// migration 0000000007. Publication serialization stays in the repository.
+model FormSchemaDraft {
+  definitionId String   @id @db.VarChar(128) @map("definition_id")
+  ownerModule  String   @db.VarChar(128) @map("owner_module")
+  revision     Int
+  jsonSchema   Json     @map("json_schema")
+  uiSchema     Json     @map("ui_schema")
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("drafts")
+  @@schema("form_schema")
+}
+
+model FormSchemaRelease {
+  definitionId   String   @db.VarChar(128) @map("definition_id")
+  releaseVersion Int      @map("release_version")
+  ownerModule    String   @db.VarChar(128) @map("owner_module")
+  contentDigest  String   @db.VarChar(64) @map("content_digest")
+  jsonSchema     Json     @map("json_schema")
+  uiSchema       Json     @map("ui_schema")
+  publishedAt    DateTime @db.Timestamptz(6) @map("published_at")
+
+  @@id([definitionId, releaseVersion])
+  @@map("releases")
+  @@schema("form_schema")
+}
+
+model FormSchemaReleaseStatus {
+  definitionId   String  @db.VarChar(128) @map("definition_id")
+  releaseVersion Int     @map("release_version")
+  active         Boolean
+
+  @@id([definitionId, releaseVersion])
+  @@map("release_status")
+  @@schema("form_schema")
+}
+
+model FormSchemaOperationReceipt {
+  operationId String @id @db.Uuid @map("operation_id")
+  fingerprint String @db.VarChar(64)
+  result      Json
+
+  @@map("operation_receipts")
+  @@schema("form_schema")
+}
+
+model FormSchemaOutboxEvent {
+  eventId     String    @id @db.Uuid @map("event_id")
+  eventType   String    @db.VarChar(64) @map("event_type")
+  payload     Json
+  occurredAt  DateTime  @db.Timestamptz(6) @map("occurred_at")
+  publishedAt DateTime? @db.Timestamptz(6) @map("published_at")
+  lastError   String?   @db.Text @map("last_error")
+
+  @@map("outbox_events")
+  @@schema("form_schema")
+}

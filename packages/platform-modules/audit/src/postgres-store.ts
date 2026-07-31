@@ -9,7 +9,8 @@ interface AuditRow {
   readonly result: AuditRecord["result"]; readonly trace_id: string; readonly workforce_person_id: string | null;
 }
 
-class PostgresAuditStore implements AuditStore {
+/** Prisma persistence adapter. Its narrow runtime is supplied by packages/database. */
+class PrismaAuditStore implements AuditStore {
   constructor(private readonly runtime: AuditPersistenceRuntime) {}
 
   async append({ fingerprint, record }: AuditAppend): Promise<{ readonly auditId: string; readonly replayed: boolean }> {
@@ -40,5 +41,9 @@ class PostgresAuditStore implements AuditStore {
 }
 
 export function createPostgresAuditStore(runtime: AuditPersistenceRuntime): AuditStore {
-  return new PostgresAuditStore(runtime);
+  return createPrismaAuditStore(runtime);
+}
+
+export function createPrismaAuditStore(runtime: AuditPersistenceRuntime): AuditStore {
+  return new PrismaAuditStore(runtime);
 }

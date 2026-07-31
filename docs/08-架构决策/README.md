@@ -14,7 +14,6 @@
 - [ADR-0008：自研有效期化人员与组织模型](./ADR-0008-自研有效期化人员与组织模型.md)
 - [ADR-0009：Flowable 审批引擎与职责分离](./ADR-0009-Flowable审批引擎与职责分离.md)
 - [ADR-0010：RabbitMQ 与 Redis 异步执行及 Outbox/Inbox](./ADR-0010-RabbitMQ与Redis异步执行及Outbox-Inbox.md)
-- [ADR-0011：PostgreSQL 与 Drizzle 数据持久化基线](./ADR-0011-PostgreSQL与Drizzle数据持久化基线.md)
 - [ADR-0012：自研文件中心与腾讯云 COS 对象存储](./ADR-0012-自研文件中心与腾讯云COS对象存储.md)
 - [ADR-0013：版本化表单与业务配置中心](./ADR-0013-版本化表单与业务配置中心.md)
 - [ADR-0014：自研通知中心与站内通知优先](./ADR-0014-自研通知中心与站内通知优先.md)
@@ -31,3 +30,8 @@
 - [ADR-0025：授权策略持久化与发布边界](./ADR-0025-授权策略持久化与发布边界.md)
 - [ADR-0026：RabbitMQ 运行策略与延迟重试边界](./ADR-0026-RabbitMQ运行策略与延迟重试边界.md)
 - [ADR-0027：Task 投影消费者首版运行策略](./ADR-0027-Task投影消费者首版运行策略.md)
+- [ADR-0028：Prisma 数据持久化基线与 Drizzle 迁移](./ADR-0028-Prisma数据持久化基线与Drizzle迁移.md)
+
+## 已替代
+
+- [ADR-0011：PostgreSQL 与 Drizzle 数据持久化基线](./ADR-0011-PostgreSQL与Drizzle数据持久化基线.md)：Drizzle 选择由 ADR-0028 替代，其 PostgreSQL、模块所有权、事务与迁移治理约束继续有效。

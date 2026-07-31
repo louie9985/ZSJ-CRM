@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { createAuditService, createPostgresAuditStore, type AuditService, type RecordAuditCommand } from "@ai-crm/platform-audit";
+import { createAuditService, createPrismaAuditStore, type AuditService, type RecordAuditCommand } from "@ai-crm/platform-audit";
 import type { FileReference } from "@ai-crm/platform-file-center";
 
 import type { E2ePostgresRuntime } from "./postgres-runtime.js";
@@ -71,7 +71,7 @@ export function auditOperationId(source: string, result: RecordAuditCommand["res
 
 export function createPostgresMainChainEvidence(runtime: E2ePostgresRuntime): MainChainEvidence {
   const audit = createAuditService(
-    createPostgresAuditStore(runtime),
+    createPrismaAuditStore(runtime),
     { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("e2e.audit.read-sensitive") }) },
     { fieldPolicies: {}, id: randomUUID },
   );

@@ -2,7 +2,8 @@ import { AppRegistryError } from "./errors.js";
 import type { ApplicationRegistryStore, AppRegistryPersistenceRuntime, RegistryCommit } from "./store.js";
 import type { RegisteredApplication, RegisteredNavigation, RegisteredRoute, RegistryAudience } from "./types.js";
 
-class PostgresApplicationRegistryStore implements ApplicationRegistryStore {
+/** Prisma persistence adapter. Its narrow runtime is supplied by packages/database. */
+class PrismaApplicationRegistryStore implements ApplicationRegistryStore {
   constructor(private readonly runtime: AppRegistryPersistenceRuntime) {}
   async commit({ fingerprint, mutation }: RegistryCommit): Promise<{ readonly replayed: boolean }> {
     return this.runtime.withTransaction(async () => {
@@ -63,4 +64,6 @@ interface NavigationRow { readonly application_id: string; readonly display_orde
 const application = (row: ApplicationRow): RegisteredApplication => ({ applicationId: row.application_id, audience: row.audience, enabled: row.enabled, permissionCode: row.permission_code });
 const route = (row: RouteRow): RegisteredRoute => ({ applicationId: row.application_id, deepLinkSources: row.deep_link_sources, enabled: row.enabled, path: row.path, permissionCode: row.permission_code, routeId: row.route_id });
 const navigation = (row: NavigationRow): RegisteredNavigation => ({ applicationId: row.application_id, enabled: row.enabled, navigationId: row.navigation_id, order: row.display_order, ...(row.parent_navigation_id === null ? {} : { parentNavigationId: row.parent_navigation_id }), routeId: row.route_id });
-export const createPostgresApplicationRegistryStore = (runtime: AppRegistryPersistenceRuntime): ApplicationRegistryStore => new PostgresApplicationRegistryStore(runtime);
+export const createPrismaApplicationRegistryStore = (runtime: AppRegistryPersistenceRuntime): ApplicationRegistryStore => new PrismaApplicationRegistryStore(runtime);
+/** @deprecated Use createPrismaApplicationRegistryStore. */
+export const createPostgresApplicationRegistryStore = createPrismaApplicationRegistryStore;

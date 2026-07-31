@@ -4,7 +4,8 @@
 - 日期：2026-07-23
 - 适用范围：公共技术底座、业务中立 Walking Skeleton、第一阶段 AI 并行开发任务拆分与合并
 - 关联验收：[第一阶段 Walking Skeleton 验收清单](../06-质量验收/第一阶段Walking-Skeleton验收清单.md)
-- 架构依据：ADR-0001～ADR-0024，以及 `docs/01-权威与基线/`、`docs/03-模块说明/` 和根 `AGENTS.md`
+- ORM 专项计划：[全项目 Prisma 重构方案与执行计划](./全项目Prisma重构方案与执行计划.md)
+- 架构依据：当前已接受 ADR（包括 ADR-0028），以及 `docs/01-权威与基线/`、`docs/03-模块说明/` 和根 `AGENTS.md`
 
 ## 1. 文档目的与使用方式
 
@@ -28,7 +29,7 @@
 - PC Web 使用 React 19、Vite、Ant Design 6 和 ProComponents。
 - PC Web 的设计与交互参照[PC 工作台 Demo 参考基线](./PC工作台Demo参考基线.md)，但不继承 Demo 的 Umi Max、Mock Store、业务模型或业务规则。
 - 内部移动端使用 Taro H5；外部端使用独立 Taro 应用输出 H5 与微信小程序。
-- 后端使用 NestJS、PostgreSQL、Drizzle、RabbitMQ、Redis、Keycloak、Flowable 和 ClamAV。
+- 后端使用 NestJS、PostgreSQL、Prisma、RabbitMQ、Redis、Keycloak、Flowable 和 ClamAV；Drizzle 运行依赖和实现已按 ADR-0028 清理。
 - 生产方向为两台腾讯云 Ubuntu CVM、自托管 Docker Compose、Nginx 入口。
 - 第一阶段只使用 Keycloak 标准登录，不启用企微或微信真实登录。
 - 第一阶段通知只实现 PC 站内通知与轮询。
@@ -50,7 +51,7 @@
 - 不得为企微、微信、短信、支付、课程平台、题库或真实模型创建伪 Adapter、DTO、Webhook、账号或 Secret。
 - 不得把测试 Fixture 提升为生产业务模型。
 - 不得让领域或平台模块直接依赖 Keycloak、Flowable、RabbitMQ、Redis、COS、Sentry 或模型供应商 SDK。
-- 不得跨模块查询表、传递 Drizzle Schema/Transaction、深层导入或共享内部异常类型。
+- 不得跨模块查询表、传递 Prisma Client、生成模型/输入、查询参数或 Transaction Client，或进行深层导入、共享内部异常类型。
 - 不得让 Flowable、任务中心、通知中心、Integration Runtime 或 AI Gateway 直接修改未来领域表。
 - 不得在没有契约和迁移评审时由多个 Agent 同时编辑同一 Schema、OpenAPI 文件或组合根。
 - 不得在第一阶段引入 Kubernetes、APISIX、Vault、Prometheus/Grafana、LiteLLM、LangChain、RAG 或向量数据库。
@@ -94,7 +95,7 @@ Keycloak 标准登录
 - `packages/config`、`packages/database`、`packages/observability`、`packages/platform-sdk`。
 - Keycloak 标准登录、PC Web BFF、H5 会话适配骨架。
 - `auth-context`、`organization`、`authorization`。
-- PostgreSQL + Drizzle + 版本化迁移。
+- PostgreSQL + Prisma + 经评审的版本化 SQL 迁移。
 - `eventing-outbox`、RabbitMQ 消费/发布、Inbox 幂等、Redis 短期协调。
 - `workflow`、Flowable Facade、BPMN 版本化。
 - `task-center`、`notifications`、`audit`、`app-registry`。
@@ -178,7 +179,7 @@ Keycloak 标准登录
 | 轨道 | 工作包 | 主要产出 | 前置依赖 |
 |---|---|---|---|
 | 基础工程 | FND-01、FND-02 | Workspace、包脚本、契约生成、边界检查 | G0 |
-| 基础设施 | INF-01、INF-02、DAT-01 | Compose、配置、Secret、观测、Drizzle | G0 |
+| 基础设施 | INF-01、INF-02、DAT-01、ORM-01～ORM-06 | Compose、配置、Secret、观测、Prisma 与历史迁移兼容 | G0；ORM 工作包依赖见专项计划 |
 | 身份授权 | IAM-01～IAM-03 | Keycloak/BFF、组织、授权 | G1 |
 | 异步流程 | ASY-01、PRC-01～PRC-03 | Outbox、Workflow、Task、Notification | G1 |
 | 通用平台 | PLT-01～PLT-03 | Audit/App Registry、Form/Config、File | G1 |
@@ -317,7 +318,7 @@ Keycloak 标准登录
 - 脱敏测试覆盖嵌套对象、数组、Cause 和循环引用。
 - Sentry 不可用不阻断请求。
 
-### DAT-01：PostgreSQL、Drizzle 与迁移
+### DAT-01：PostgreSQL、Prisma 与迁移
 
 **目标**
 
@@ -330,7 +331,8 @@ Keycloak 标准登录
 
 **产出**
 
-- Drizzle Client 和连接池。
+- Prisma Client 生命周期、连接治理和供应商中立事务边界。
+- 模块 Prisma Schema 源片段及确定性组合/生成机制。
 - 模块 Schema 命名、迁移编号和执行顺序规则。
 - Repository/Transaction 公共技术接口，但不把 Transaction Handle 暴露跨模块。
 - 迁移 Check、空库升级、已部署版本追加迁移测试。
@@ -338,7 +340,8 @@ Keycloak 标准登录
 
 **禁止**
 
-- `drizzle-kit push` 用于共享环境。
+- `prisma db push` 用于共享环境。
+- 修改或伪造已执行的历史 SQL migration 与执行记录。
 - 跨模块外键或查询其他模块表。
 - 修改已经执行的迁移。
 - 创建 CRM 业务表。
@@ -920,7 +923,7 @@ Agent 不得在任务过程中默默扩展允许路径或编码未解决假设�
 - 关键动作审计明确。
 - 幂等键、重复请求和重复消息行为明确。
 - 超时、重试、死信、取消和失败关闭明确。
-- 数据库变更使用追加式 Drizzle SQL 迁移并有恢复说明。
+- 数据库变更使用经评审的追加式 Prisma migration SQL 并有恢复说明；历史迁移保持不可变。
 - 日志、指标、Trace、健康和告警方向明确。
 - Secret 仅使用引用，不进入源码、配置字面值和测试快照。
 - 兼容旧契约、旧事件、旧 Job 或明确标记破坏性变更。
@@ -952,7 +955,7 @@ Agent 不得在任务过程中默默扩展允许路径或编码未解决假设�
 - 五个应用都成为真实 Workspace Package，构建、测试并产生独立制品。
 - Keycloak 标准登录、PC BFF 和内部主体解析链路通过。
 - Organization 和 Authorization 的允许/拒绝/失效场景通过。
-- PostgreSQL/Drizzle 迁移、事务和模块所有权检查通过。
+- PostgreSQL/Prisma 迁移、历史基线兼容、事务和模块所有权检查通过。
 - Outbox/RabbitMQ/Inbox、重试、死信和重复投递通过。
 - Flowable、Task Center 和站内 Notification 完整贯通。
 - Form、Business Configuration、File Center 和 App Registry 通过。

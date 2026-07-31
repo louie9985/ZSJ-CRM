@@ -8,6 +8,8 @@ export {
 export { createAuthorizationService } from "./engine.js";
 export {
   createPostgresAuthorizationPersistence,
+  createPrismaAuthorizationPersistence,
+  type PrismaAuthorizationPersistence,
   type PostgresAuthorizationPersistence,
 } from "./postgres-persistence.js";
 export { createProtectedAuthorizationPolicyPublisher } from "./policy-publication.js";

@@ -1,0 +1,12 @@
+// Input to scripts/prisma/compose-schema.mjs. Do not edit prisma/schema.prisma.
+generator client {
+  provider = "prisma-client"
+  output = "../packages/database/src/generated/prisma"
+  moduleFormat = "esm"
+  runtime = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas = ["public"]
+}

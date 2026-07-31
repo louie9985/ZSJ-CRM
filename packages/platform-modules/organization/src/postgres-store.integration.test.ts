@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { runMigrations } from "@ai-crm/database";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresOrganizationStore, type OrganizationPersistenceResult, type OrganizationPersistenceRuntime } from "./postgres-store.js";
+import { createPrismaOrganizationStore, type OrganizationPersistenceResult, type OrganizationPersistenceRuntime } from "./postgres-store.js";
 import { OrganizationService } from "./service.js";
 
 const urlFile = process.env.TEST_ORGANIZATION_DATABASE_URL_FILE;
@@ -36,7 +36,7 @@ suite("PostgreSQL organization store", () => {
   afterAll(async () => { await pool.end(); });
 
   it("persists an effective context, audit intent, event intent, and idempotency receipt atomically", async () => {
-    const service = new OrganizationService(createPostgresOrganizationStore(executor), allow);
+    const service = new OrganizationService(createPrismaOrganizationStore(executor), allow);
     const fixture = ids();
     await seed(service, fixture);
     const context = await service.resolveWorkforceContext(fixture.subject, fixture.at);
@@ -62,7 +62,7 @@ suite("PostgreSQL organization store", () => {
   });
 
   it("rolls back state, receipt, and audit when event intent persistence fails", async () => {
-    const service = new OrganizationService(createPostgresOrganizationStore(executor), allow);
+    const service = new OrganizationService(createPrismaOrganizationStore(executor), allow);
     const person = randomUUID();
     const operationId = randomUUID();
     executor.failNextEvent = true;
@@ -77,7 +77,7 @@ suite("PostgreSQL organization store", () => {
   });
 
   it("fails closed when concurrent commands try to associate one subject to different people", async () => {
-    const service = new OrganizationService(createPostgresOrganizationStore(executor), allow);
+    const service = new OrganizationService(createPrismaOrganizationStore(executor), allow);
     const first = randomUUID();
     const second = randomUUID();
     const at = "2027-01-01T00:00:00.000Z";
@@ -108,7 +108,7 @@ suite("PostgreSQL organization store", () => {
     await pool.query(`insert into organization.organization_unit_placements
       (placement_id, organization_unit_id, parent_organization_unit_id, effective_from) values ($1, $2, $3, $4)`,
     [randomUUID(), second, first, future]);
-    const store = createPostgresOrganizationStore(executor);
+    const store = createPrismaOrganizationStore(executor);
     await expect(store.commit({
       actor: metadata().actor,
       auditAction: "organization_unit_placement_created",

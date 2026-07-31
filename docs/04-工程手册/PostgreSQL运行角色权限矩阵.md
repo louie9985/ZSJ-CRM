@@ -2,7 +2,7 @@
 
 - 状态：CMP-DB-RUNTIME-GRANTS 待合并评审
 - 适用范围：当前生产 `apps/api` 与已审 Task 投影 Worker 组合使用的应用数据库角色
-- 架构依据：ADR-0011、ADR-0021、ADR-0023
+- 架构依据：ADR-0021、ADR-0023、ADR-0028
 
 ## 角色边界
 

@@ -29,7 +29,7 @@
 - [ ] 禁止跨模块深层导入的检查可复现失败。
 - [ ] 禁止模块读取其他模块表的架构测试存在。
 - [ ] `packages/domain-modules/` 没有投机性业务包。
-- [ ] 公共入口不导出 Drizzle Schema、Query Builder、Transaction Handle 或供应商 SDK 类型。
+- [ ] 公共入口不导出 Prisma Client、生成模型/输入、查询参数、Transaction Client、Raw Query 或供应商 SDK 类型。
 - [ ] Generated 契约制品不能手工编辑。
 - [ ] 外部 Allowlist Client 不包含内部/管理 API。
 - [ ] API 和 Worker Composition Root 不含领域规则。
@@ -73,7 +73,9 @@
 - [ ] 已部署迁移不可修改，修复通过追加迁移。
 - [ ] 应用、Keycloak 和 Flowable 数据库隔离。
 - [ ] 模块数据位于模块自有 Schema/Repository。
-- [ ] 自动 Schema Sync 和 `drizzle-kit push` 不用于共享环境。
+- [ ] 自动 Schema Sync 和 `prisma db push` 不用于共享环境。
+- [ ] 模块 Prisma Schema 源片段可确定性组合，生成物与源片段无未声明漂移。
+- [ ] 历史 SQL 迁移与 Prisma 切换后的迁移可以从空库连续重建，并可从切换前数据库基线升级。
 - [ ] 迁移失败不会被标记为成功。
 - [ ] 破坏性迁移有备份/恢复点、锁影响和前滚方案。
 - [ ] 慢查询和事务能够关联安全 Trace。

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseQueryResult } from "@ai-crm/database";
 import { describe,expect,it,vi } from "vitest";
-import { createPostgresTaskCenterStore,type TaskCenterPersistenceRuntime } from "./postgres-store.js";
+import { createPrismaTaskCenterStore,type TaskCenterPersistenceRuntime } from "./postgres-store.js";
 import type { TaskLifecycleEvent } from "./types.js";
 
 const event=():TaskLifecycleEvent=>({
@@ -15,16 +15,19 @@ const event=():TaskLifecycleEvent=>({
 });
 const result=<Row>(rows:readonly unknown[]=[]):DatabaseQueryResult<Row>=>({rowCount:rows.length,rows:rows as readonly Row[]});
 
-describe("PostgresTaskCenterStore cancellation",()=>{
-  it("uses a transport-safe composite cursor instead of PostgreSQL NUL text",async()=>{const calls:{sql:string;values:readonly unknown[]|undefined}[]=[];const rows=[{projection_id:"projection.synthetic",source_type:"workflow:synthetic",source_task_id:"task:synthetic",source_version:1,status:"open",app_id:"workbench",route_id:"task-detail",assignee_reference:null,candidate_scope_reference:null,due_at:null,created_at:"2026-07-26T00:00:00.000Z",updated_at:"2026-07-26T00:00:00.000Z"}];const runtime:TaskCenterPersistenceRuntime={abortSignalSupport:true,execute:<Row>(sql:string,values?:readonly unknown[])=>{calls.push({sql,values});return Promise.resolve(result<Row>(calls.length===1?[...rows,...rows]:rows));},withTransaction:async work=>work()};const store=createPostgresTaskCenterStore(runtime);const first=await store.list({limit:1});expect(first.nextCursor).toBeDefined();const nextCursor=first.nextCursor;if(nextCursor===undefined)throw new Error("expected next cursor");await store.list({limit:1,cursor:nextCursor});expect(calls[0]?.sql).not.toContain("chr(0)");expect(calls[1]?.values?.slice(1,3)).toEqual(["workflow:synthetic","task:synthetic"]);});
-  it("fails closed when the persistence runtime does not advertise cancellation",()=>{const runtime={execute:vi.fn(),withTransaction:vi.fn()};expect(()=>createPostgresTaskCenterStore(runtime)).toThrow();});
+describe("PrismaTaskCenterStore cancellation",()=>{
+  it("uses a transport-safe composite cursor instead of PostgreSQL NUL text",async()=>{const calls:{sql:string;values:readonly unknown[]|undefined}[]=[];const rows=[{projection_id:"projection.synthetic",source_type:"workflow:synthetic",source_task_id:"task:synthetic",source_version:1,status:"open",app_id:"workbench",route_id:"task-detail",assignee_reference:null,candidate_scope_reference:null,due_at:null,created_at:"2026-07-26T00:00:00.000Z",updated_at:"2026-07-26T00:00:00.000Z"}];const runtime:TaskCenterPersistenceRuntime={abortSignalSupport:true,execute:<Row>(sql:string,values?:readonly unknown[])=>{calls.push({sql,values});return Promise.resolve(result<Row>(calls.length===1?[...rows,...rows]:rows));},withTransaction:async work=>work()};const store=createPrismaTaskCenterStore(runtime);const first=await store.list({limit:1});expect(first.nextCursor).toBeDefined();const nextCursor=first.nextCursor;if(nextCursor===undefined)throw new Error("expected next cursor");await store.list({limit:1,cursor:nextCursor});expect(calls[0]?.sql).not.toContain("chr(0)");expect(calls[1]?.values?.slice(1,3)).toEqual(["workflow:synthetic","task:synthetic"]);});
+  it("accepts the Prisma runtime capability without claiming active-query interruption",()=>{
+    const runtime:TaskCenterPersistenceRuntime={queryInterruptionSupport:false,execute:vi.fn(),withTransaction:vi.fn()};
+    expect(()=>createPrismaTaskCenterStore(runtime)).not.toThrow();
+  });
   it("does not acquire a transaction for an already aborted apply",async()=>{
     const withTransaction=vi.fn();
-    const runtime={abortSignalSupport:true as const,execute:vi.fn(),withTransaction} satisfies TaskCenterPersistenceRuntime;
+    const runtime={queryInterruptionSupport:false as const,execute:vi.fn(),withTransaction} satisfies TaskCenterPersistenceRuntime;
     const controller=new AbortController();
     controller.abort(new Error("deadline exceeded"));
 
-    await expect(createPostgresTaskCenterStore(runtime).apply(event(),controller.signal)).rejects.toThrow("deadline exceeded");
+    await expect(createPrismaTaskCenterStore(runtime).apply(event(),controller.signal)).rejects.toThrow("deadline exceeded");
     expect(withTransaction).not.toHaveBeenCalled();
     expect(runtime.execute).not.toHaveBeenCalled();
   });
@@ -44,16 +47,16 @@ describe("PostgresTaskCenterStore cancellation",()=>{
       return{rowCount:1,rows:[]};
     };
     const transactionSignals:AbortSignal[]=[];
-    const runtime:TaskCenterPersistenceRuntime={abortSignalSupport:true,execute,withTransaction:async(work,signal)=>{if(signal)transactionSignals.push(signal);return work();}};
+    const runtime:TaskCenterPersistenceRuntime={queryInterruptionSupport:false,execute,withTransaction:async(work,signal)=>{if(signal)transactionSignals.push(signal);return work();}};
     const controller=new AbortController();
 
-    await expect(createPostgresTaskCenterStore(runtime).apply(event(),controller.signal)).resolves.toMatchObject({status:"applied"});
+    await expect(createPrismaTaskCenterStore(runtime).apply(event(),controller.signal)).resolves.toMatchObject({status:"applied"});
     expect(transactionSignals).toEqual([controller.signal]);
     expect(signals.length).toBeGreaterThan(0);
     expect(signals.every((signal)=>signal===controller.signal)).toBe(true);
   });
 
-  it("settles the cancelled statement and rolls back before release without late SQL or commit",async()=>{
+  it("uses active-query interruption only when the runtime explicitly advertises support",async()=>{
     const statements:string[]=[];
     const lifecycle:string[]=[];
     const controller=new AbortController();
@@ -82,7 +85,7 @@ describe("PostgresTaskCenterStore cancellation",()=>{
       },
     };
 
-    const pending=createPostgresTaskCenterStore(runtime).apply(event(),controller.signal);
+    const pending=createPrismaTaskCenterStore(runtime).apply(event(),controller.signal);
     await vi.waitFor(()=>{expect(statements).toHaveLength(2);});
     controller.abort(new Error("deadline exceeded"));
 

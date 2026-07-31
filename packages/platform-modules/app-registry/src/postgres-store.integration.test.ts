@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { createDatabaseRuntime, runMigrations, type DatabaseRuntime } from "@ai-crm/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPostgresApplicationRegistryCapabilityProbe, createPostgresApplicationRegistryQueryService } from "./index.js";
-import { createPostgresApplicationRegistryStore } from "./postgres-store.js";
+import { createPrismaApplicationRegistryStore } from "./postgres-store.js";
 import { createApplicationRegistryService } from "./service.js";
 
 const urlFile = process.env.TEST_APP_REGISTRY_DATABASE_URL_FILE;
@@ -25,7 +25,7 @@ suite("PostgreSQL application registry", () => {
     if (!runtime) throw new Error("Application Registry runtime is unavailable.");
     const authorization = { authorize: vi.fn(() => Promise.resolve({ allowed: true, decisionId: randomUUID() })) };
     const audit = { record: vi.fn(() => Promise.resolve()) };
-    const service = createApplicationRegistryService(createPostgresApplicationRegistryStore(runtime), authorization, audit);
+    const service = createApplicationRegistryService(createPrismaApplicationRegistryStore(runtime), authorization, audit);
     const actor = { actorId: "system.synthetic", actorType: "system" as const };
     const meta = () => ({ actor, operationId: randomUUID(), reason: "synthetic test", traceId: "1234567890abcdef1234567890abcdef" });
     const application = { applicationId: "platform.integration", audience: "internal" as const, enabled: true, permissionCode: "platform.integration:view" };
@@ -40,13 +40,13 @@ suite("PostgreSQL application registry", () => {
 
   it("keeps external queries from returning internal registrations", async () => {
     if (!runtime) throw new Error("Application Registry runtime is unavailable.");
-    const rows = await createPostgresApplicationRegistryStore(runtime).listApplications("external");
+    const rows = await createPrismaApplicationRegistryStore(runtime).listApplications("external");
     expect(rows).toEqual([]);
   });
 
   it("serializes concurrent duplicate mutations", async () => {
     if (!runtime) throw new Error("Application Registry runtime is unavailable.");
-    const store = createPostgresApplicationRegistryStore(runtime);
+    const store = createPrismaApplicationRegistryStore(runtime);
     const mutation = { actor: { actorId: "system.synthetic", actorType: "system" as const }, application: { applicationId: "platform.concurrent", audience: "internal" as const, enabled: true, permissionCode: "platform.concurrent:view" }, kind: "register_application" as const, operationId: randomUUID(), reason: "synthetic concurrency", traceId: "1234567890abcdef1234567890abcdef" };
     const { mutationFingerprint } = await import("./validation.js");
     await expect(Promise.all([store.commit({ fingerprint: mutationFingerprint(mutation), mutation }), store.commit({ fingerprint: mutationFingerprint(mutation), mutation })])).resolves.toEqual([{ replayed: false }, { replayed: true }]);

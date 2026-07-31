@@ -1,0 +1,660 @@
+// Input to scripts/prisma/compose-schema.mjs. Do not edit prisma/schema.prisma.
+generator client {
+  provider = "prisma-client"
+  output = "../packages/database/src/generated/prisma"
+  moduleFormat = "esm"
+  runtime = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas = ["app_registry", "audit", "authorization_core", "business_configuration", "file_center", "form_schema", "organization", "platform_eventing", "platform_notifications", "platform_task_center", "public"]
+}
+
+// source: packages/platform-modules/app-registry/prisma/app-registry.prisma
+// Module-owned Prisma source fragment. Database CHECK constraints and the
+// composite self/route foreign keys remain governed by migration 0000000006.
+model AppRegistryApplication {
+  applicationId String  @id @map("application_id") @db.VarChar(128)
+  audience      String  @db.VarChar(16)
+  enabled       Boolean
+  permissionCode String @map("permission_code") @db.VarChar(129)
+
+  @@map("applications")
+  @@schema("app_registry")
+}
+
+model AppRegistryRoute {
+  routeId         String   @id @map("route_id") @db.VarChar(128)
+  applicationId   String   @map("application_id") @db.VarChar(128)
+  path            String   @db.VarChar(256)
+  enabled         Boolean
+  permissionCode  String   @map("permission_code") @db.VarChar(129)
+  deepLinkSources String[] @map("deep_link_sources")
+
+  @@unique([applicationId, routeId], map: "routes_application_route_unique")
+  @@index([applicationId], map: "routes_application_idx")
+  @@map("routes")
+  @@schema("app_registry")
+}
+
+model AppRegistryNavigation {
+  navigationId       String  @id @map("navigation_id") @db.VarChar(128)
+  applicationId      String  @map("application_id") @db.VarChar(128)
+  routeId            String  @map("route_id") @db.VarChar(128)
+  parentNavigationId String? @map("parent_navigation_id") @db.VarChar(128)
+  enabled            Boolean
+  displayOrder       Int     @map("display_order")
+
+  @@unique([applicationId, navigationId], map: "navigation_application_id_unique")
+  @@index([applicationId, displayOrder], map: "navigation_application_order_idx")
+  @@map("navigation")
+  @@schema("app_registry")
+}
+
+model AppRegistryOperationReceipt {
+  operationId String   @id @map("operation_id") @db.Uuid
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@map("operation_receipts")
+  @@schema("app_registry")
+}
+
+// source: packages/platform-modules/audit/prisma/audit.prisma
+// Append-only triggers and CHECK constraints remain governed by migration
+// 0000000005 and are intentionally not approximated in Prisma Schema.
+model AuditRecordRow {
+  auditId                 String   @id @map("audit_id") @db.Uuid
+  occurredAt              DateTime @map("occurred_at") @db.Timestamptz(6)
+  action                  String   @db.VarChar(128)
+  actorId                 String   @map("actor_id") @db.VarChar(255)
+  actorType               String   @map("actor_type") @db.VarChar(32)
+  workforcePersonId       String?  @map("workforce_person_id") @db.Uuid
+  assignmentId            String?  @map("assignment_id") @db.Uuid
+  resourceType            String   @map("resource_type") @db.VarChar(128)
+  resourceId              String   @map("resource_id") @db.VarChar(255)
+  result                  String   @db.VarChar(16)
+  reasonCode              String   @map("reason_code") @db.VarChar(128)
+  reasonDetail            String?  @map("reason_detail") @db.VarChar(500)
+  traceId                 String   @map("trace_id") @db.VarChar(32)
+  authorizationDecisionId String?  @map("authorization_decision_id") @db.Uuid
+  operationId             String   @map("operation_id") @db.Uuid
+  changes                 Json
+
+  @@index([resourceType, resourceId, occurredAt], map: "audit_records_resource_time_idx")
+  @@index([actorId, occurredAt], map: "audit_records_actor_time_idx")
+  @@map("records")
+  @@schema("audit")
+}
+
+model AuditOperationReceipt {
+  operationId String   @id @map("operation_id") @db.Uuid
+  auditId     String   @map("audit_id") @db.Uuid
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@map("operation_receipts")
+  @@schema("audit")
+}
+
+// source: packages/platform-modules/authorization/prisma/authorization.prisma
+// CHECK/FK constraints and immutable-fact triggers remain governed by
+// migration 0000000012. Atomic publication stays in the repository.
+model AuthorizationPolicyVersion {
+  version         String   @id @db.VarChar(128)
+  contractVersion String   @db.VarChar(64) @map("contract_version")
+  contentDigest   String   @db.Char(64) @map("content_digest")
+  snapshot        Json
+  createdAt       DateTime @db.Timestamptz(6) @map("created_at")
+
+  @@unique([version, contentDigest])
+  @@map("policy_versions")
+  @@schema("authorization_core")
+}
+
+model AuthorizationPolicyPublication {
+  publicationId        String   @id @db.Uuid @map("publication_id")
+  fingerprint          String   @db.Char(64)
+  policyVersion        String   @db.VarChar(128) @map("policy_version")
+  contentDigest        String   @db.Char(64) @map("content_digest")
+  publishedAt          DateTime @db.Timestamptz(6) @map("published_at")
+  previousPolicyVersion String? @db.VarChar(128) @map("previous_policy_version")
+  result               Json
+
+  @@unique([publicationId, policyVersion, contentDigest])
+  @@map("policy_publications")
+  @@schema("authorization_core")
+}
+
+model AuthorizationCurrentPolicy {
+  singleton     Boolean  @id @default(true)
+  version       String   @db.VarChar(128)
+  contentDigest String   @db.Char(64) @map("content_digest")
+  publicationId String   @db.Uuid @map("publication_id")
+  updatedAt     DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("current_policy")
+  @@schema("authorization_core")
+}
+
+model AuthorizationDecisionRecord {
+  decisionId           String   @id @db.Uuid @map("decision_id")
+  recordDigest         String   @db.Char(64) @map("record_digest")
+  evaluatedAt          DateTime @db.Timestamptz(6) @map("evaluated_at")
+  operation            String   @db.VarChar(32)
+  resource             String   @db.VarChar(128)
+  action               String   @db.VarChar(64)
+  permissionCode       String   @db.VarChar(193) @map("permission_code")
+  allowed              Boolean
+  reason               String   @db.VarChar(32)
+  policyVersion        String   @db.VarChar(128) @map("policy_version")
+  workforcePersonId    String?  @db.Uuid @map("workforce_person_id")
+  selectedAssignmentId String?  @db.Uuid @map("selected_assignment_id")
+  traceId              String   @db.Char(32) @map("trace_id")
+
+  @@map("decision_records")
+  @@schema("authorization_core")
+}
+
+// source: packages/platform-modules/business-configuration/prisma/business-configuration.prisma
+// Immutability triggers, CHECK constraints and database foreign keys remain
+// governed by migration 0000000008.
+model BusinessConfigurationDictionaryDraft {
+  dictionaryId String   @id @map("dictionary_id") @db.VarChar(128)
+  ownerModule  String   @map("owner_module") @db.VarChar(128)
+  revision     Int
+  items        Json
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("dictionary_drafts")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationDictionaryRelease {
+  dictionaryId  String   @map("dictionary_id") @db.VarChar(128)
+  releaseVersion Int     @map("release_version")
+  ownerModule   String   @map("owner_module") @db.VarChar(128)
+  contentDigest String   @map("content_digest") @db.VarChar(64)
+  items         Json
+  publishedAt   DateTime @map("published_at") @db.Timestamptz(6)
+  @@id([dictionaryId, releaseVersion])
+  @@map("dictionary_releases")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationParameterDefinition {
+  parameterKey String @id @map("parameter_key") @db.VarChar(128)
+  definition   Json
+  @@map("parameter_definitions")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationParameterValue {
+  parameterKey  String   @map("parameter_key") @db.VarChar(128)
+  valueVersion  Int      @map("value_version")
+  contentDigest String   @map("content_digest") @db.VarChar(64)
+  value         Json
+  publishedAt   DateTime @map("published_at") @db.Timestamptz(6)
+  @@id([parameterKey, valueVersion])
+  @@map("parameter_values")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationParameterActivation {
+  activationId  String    @id @map("activation_id") @db.Uuid
+  parameterKey  String    @map("parameter_key") @db.VarChar(128)
+  valueVersion  Int       @map("value_version")
+  scopeType     String    @map("scope_type") @db.VarChar(128)
+  scopeReference String   @map("scope_reference") @db.VarChar(255)
+  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(6)
+  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(6)
+  @@unique([activationId, parameterKey], map: "configuration_activation_parameter_unique")
+  @@index([parameterKey, scopeType, scopeReference, effectiveFrom, effectiveTo], map: "configuration_activation_resolution_idx")
+  @@map("parameter_activations")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationActivationTermination {
+  terminationId String   @id @map("termination_id") @db.Uuid
+  activationId  String   @unique(map: "parameter_activation_terminations_activation_id_key") @map("activation_id") @db.Uuid
+  parameterKey  String   @map("parameter_key") @db.VarChar(128)
+  effectiveTo   DateTime @map("effective_to") @db.Timestamptz(6)
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  @@map("parameter_activation_terminations")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationOperationReceipt {
+  operationId String @id @map("operation_id") @db.Uuid
+  fingerprint String @db.VarChar(64)
+  result      Json
+  @@map("operation_receipts")
+  @@schema("business_configuration")
+}
+
+model BusinessConfigurationOutboxEvent {
+  eventId         String    @id @map("event_id") @db.Uuid
+  eventType       String    @map("event_type") @db.VarChar(80)
+  resourceId      String    @map("resource_id") @db.VarChar(128)
+  resourceVersion Int       @map("resource_version")
+  occurredAt      DateTime  @map("occurred_at") @db.Timestamptz(6)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error")
+  @@map("outbox_events")
+  @@schema("business_configuration")
+}
+
+// source: packages/platform-modules/eventing-outbox/prisma/eventing-outbox.prisma
+// CHECK constraints and the partial isolations index remain governed by
+// migration 0000000003. SKIP LOCKED claims stay in the repository raw query.
+model EventingOutboxMessage {
+  messageId       String    @id @db.Uuid @map("message_id")
+  messageKind     String    @db.Text @map("message_kind")
+  messageType     String    @db.VarChar(160) @map("message_type")
+  messageVersion  Int       @map("message_version")
+  producer        String    @db.VarChar(256)
+  occurredAt      DateTime  @db.Timestamptz(6) @map("occurred_at")
+  availableAt     DateTime  @db.Timestamptz(6) @map("available_at")
+  correlationId   String    @db.Uuid @map("correlation_id")
+  causationId     String?   @db.Uuid @map("causation_id")
+  traceparent     String?   @db.VarChar(55)
+  tracestate      String?   @db.VarChar(512)
+  payload         Json
+  payloadSha256   String    @db.VarChar(64) @map("payload_sha256")
+  attemptCount    Int       @default(0) @map("attempt_count")
+  status          String    @db.Text
+  claimToken      String?   @db.Uuid @map("claim_token")
+  claimedAt       DateTime? @db.Timestamptz(6) @map("claimed_at")
+  publishedAt     DateTime? @db.Timestamptz(6) @map("published_at")
+  isolatedAt      DateTime? @db.Timestamptz(6) @map("isolated_at")
+  lastErrorCode   String?   @db.VarChar(128) @map("last_error_code")
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([status, availableAt, createdAt], map: "outbox_dispatch_idx")
+  @@map("outbox_messages")
+  @@schema("platform_eventing")
+}
+
+model EventingInboxReceipt {
+  messageId     String   @db.Uuid @map("message_id")
+  consumer      String   @db.VarChar(128)
+  payloadSha256 String   @db.VarChar(64) @map("payload_sha256")
+  completedAt   DateTime @db.Timestamptz(6) @map("completed_at")
+
+  @@id([messageId, consumer])
+  @@map("inbox_receipts")
+  @@schema("platform_eventing")
+}
+
+model EventingJobRequest {
+  jobId          String   @id @db.Uuid @map("job_id")
+  idempotencyKey String   @unique @db.VarChar(128) @map("idempotency_key")
+  fingerprint    String   @db.VarChar(64)
+  status         String   @db.Text
+  envelope       Json
+  cancelReason   String?  @db.VarChar(512) @map("cancel_reason")
+  createdAt      DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt      DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
+
+  @@map("job_requests")
+  @@schema("platform_eventing")
+}
+
+model EventingIsolation {
+  isolationId     String    @id @db.Uuid @map("isolation_id")
+  messageId       String    @db.Uuid @map("message_id")
+  consumer        String    @db.VarChar(128)
+  payloadSha256   String    @db.VarChar(64) @map("payload_sha256")
+  reasonCode      String    @db.VarChar(64) @map("reason_code")
+  attemptCount    Int       @map("attempt_count")
+  isolatedAt      DateTime  @db.Timestamptz(6) @map("isolated_at")
+  releasedAt      DateTime? @db.Timestamptz(6) @map("released_at")
+  replayMessageId String?   @db.Uuid @map("replay_message_id")
+
+  @@unique([messageId, consumer, payloadSha256, reasonCode])
+  @@map("isolations")
+  @@schema("platform_eventing")
+}
+
+// source: packages/platform-modules/file-center/prisma/file-center.prisma
+// CHECK constraints, composite foreign keys and immutability triggers remain
+// governed by migration 0000000010.
+model FileCenterFile {
+  fileId                  String   @id @map("file_id") @db.Uuid
+  ownerModule             String   @map("owner_module") @db.VarChar(128)
+  displayName             String   @map("display_name") @db.VarChar(255)
+  classificationReference String? @map("classification_reference") @db.VarChar(128)
+  uploadedBy              Json     @map("uploaded_by")
+  createdAt               DateTime @map("created_at") @db.Timestamptz(6)
+  @@map("files")
+  @@schema("file_center")
+}
+
+model FileCenterContentVersion {
+  contentVersionId String    @id @map("content_version_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  versionNumber    Int       @map("version_number")
+  objectHandle     String    @unique(map: "content_versions_object_handle_key") @map("object_handle") @db.VarChar(255)
+  declaredMediaType String   @map("declared_media_type") @db.VarChar(255)
+  declaredSizeBytes BigInt   @map("declared_size_bytes")
+  actualSizeBytes   BigInt?  @map("actual_size_bytes")
+  detectedMediaType String?  @map("detected_media_type") @db.VarChar(255)
+  checksumSha256    String?  @map("checksum_sha256") @db.VarChar(64)
+  status            String   @db.VarChar(32)
+  createdAt         DateTime @map("created_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  scannedAt         DateTime? @map("scanned_at") @db.Timestamptz(6)
+  scannerVersion    String?  @map("scanner_version") @db.VarChar(128)
+  @@unique([fileId, versionNumber], map: "content_versions_file_id_version_number_key")
+  @@unique([contentVersionId, fileId], map: "content_versions_content_version_id_file_id_key")
+  @@map("content_versions")
+  @@schema("file_center")
+}
+
+model FileCenterUploadSession {
+  sessionId        String    @id @map("session_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  contentVersionId String    @map("content_version_id") @db.Uuid
+  status           String    @db.VarChar(32)
+  createdAt        DateTime  @map("created_at") @db.Timestamptz(6)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@index([status, expiresAt], map: "file_center_upload_expiry_index")
+  @@map("upload_sessions")
+  @@schema("file_center")
+}
+
+model FileCenterResourceLink {
+  linkId           String    @id @map("link_id") @db.Uuid
+  fileId           String    @map("file_id") @db.Uuid
+  contentVersionId String    @map("content_version_id") @db.Uuid
+  ownerModule      String    @map("owner_module") @db.VarChar(128)
+  resourceType     String    @map("resource_type") @db.VarChar(128)
+  resourceId       String    @map("resource_id") @db.VarChar(255)
+  relationType     String    @map("relation_type") @db.VarChar(128)
+  linkedAt         DateTime  @map("linked_at") @db.Timestamptz(6)
+  unlinkedAt       DateTime? @map("unlinked_at") @db.Timestamptz(6)
+  @@index([resourceType, resourceId, unlinkedAt], map: "file_center_active_resource_link_lookup")
+  @@map("resource_links")
+  @@schema("file_center")
+}
+
+model FileCenterOperationReceipt {
+  operationId String @id @map("operation_id") @db.Uuid
+  fingerprint String @db.VarChar(64)
+  result      Json
+  @@map("operation_receipts")
+  @@schema("file_center")
+}
+
+model FileCenterOutboxEvent {
+  eventId     String    @id @map("event_id") @db.Uuid
+  eventType   String    @map("event_type") @db.VarChar(80)
+  resourceId  String    @map("resource_id") @db.Uuid
+  occurredAt  DateTime  @map("occurred_at") @db.Timestamptz(6)
+  payload     Json
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  lastError   String?   @map("last_error")
+  @@map("outbox_events")
+  @@schema("file_center")
+}
+
+// source: packages/platform-modules/form-schema/prisma/form-schema.prisma
+// CHECK/FK constraints and immutable-release trigger remain governed by
+// migration 0000000007. Publication serialization stays in the repository.
+model FormSchemaDraft {
+  definitionId String   @id @db.VarChar(128) @map("definition_id")
+  ownerModule  String   @db.VarChar(128) @map("owner_module")
+  revision     Int
+  jsonSchema   Json     @map("json_schema")
+  uiSchema     Json     @map("ui_schema")
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("drafts")
+  @@schema("form_schema")
+}
+
+model FormSchemaRelease {
+  definitionId   String   @db.VarChar(128) @map("definition_id")
+  releaseVersion Int      @map("release_version")
+  ownerModule    String   @db.VarChar(128) @map("owner_module")
+  contentDigest  String   @db.VarChar(64) @map("content_digest")
+  jsonSchema     Json     @map("json_schema")
+  uiSchema       Json     @map("ui_schema")
+  publishedAt    DateTime @db.Timestamptz(6) @map("published_at")
+
+  @@id([definitionId, releaseVersion])
+  @@map("releases")
+  @@schema("form_schema")
+}
+
+model FormSchemaReleaseStatus {
+  definitionId   String  @db.VarChar(128) @map("definition_id")
+  releaseVersion Int     @map("release_version")
+  active         Boolean
+
+  @@id([definitionId, releaseVersion])
+  @@map("release_status")
+  @@schema("form_schema")
+}
+
+model FormSchemaOperationReceipt {
+  operationId String @id @db.Uuid @map("operation_id")
+  fingerprint String @db.VarChar(64)
+  result      Json
+
+  @@map("operation_receipts")
+  @@schema("form_schema")
+}
+
+model FormSchemaOutboxEvent {
+  eventId     String    @id @db.Uuid @map("event_id")
+  eventType   String    @db.VarChar(64) @map("event_type")
+  payload     Json
+  occurredAt  DateTime  @db.Timestamptz(6) @map("occurred_at")
+  publishedAt DateTime? @db.Timestamptz(6) @map("published_at")
+  lastError   String?   @db.Text @map("last_error")
+
+  @@map("outbox_events")
+  @@schema("form_schema")
+}
+
+// source: packages/platform-modules/notifications/prisma/notifications.prisma
+// CHECK constraints and the two partial feed indexes remain governed by
+// migration 0000000009; Prisma must not recreate or drop them.
+model NotificationTemplateRelease {
+  templateKey      String   @map("template_key") @db.VarChar(255)
+  version          Int
+  ownerReference   String   @map("owner_reference") @db.VarChar(255)
+  notificationType String   @map("notification_type") @db.VarChar(255)
+  variableSchema   Json     @map("variable_schema")
+  titleTemplate    String   @map("title_template") @db.VarChar(8000)
+  bodyTemplate     String   @map("body_template") @db.VarChar(8000)
+  contentDigest    String   @map("content_digest") @db.Char(64)
+  publishedAt      DateTime @map("published_at") @db.Timestamptz(6)
+  @@id([templateKey, version])
+  @@map("template_releases")
+  @@schema("platform_notifications")
+}
+
+model NotificationIntentRow {
+  intentId       String   @id @map("intent_id") @db.Uuid
+  producer       String   @db.VarChar(255)
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(255)
+  fingerprint    String   @db.Char(64)
+  resultJson     Json     @map("result_json")
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([producer, idempotencyKey], map: "notification_intents_producer_idempotency_key_key")
+  @@map("notification_intents")
+  @@schema("platform_notifications")
+}
+
+model InAppNotificationRow {
+  notificationId      String    @id @map("notification_id") @db.Uuid
+  intentId            String    @map("intent_id") @db.Uuid
+  principalId         String    @map("principal_id") @db.VarChar(255)
+  recipientReference  String    @map("recipient_reference") @db.VarChar(255)
+  resolutionReference String    @map("resolution_reference") @db.VarChar(255)
+  resolutionVersion   String    @map("resolution_version") @db.VarChar(255)
+  templateKey         String    @map("template_key") @db.VarChar(255)
+  templateVersion     Int       @map("template_version")
+  notificationType    String    @map("notification_type") @db.VarChar(255)
+  title               String    @db.VarChar(512)
+  body                String    @db.VarChar(8000)
+  sourceType           String    @map("source_type") @db.VarChar(255)
+  sourceId             String    @map("source_id") @db.VarChar(255)
+  deepLink             Json      @map("deep_link")
+  preferenceDecision   String    @map("preference_decision") @db.VarChar(16)
+  preferenceReason     String    @map("preference_reason") @db.VarChar(255)
+  preferenceVersion    String    @map("preference_version") @db.VarChar(255)
+  createdAt            DateTime  @map("created_at") @db.Timestamptz(6)
+  readAt               DateTime? @map("read_at") @db.Timestamptz(6)
+  archivedAt           DateTime? @map("archived_at") @db.Timestamptz(6)
+  // PostgreSQL truncates the migration's generated constraint identifier to 63 bytes.
+  @@unique([intentId, principalId, recipientReference], map: "in_app_notifications_intent_id_principal_id_recipient_reference")
+  @@map("in_app_notifications")
+  @@schema("platform_notifications")
+}
+
+// source: packages/platform-modules/organization/prisma/organization.prisma
+// CHECK constraints, composite foreign keys, overlap/cycle triggers and their
+// advisory-lock behavior remain governed by migrations 0000000002/0000000015.
+model OrganizationWorkforcePerson {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("workforce_people")
+  @@schema("organization")
+}
+
+model OrganizationEmployment {
+  employmentId      String    @id @db.Uuid @map("employment_id")
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([employmentId, workforcePersonId], map: "employments_id_person_unique")
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "employments_person_time_idx")
+  @@map("employments")
+  @@schema("organization")
+}
+
+model OrganizationUnit {
+  organizationUnitId String    @id @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@map("organization_units")
+  @@schema("organization")
+}
+
+model OrganizationUnitPlacement {
+  placementId              String    @id @db.Uuid @map("placement_id")
+  organizationUnitId       String    @db.Uuid @map("organization_unit_id")
+  parentOrganizationUnitId String?   @db.Uuid @map("parent_organization_unit_id")
+  effectiveFrom            DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo              DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([organizationUnitId, effectiveFrom, effectiveTo], map: "organization_unit_placements_time_idx")
+  @@map("organization_unit_placements")
+  @@schema("organization")
+}
+
+model OrganizationPosition {
+  positionId         String    @id @db.Uuid @map("position_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([positionId, organizationUnitId], map: "positions_id_unit_unique")
+  @@map("positions")
+  @@schema("organization")
+}
+
+model OrganizationAssignment {
+  assignmentId       String    @id @db.Uuid @map("assignment_id")
+  workforcePersonId  String    @db.Uuid @map("workforce_person_id")
+  employmentId       String    @db.Uuid @map("employment_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  positionId         String    @db.Uuid @map("position_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "assignments_person_time_idx")
+  @@map("assignments")
+  @@schema("organization")
+}
+
+model OrganizationSubjectAssociation {
+  associationId     String    @id @db.Uuid @map("association_id")
+  issuer            String    @db.Text
+  subject           String    @db.Text
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([issuer, subject, effectiveFrom, effectiveTo], map: "subject_associations_subject_time_idx")
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "subject_associations_person_time_idx")
+  @@map("subject_associations")
+  @@schema("organization")
+}
+
+model OrganizationOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("operation_receipts")
+  @@schema("organization")
+}
+
+// source: packages/platform-modules/task-center/prisma/task-center.prisma
+// CHECK constraints and monotonic projection semantics remain governed by
+// migration 0000000004 and the parameterized repository transaction.
+model TaskCenterProjection {
+  projectionId           String    @id @db.Uuid @map("projection_id")
+  sourceType             String    @db.VarChar(255) @map("source_type")
+  sourceTaskId           String    @db.VarChar(255) @map("source_task_id")
+  sourceVersion          Int       @map("source_version")
+  status                 String    @db.VarChar(16)
+  appId                  String    @db.VarChar(255) @map("app_id")
+  routeId                String    @db.VarChar(255) @map("route_id")
+  assigneeReference      String?   @db.VarChar(255) @map("assignee_reference")
+  candidateScopeReference String?  @db.VarChar(255) @map("candidate_scope_reference")
+  dueAt                  DateTime? @db.Timestamptz(6) @map("due_at")
+  createdAt              DateTime  @db.Timestamptz(6) @map("created_at")
+  updatedAt              DateTime  @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([sourceType, sourceTaskId])
+  @@index([status, sourceType, sourceTaskId], map: "task_projections_status_source_idx")
+  @@map("task_projections")
+  @@schema("platform_task_center")
+}
+
+model TaskCenterProjectionEvent {
+  eventId       String   @id @db.Uuid @map("event_id")
+  sourceType    String   @db.VarChar(255) @map("source_type")
+  sourceTaskId  String   @db.VarChar(255) @map("source_task_id")
+  sourceVersion Int      @map("source_version")
+  payloadSha256 String   @db.Char(64) @map("payload_sha256")
+  processedAt   DateTime @db.Timestamptz(6) @map("processed_at")
+
+  @@index([sourceType, sourceTaskId, sourceVersion], map: "projection_events_source_idx")
+  @@map("projection_events")
+  @@schema("platform_task_center")
+}
+
+model TaskCenterCommand {
+  idempotencyKey        String    @id @db.VarChar(255) @map("idempotency_key")
+  fingerprint           String    @db.Char(64)
+  status                String    @db.VarChar(16)
+  sourceCommandId       String?   @db.VarChar(255) @map("source_command_id")
+  commandLeaseToken     String?   @db.Uuid @map("command_lease_token")
+  commandLeaseExpiresAt DateTime? @db.Timestamptz(6) @map("command_lease_expires_at")
+  createdAt             DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+
+  @@map("task_commands")
+  @@schema("platform_task_center")
+}
+

@@ -2,7 +2,7 @@
 
 Owns versioned business dictionaries and typed parameters, including definitions, immutable releases, effective-dated activation, historical resolution, audit references, and cache propagation.
 
-It reuses PostgreSQL, Drizzle, Ajv, Redis, and RabbitMQ. It does not store deployment configuration or secrets, execute arbitrary expressions, or replace domain state machines, permissions, workflow routes, and algorithms.
+Its persistence stack uses PostgreSQL with a module-owned Prisma Schema fragment, while reviewed migration SQL remains authoritative for checks, triggers, and other PostgreSQL-specific objects. It also reuses Ajv, Redis, and RabbitMQ. It does not store deployment configuration or secrets, execute arbitrary expressions, or replace domain state machines, permissions, workflow routes, and algorithms.
 
 Consumers receive resolved values together with definition, release, scope, and activation versions. PostgreSQL remains authoritative; Redis is a replaceable cache.
 
