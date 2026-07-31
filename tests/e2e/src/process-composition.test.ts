@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { createE2eProcessBindings } from "./api-main.js";
 import { createMainChainIntegrationFactory } from "./main-chain.js";
-import { createE2eProcessAnchorHandler } from "./worker-main.js";
+import { createE2eProcessAnchorHandler, createE2eTaskProjectionWorkerHandler } from "./worker-main.js";
 
 describe("isolated E2E process composition", () => {
   it("starts from complete API bindings while leaving unfinished capabilities unavailable", async () => {
@@ -24,6 +24,16 @@ describe("isolated E2E process composition", () => {
     expect(settled).toBe(false);
     controller.abort();
     await expect(running).resolves.toBeUndefined();
+  });
+
+  it("installs the Task Projection Consumer in the isolated Worker composition", async () => {
+    const handler = createE2eTaskProjectionWorkerHandler();
+    const controller = new AbortController();
+    await expect(handler.ready(controller.signal)).resolves.toBeUndefined();
+    const running = Promise.resolve(handler.run(controller.signal));
+    controller.abort();
+    await expect(running).resolves.toBeUndefined();
+    await expect(handler.stop?.()).resolves.toBeUndefined();
   });
 
   it("exposes explicit test-only replacement seams for the source and Workflow ledger", () => {
