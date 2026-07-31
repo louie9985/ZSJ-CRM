@@ -12,7 +12,7 @@ Fresh local verification:
 - `pnpm e2e:rabbit-jobs:integration`: passed with `status=e2e-rabbit-jobs-passed`, `inboxDuplicates=2`, `notifications=1`, and `sourceVersion=2`. Two test-only Jobs traveled through real TLS RabbitMQ, Outbox Confirm publication, Worker consumption/manual ACK, and Eventing Inbox duplicate recognition; the isolated container, network, Volume, and temporary TLS/account directory were then removed.
 - `pnpm e2e:flowable-workflow:integration`: passed with `status=e2e-flowable-workflow-passed`, completed real Flowable task and process instance, `sourceAuthorizations=1`, `sourceVersion=2`, and `workflowCompletionEvents=1`. The isolated PostgreSQL/Flowable containers, network, Volume, and temporary Secret directory were then removed.
 - `pnpm compose:test:integration`: passed; all seven dependency services became healthy, then the isolated containers, networks, Volumes, and temporary Secret directory were removed.
-- `node tests/e2e/environment-preflight.mjs`: passed with `composeScope=full-process-skeleton`, the exact 10-service set, `contractBlockers=[]`, five implementation gaps, and `mainWalkingSkeletonReady=false`.
+- `node tests/e2e/environment-preflight.mjs`: passed with `composeScope=full-process-skeleton`, the exact 10-service set, `contractBlockers=[]`, four remaining implementation gaps, and `mainWalkingSkeletonReady=false`.
 - `node --test tests/e2e/environment-preflight.test.mjs`: 2/2 passed.
 - `pnpm auth:test:integration`: 181/181 passed, including the real Keycloak/Redis integration paths.
 - `pnpm db:test:integration`: 40/40 passed.
@@ -24,7 +24,7 @@ Fresh local verification:
 - `pnpm --filter @ai-crm/e2e test`: 2/2 passed. The synthetic in-process slice resolved Organization context, loaded App Registry and stable task/notification deep links, published and validated a Form release, deduplicated a Task projection and Notification Intent, denied unauthorized Task detail access, and collected evidence through the four injectable audit ports.
 - `pnpm check`: 145/145 Turbo tasks passed after `@ai-crm/e2e` became a workspace package.
 
-The combined main slice now uses PostgreSQL-backed Workflow Ledger, synthetic authoritative source, Eventing Outbox/Inbox, and Notification stores with real Flowable and TLS RabbitMQ. File Center and real ClamAV are proven in a separate isolated slice. These tests still run from a test orchestrator rather than the full API/Worker process composition, do not start an authenticated browser, do not install Task projection in the E2E Worker, and do not connect file evidence or full Trace/Audit correlation to task completion. This evidence therefore keeps `mainWalkingSkeletonReady=false` and does not by itself sign off acceptance section 17.
+The combined main slice now uses PostgreSQL-backed Workflow Ledger, synthetic authoritative source, Eventing Outbox/Inbox, and Notification stores with real Flowable and TLS RabbitMQ. File Center and real ClamAV are proven in a separate isolated slice. These tests still run from a test orchestrator rather than the full API/Worker process composition, do not start an authenticated browser, and do not connect file evidence or full Trace/Audit correlation to task completion. This evidence therefore keeps `mainWalkingSkeletonReady=false` and does not by itself sign off acceptance section 17.
 
 ## Executable evidence
 
@@ -46,7 +46,6 @@ The combined main slice now uses PostgreSQL-backed Workflow Ledger, synthetic au
 |---|---|---|
 | `09-05` | Task source type `tests.walking-skeleton` has one exact formal completion command. | The durable source route passes, but composed E2E API Task bindings still fail closed and expose no authenticated completion endpoint. |
 | `17-01` | Existing Keycloak/BFF contracts and synthetic authentication fixtures. | No browser signs in through the full E2E Nginx, Workbench, BFF and Keycloak path. |
-| `17-06` | Reviewed Task projection lifecycle event and Worker policy. | The Task projection consumer is not installed in the full isolated E2E Worker process. |
 | `17-09` | File Center contracts and the real ClamAV conformance slice. | Form submission and stable FileReference evidence are not connected to the durable task-completion slice. |
 | `17-16` | W3C propagation and safe telemetry contracts. | Browser-to-Worker Trace propagation and durable Audit correlation are not yet composed. |
 

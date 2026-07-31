@@ -42,11 +42,6 @@ const implementationGaps = Object.freeze([
     reason: "Keycloak/BFF integration and the ten-service process shell pass separately; no browser signs in through the composed E2E edge and session path.",
   }),
   Object.freeze({
-    acceptanceId: "17-06",
-    evidence: Object.freeze(["apps/worker/src/task-projection-composition.ts", "deploy/compose/compose.e2e.yml"]),
-    reason: "Task projection behavior is tested independently, but its reviewed consumer is not installed in the full isolated E2E Worker process.",
-  }),
-  Object.freeze({
     acceptanceId: "17-09",
     evidence: Object.freeze(["tests/e2e/src/file-clamav-integration.mjs", "tests/e2e/src/main-chain.ts"]),
     reason: "File Center and real ClamAV pass as an isolated chain, but form submission, FileReference, and task completion do not yet carry that evidence through the durable main slice.",
