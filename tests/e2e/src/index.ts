@@ -1,5 +1,7 @@
 export const packageId = "@ai-crm/e2e" as const;
 export { createE2eProcessBindings, e2eApiBindingFactory } from "./api-main.js";
+export { browserRegistryEvidence, createBrowserApplicationRegistryFixture, type BrowserApplicationRegistryFixture } from "./browser-application-registry.js";
+export { assertDurableAuditCorrelationEvidence, type DurableAuditCorrelationEvidence } from "./durable-audit-evidence.js";
 export { createE2eProcessAnchorHandler } from "./worker-main.js";
 export { createWalkingSkeletonSourceCommandMessageHandler, walkingSkeletonSourceJobType } from "./walking-skeleton-source-handler.js";
 export { createWalkingSkeletonNotificationMessageHandler, walkingSkeletonNotificationJobType, type WalkingSkeletonNotificationActorResolver } from "./walking-skeleton-notification-handler.js";
@@ -19,6 +21,24 @@ export { createMainChainIntegrationFactory, runMainChainIntegration, type MainCh
 export { createPostgresWalkingSkeletonSource } from "./postgres-walking-skeleton-source.js";
 export { createPostgresWorkflowCommandLedger } from "./postgres-workflow-ledger.js";
 export type { E2ePostgresRuntime } from "./postgres-runtime.js";
+export {
+  createWalkingSkeletonFormSubmissionHttpAdapter,
+  type WalkingSkeletonFormSubmissionHttpAdapter,
+  type WalkingSkeletonFormSubmissionHttpAdapterOptions,
+  type WalkingSkeletonFormSubmissionHttpRequest,
+  type WalkingSkeletonFormSubmissionHttpResponse,
+} from "./walking-skeleton-form-submission-http.js";
+export { createWalkingSkeletonFormSubmissionPostgresStore } from "./walking-skeleton-form-submission-postgres-store.js";
+export {
+  createWalkingSkeletonFormSubmissionService,
+  WalkingSkeletonFormSubmissionError,
+  type WalkingSkeletonFormSubmissionAuthorizer,
+  type WalkingSkeletonFormSubmissionCommand,
+  type WalkingSkeletonFormSubmissionDependencyStage,
+  type WalkingSkeletonFormSubmissionReceipt,
+  type WalkingSkeletonFormSubmissionStore,
+  type WalkingSkeletonFormSubmissionStoreInput,
+} from "./walking-skeleton-form-submission.js";
 export {
   createWalkingSkeletonSource,
   createWalkingSkeletonTaskPorts,

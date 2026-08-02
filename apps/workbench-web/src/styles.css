@@ -172,6 +172,16 @@ body {
   flex: 1;
 }
 
+.synthetic-form-evidence {
+  max-width: 720px;
+  margin-top: 16px;
+}
+
+.synthetic-form-evidence .ant-descriptions,
+.synthetic-form-evidence .ant-alert {
+  margin-top: 16px;
+}
+
 .full-state {
   min-height: 100vh;
 }

@@ -80,13 +80,33 @@ export interface ApiPlatformHttpComposition {
   readonly authorize: ApiPlatformComposition["authorize"];
   readonly fileCenter: FileCenterHttpAdapter;
   readonly forms: FormSchemaHttpAdapter;
-  readonly tasks?: Pick<TaskCenter, "complete">;
-  readonly validateTaskMutation: (input: {
+  readonly notifications?: Pick<NotificationCenter, "list">;
+  /** Test-scoped causal-evidence port; production bindings use TaskCenter.complete. */
+  readonly taskCompletionWithTrace?: (command: Parameters<TaskCenter["complete"]>[0], traceparent: string) => ReturnType<TaskCenter["complete"]>;
+  readonly tasks?: Partial<Pick<TaskCenter, "complete" | "list">>;
+  /** Explicitly bound only by the disposable Walking Skeleton E2E BFF. */
+  readonly walkingSkeletonFormSubmissions?: Readonly<{
+    handle(request: Readonly<{
+      readonly body?: string | Uint8Array;
+      readonly contentType?: string;
+      readonly credential?: string;
+      readonly csrfToken?: string;
+      readonly idempotencyKey?: string;
+      readonly method: string;
+      readonly origin?: string;
+      readonly referer?: string;
+      readonly traceparent?: string;
+    }>): Promise<Readonly<{ readonly body: unknown; readonly headers: Readonly<Record<string, string>>; readonly status: number }>>;
+  }>;
+  readonly validateFormMutation: (input: BrowserMutationInput) => Promise<void>;
+  readonly validateTaskMutation: (input: BrowserMutationInput) => Promise<void>;
+}
+
+export interface BrowserMutationInput {
     readonly credential: string;
     readonly csrfToken?: string;
     readonly origin?: string;
     readonly referer?: string;
-  }) => Promise<void>;
 }
 
 export interface ApiPlatformComposition {
@@ -221,26 +241,29 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
     service: bindings.queries.fileCenter,
     sessions: bindings.sessions,
   });
+  const validateMutation = async (input: BrowserMutationInput): Promise<void> => {
+    const session = await bindings.sessions.sessionForMutation(input.credential);
+    validateBrowserMutation({
+      allowedOrigins: bindings.browserSecurity.allowedOrigins,
+      csrfHeader: input.csrfToken,
+      csrfSessionValue: session.csrfToken,
+      origin: input.origin,
+      referer: input.referer,
+    });
+  };
   const platformHttp: Readonly<ApiPlatformHttpComposition> = Object.freeze({
     applicationRegistry,
     authorize,
     fileCenter,
     forms,
-    tasks: { complete: async (command: Parameters<NonNullable<ApiQueryBindings["tasks"]["complete"]>>[0]) => {
+    notifications: { list: (query: Parameters<ApiQueryBindings["notifications"]["list"]>[0]) => bindings.queries.notifications.list(query) },
+    tasks: { list: (query: Parameters<ApiQueryBindings["tasks"]["list"]>[0]) => bindings.queries.tasks.list(query), complete: async (command: Parameters<NonNullable<ApiQueryBindings["tasks"]["complete"]>>[0]) => {
       const result = await bindings.queries.tasks.complete?.(command);
       if (result === undefined) throw new Error("task_completion_binding_missing");
       return result;
     } },
-    validateTaskMutation: async (input: Parameters<ApiPlatformHttpComposition["validateTaskMutation"]>[0]) => {
-      const session = await bindings.sessions.sessionForMutation(input.credential);
-      validateBrowserMutation({
-        allowedOrigins: bindings.browserSecurity.allowedOrigins,
-        csrfHeader: input.csrfToken,
-        csrfSessionValue: session.csrfToken,
-        origin: input.origin,
-        referer: input.referer,
-      });
-    },
+    validateFormMutation: validateMutation,
+    validateTaskMutation: validateMutation,
   });
 
   return Object.freeze({

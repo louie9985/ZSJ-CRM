@@ -47,4 +47,19 @@ describe("E2E durable-store migration", () => {
     expect(sql).not.toMatch(/\b(?:DROP|TRUNCATE)\b/iu);
     expect(metadata).toMatchObject({ destructive: false, moduleOwner: "tests/e2e" });
   });
+
+  it("adds the test-scoped transactional Form receipt and linked Task request without submitted data", async () => {
+    const [sql, metadataText] = await Promise.all([
+      readFile(resolve(migrationDirectory, "0000000018_e2e_form_submission_command_receipts.sql"), "utf8"),
+      readFile(resolve(migrationDirectory, "0000000018_e2e_form_submission_command_receipts.meta.json"), "utf8"),
+    ]);
+    const metadata = JSON.parse(metadataText) as Readonly<Record<string, unknown>>;
+    expect(sql).toContain("CREATE TABLE e2e_walking_skeleton.form_submission_command_receipts");
+    expect(sql).toContain("CREATE TABLE e2e_walking_skeleton.form_submission_command_outbox");
+    expect(sql).toContain("CREATE TABLE e2e_walking_skeleton.task_command_requests");
+    expect(sql).toContain("REFERENCES e2e_walking_skeleton.form_submission_command_receipts(submission_reference)");
+    expect(sql).not.toMatch(/submission_(?:body|data|payload)|file_(?:body|bytes|content)/iu);
+    expect(sql).not.toMatch(/\b(?:DROP|TRUNCATE)\b/iu);
+    expect(metadata).toMatchObject({ destructive: false, moduleOwner: "tests/e2e" });
+  });
 });

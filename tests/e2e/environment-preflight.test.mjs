@@ -18,7 +18,7 @@ test("reports the verified browser-to-worker walking skeleton", async () => {
   assert.equal(result.externalEvidenceBridge, "verified-by-browser-api-combined-execution");
   assert.equal(result.evidenceMode, "reviewed-contract-and-composition-anchor-checks");
   assert.deepEqual(result.contractBlockers, []);
-  assert.equal(result.mainWalkingSkeletonReady, true);
+  assert.equal(result.mainWalkingSkeletonReady, false);
   assert.equal(result.rabbitJobChain, "real-rabbitmq-with-postgresql-stores");
   assert.equal(result.taskProjectionWorkerChain, "verified-by-current-compose-execution");
   assert.equal(result.workflowChain, "real-flowable-rabbit-postgresql-combined-slice");

@@ -218,11 +218,13 @@ describe("production API platform binding factory", () => {
       permissions: [
         { action: "list", code: "platform.notifications.in-app-notification:list", resource: "platform.notifications.in-app-notification", scopeDimensions: [] },
         { action: "list", code: "platform.task-center.task-projection:list", resource: "platform.task-center.task-projection", scopeDimensions: [] },
+        { action: "read", code: "platform.task-center.task-projection:read", resource: "platform.task-center.task-projection", scopeDimensions: [] },
         { action: "read", code: "synthetic.record:read", resource: "synthetic.record", scopeDimensions: [] },
       ],
       roles: [{ permissions: [
         { permissionCode: "platform.notifications.in-app-notification:list", scope: { terms: [{ kind: "all" as const }], version: 1 as const } },
         { permissionCode: "platform.task-center.task-projection:list", scope: { terms: [{ kind: "all" as const }], version: 1 as const } },
+        { permissionCode: "platform.task-center.task-projection:read", scope: { terms: [{ kind: "all" as const }], version: 1 as const } },
         { permissionCode: "synthetic.record:read", scope: { terms: [{ kind: "all" as const }], version: 1 as const } },
       ], roleId: "55555555-5555-4555-8555-555555555555" }],
       version: "baseline-v1",
@@ -236,7 +238,29 @@ describe("production API platform binding factory", () => {
       return JSON.stringify(value);
     };
     const contentDigest = createHash("sha256").update(canonical(snapshot)).digest("hex");
-    fixture.execute.mockImplementation((sql: string) => {
+    const taskRows = [
+      {
+        app_id: "workbench", assignee_reference: "11111111-1111-4111-8111-111111111111", candidate_scope_reference: null,
+        created_at: "2026-07-31T00:00:00.000Z", due_at: null, projection_id: "10000000-0000-4000-8000-000000000001",
+        route_id: "task.detail", source_task_id: "task.owned", source_type: "workflow", source_version: 1, status: "open", updated_at: "2026-07-31T00:00:00.000Z",
+      },
+      {
+        app_id: "workbench", assignee_reference: "99999999-9999-4999-8999-999999999999", candidate_scope_reference: null,
+        created_at: "2026-07-31T00:00:00.000Z", due_at: null, projection_id: "10000000-0000-4000-8000-000000000002",
+        route_id: "task.detail", source_task_id: "task.other", source_type: "workflow", source_version: 1, status: "open", updated_at: "2026-07-31T00:00:00.000Z",
+      },
+      {
+        app_id: "workbench", assignee_reference: null, candidate_scope_reference: "scope.unconfirmed",
+        created_at: "2026-07-31T00:00:00.000Z", due_at: null, projection_id: "10000000-0000-4000-8000-000000000003",
+        route_id: "task.detail", source_task_id: "task.candidate", source_type: "workflow", source_version: 1, status: "open", updated_at: "2026-07-31T00:00:00.000Z",
+      },
+      {
+        app_id: "workbench", assignee_reference: null, candidate_scope_reference: null,
+        created_at: "2026-07-31T00:00:00.000Z", due_at: null, projection_id: "10000000-0000-4000-8000-000000000004",
+        route_id: "task.detail", source_task_id: "task.unowned", source_type: "workflow", source_version: 1, status: "open", updated_at: "2026-07-31T00:00:00.000Z",
+      },
+    ];
+    fixture.execute.mockImplementation((sql: string, values?: readonly unknown[]) => {
       if (sql.includes("has_schema_privilege(current_user, 'audit'")) {
         return Promise.resolve({ rowCount: 1, rows: [auditCapabilities] });
       }
@@ -258,6 +282,14 @@ describe("production API platform binding factory", () => {
       if (sql.startsWith("insert into authorization_core.decision_records")) {
         return Promise.resolve({ rowCount: 1, rows: [{}] });
       }
+      if (sql.includes("from platform_task_center.task_projections where ($1::text is null")) {
+        return Promise.resolve({ rowCount: taskRows.length, rows: taskRows });
+      }
+      if (sql.startsWith("select * from platform_task_center.task_projections where source_type=$1")) {
+        if (values === undefined) throw new Error("task key parameters missing");
+        const row = taskRows.find(({ source_type, source_task_id }) => source_type === values[0] && source_task_id === values[1]);
+        return Promise.resolve({ rowCount: row === undefined ? 0 : 1, rows: row === undefined ? [] : [row] });
+      }
       return Promise.resolve({ rowCount: 0, rows: [] });
     });
     const bindings = await createProductionApiPlatformBindings(fixture.value);
@@ -274,11 +306,29 @@ describe("production API platform binding factory", () => {
     expect(fixture.execute.mock.calls.some(([sql, values]) =>
       typeof sql === "string" && sql.startsWith("insert into authorization_core.decision_records") &&
       Array.isArray(values) && values.includes(traceId))).toBe(true);
-    const actor = { activeAssignmentIds: ["11111111-1111-4111-8111-111111111111"], principalId: "44444444-4444-4444-8444-444444444444" };
-    await expect(bindings.queries.tasks.list({ actor, limit: 1 })).resolves.toEqual({ items: [] });
+    const actor = {
+      activeAssignmentIds: ["11111111-1111-4111-8111-111111111111"],
+      principalId: "subject:synthetic-hash",
+      workforcePersonId: "44444444-4444-4444-8444-444444444444",
+    };
+    await expect(bindings.queries.tasks.list({ actor, limit: 10 })).resolves.toMatchObject({
+      items: [expect.objectContaining({ sourceTaskId: "task.owned" })],
+    });
     await expect(bindings.queries.notifications.list({ actor, limit: 1 })).resolves.toEqual({ items: [] });
-    await expect(bindings.queries.tasks.get(actor, { sourceTaskId: "task.synthetic", sourceType: "workflow" }))
+    await expect(bindings.queries.tasks.get(actor, { sourceTaskId: "task.owned", sourceType: "workflow" }))
+      .resolves.toMatchObject({ sourceTaskId: "task.owned" });
+    await expect(bindings.queries.tasks.get(actor, { sourceTaskId: "task.other", sourceType: "workflow" }))
+      .rejects.toMatchObject({ code: "TASK_OPERATION_DENIED" });
+    await expect(bindings.queries.tasks.get(actor, { sourceTaskId: "task.candidate", sourceType: "workflow" }))
+      .rejects.toMatchObject({ code: "TASK_OPERATION_DENIED" });
+    await expect(bindings.queries.tasks.get(actor, { sourceTaskId: "task.unowned", sourceType: "workflow" }))
+      .rejects.toMatchObject({ code: "TASK_OPERATION_DENIED" });
+    await expect(bindings.queries.tasks.list({ actor: { ...actor, activeAssignmentIds: ["99999999-9999-4999-8999-999999999999"] }, limit: 10 }))
+      .resolves.toMatchObject({ items: [expect.objectContaining({ sourceTaskId: "task.other" })] });
+    await expect(bindings.queries.tasks.list({ actor: { principalId: actor.principalId }, limit: 1 }))
       .rejects.toMatchObject({ code: "TASK_AUTHORIZATION_FAILED" });
+    await expect(bindings.queries.notifications.list({ actor: { principalId: actor.principalId }, limit: 1 }))
+      .rejects.toMatchObject({ code: "NOTIFICATION_AUTHORIZATION_FAILED" });
     expect(fixture.execute.mock.calls.some(([sql]) => typeof sql === "string" && sql.includes("platform_task_center.task_projections"))).toBe(true);
     expect(fixture.execute.mock.calls.some(([sql]) => typeof sql === "string" && sql.includes("platform_notifications.in_app_notifications"))).toBe(true);
     expect(fixture.execute.mock.calls.some(([sql, values]) => typeof sql === "string" && sql.startsWith("insert into audit.records") &&

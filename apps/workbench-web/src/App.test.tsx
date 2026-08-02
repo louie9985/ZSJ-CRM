@@ -49,6 +49,33 @@ function renderApp(entry: string, port: WorkbenchPort = developmentFixturePort):
 }
 
 const longText = "synthetic-platform-reference-with-a-deliberately-long-unbroken-value-0123456789";
+const syntheticFileReference = Object.freeze({
+  contentVersionId: "f11ec1a5-0000-4000-8000-000000000004",
+  displayName: "synthetic-clamav-fixture.txt",
+  fileId: "f11ec1a5-0000-4000-8000-000000000003",
+  mediaType: "text/plain",
+  sizeBytes: 36,
+  version: 1 as const,
+});
+const syntheticRelease = Object.freeze({
+  active: true,
+  contentDigest: "a".repeat(64),
+  definitionId: "platform.synthetic.task-completion",
+  jsonSchema: Object.freeze({
+    properties: Object.freeze({ content_version_id: {}, file_id: {}, synthetic_value: {} }),
+    required: Object.freeze(["synthetic_value", "file_id", "content_version_id"]),
+  }),
+  releaseVersion: 1,
+  uiSchema: Object.freeze({
+    fields: Object.freeze([
+      Object.freeze({ component: "input", field: "synthetic_value", order: 1 }),
+      Object.freeze({ component: "input", field: "file_id", order: 2 }),
+      Object.freeze({ component: "input", field: "content_version_id", order: 3 }),
+    ]),
+    layout: "vertical" as const,
+    version: 1 as const,
+  }),
+});
 type ReadyBootstrap = Extract<BootstrapResult, { kind: "ready" }>;
 const longReady: ReadyBootstrap = {
   kind: "ready",
@@ -69,6 +96,24 @@ afterEach(() => {
 });
 
 describe("workbench shell", () => {
+  it("reserves the synthetic form evidence route ahead of the collection detail route", async () => {
+    const loadRelease = vi.fn().mockResolvedValue(syntheticRelease);
+    renderApp("/forms/platform.synthetic.task-completion", {
+      bootstrap: () => developmentFixturePort.bootstrap(),
+      logout: () => developmentFixturePort.logout(),
+      syntheticFormEvidence: {
+        fileReference: syntheticFileReference,
+        loadRelease,
+        submit: vi.fn(),
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "合成表单验收" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "合成值" })).toBeInTheDocument();
+    expect(loadRelease).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("对象不存在")).not.toBeInTheDocument();
+  });
+
   it("normalizes inconsistent tab, filter, page and selection URL state", async () => {
     renderApp("/tasks?tab=history&filter=unknown&page=99&selected=fixture-task-02");
 

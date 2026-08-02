@@ -28,4 +28,9 @@ export type BootstrapResult =
 export interface WorkbenchPort {
   bootstrap(): Promise<BootstrapResult>;
   logout(): Promise<{ kind: "session-expired" | "signed-out" }>;
+  pollCollections?(): Promise<Readonly<Pick<Extract<BootstrapResult, { kind: "ready" }>["collections"], "tasks" | "notifications">>>;
+  syntheticFormEvidence?: import("./synthetic-form-evidence-page").SyntheticFormEvidencePort & {
+    readonly fileReference: import("./synthetic-form-evidence-page").SyntheticFormFileReference;
+    loadRelease(): Promise<import("./synthetic-form-evidence-page").SyntheticFormEvidenceRelease>;
+  };
 }

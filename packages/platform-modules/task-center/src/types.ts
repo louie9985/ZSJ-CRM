@@ -1,7 +1,12 @@
 export type TaskProjectionStatus = "cancelled" | "completed" | "open";
 export type TaskOperation = "task_complete" | "task_detail" | "task_list" | "task_reconcile";
 
-export interface TaskActor { readonly activeAssignmentIds?: readonly string[]; readonly principalId: string }
+export interface TaskActor {
+  readonly activeAssignmentIds?: readonly string[];
+  readonly principalId: string;
+  /** Current organization-resolved identity; never derived from principalId. */
+  readonly workforcePersonId?: string;
+}
 export interface TaskDeepLink { readonly appId: string; readonly routeId: string }
 export interface TaskProjectionKey { readonly sourceType: string; readonly sourceTaskId: string }
 export interface TaskProjection extends TaskProjectionKey {
@@ -36,10 +41,10 @@ export interface TaskObserver {
   record(input: { readonly operation: TaskOperation | "projection_apply"; readonly outcome: "completed" | "denied" | "duplicate" | "failed" | "stale"; readonly durationMs: number }): void;
 }
 export interface TaskSourceCommandRouter {
-  complete(input: TaskProjectionKey & { readonly actor: TaskActor; readonly idempotencyKey: string }): Promise<{ readonly sourceCommandId: string; readonly status: "accepted" }>;
+  complete(input: TaskProjectionKey & { readonly actor: TaskActor; readonly idempotencyKey: string; readonly sourceCommandReference?: string }): Promise<{ readonly sourceCommandId: string; readonly status: "accepted" }>;
 }
 export interface TaskSourceReader { get(key: TaskProjectionKey): Promise<TaskLifecycleEvent> }
-export interface CompleteTaskCommand extends TaskProjectionKey { readonly actor: TaskActor; readonly idempotencyKey: string }
+export interface CompleteTaskCommand extends TaskProjectionKey { readonly actor: TaskActor; readonly idempotencyKey: string; readonly sourceCommandReference?: string }
 export interface TaskQuery { readonly actor: TaskActor; readonly status?: TaskProjectionStatus; readonly limit?: number; readonly cursor?: string }
 export interface TaskPage { readonly items: readonly TaskProjection[]; readonly nextCursor?: string }
 export interface TaskCommandResult { readonly sourceCommandId: string; readonly status: "accepted" }

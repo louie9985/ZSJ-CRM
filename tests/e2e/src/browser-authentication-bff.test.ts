@@ -50,4 +50,17 @@ describe("browser Task workforce and authorization fixture", () => {
     const fixtures = await createBrowserTaskAuthorizationFixtures(subject);
     await expect(authorizeBrowserTaskFixture(fixtures, scenario, subject, authorizationInput)).rejects.toBeDefined();
   });
+
+  it.each([
+    { action: "read", resource: "platform.form-schema.form-release" },
+    { action: "validate", resource: "platform.form-schema.form-release" },
+    { action: "list", resource: "platform.task-center.task-projection" },
+    { action: "list", resource: "platform.notifications.in-app-notification" },
+  ] as const)("passes through $resource:$action and fails every rejected workforce scenario closed", async (permission) => {
+    const fixtures = await createBrowserTaskAuthorizationFixtures(subject);
+    await expect(authorizeBrowserTaskFixture(fixtures, "allowed", subject, { ...authorizationInput, permission })).resolves.toMatchObject({ decision: { allowed: true } });
+    for (const scenario of ["unlinked", "inactive_employment", "permission_denied"] as const) {
+      await expect(authorizeBrowserTaskFixture(fixtures, scenario, subject, { ...authorizationInput, permission })).rejects.toBeDefined();
+    }
+  });
 });

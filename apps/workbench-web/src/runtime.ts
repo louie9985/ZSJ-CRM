@@ -1,4 +1,6 @@
 import type { WorkbenchPort } from "./workbench-port";
+import { createSameSiteCollectionPollingPort } from "./same-site-collection-port";
+import { createSameSiteSyntheticFormEvidencePort } from "./same-site-synthetic-form-evidence-port";
 
 const unavailableProductionPort: WorkbenchPort = {
   bootstrap: () => Promise.resolve({ kind: "maintenance" }),
@@ -16,9 +18,28 @@ const lazyDevelopmentPort: WorkbenchPort = {
   },
 };
 
+function e2ePort(): WorkbenchPort {
+  const polling = createSameSiteCollectionPollingPort();
+  const runtimeEnvironment: unknown = import.meta.env;
+  const environment = typeof runtimeEnvironment === "object" && runtimeEnvironment !== null
+    ? runtimeEnvironment as Readonly<Record<string, unknown>>
+    : {};
+  const fileReferenceJson = environment["VITE_AI_CRM_E2E_FILE_REFERENCE_JSON"];
+  const traceparent = environment["VITE_AI_CRM_E2E_TRACEPARENT"];
+  const syntheticFormEvidence = createSameSiteSyntheticFormEvidencePort({
+    ...(typeof fileReferenceJson === "string" ? { fileReferenceJson } : {}),
+    ...(typeof traceparent === "string" ? { traceparent } : {}),
+  });
+  return {
+    ...lazyDevelopmentPort,
+    pollCollections: () => polling.pollCollections(),
+    ...(syntheticFormEvidence === undefined ? {} : { syntheticFormEvidence }),
+  };
+}
+
 // A generated-client adapter replaces this fail-closed port after the relevant contracts pass G2.
 export function selectRuntimeWorkbenchPort(environment: { readonly development: boolean; readonly e2e: boolean }): WorkbenchPort {
-  return environment.development || environment.e2e ? lazyDevelopmentPort : unavailableProductionPort;
+  return environment.e2e ? e2ePort() : environment.development ? lazyDevelopmentPort : unavailableProductionPort;
 }
 
 export const runtimeWorkbenchPort = selectRuntimeWorkbenchPort({

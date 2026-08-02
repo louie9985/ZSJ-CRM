@@ -21,21 +21,24 @@ function record(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 export function parseBrowserTaskCommand(value: unknown): Readonly<BrowserTaskCommandEvidence> {
-  if (!record(value) || Object.keys(value).some((key) => !["actor", "idempotencyKey", "sourceTaskId", "sourceType", "traceId", "version"].includes(key)) ||
+  if (!record(value) || Object.keys(value).some((key) => !["actor", "idempotencyKey", "sourceCommandReference", "sourceTaskId", "sourceType", "traceId", "version"].includes(key)) ||
     value["version"] !== 1 || value["idempotencyKey"] !== browserTaskIdempotencyKey ||
     value["sourceTaskId"] !== browserTaskSourceTaskId || value["sourceType"] !== browserTaskSourceType ||
     typeof value["traceId"] !== "string" || !TRACE_ID.test(value["traceId"]) || !record(value["actor"]) ||
-    Object.keys(value["actor"]).some((key) => !["activeAssignmentIds", "principalId"].includes(key)) ||
+    Object.keys(value["actor"]).some((key) => !["activeAssignmentIds", "principalId", "workforcePersonId"].includes(key)) ||
     typeof value["actor"]["principalId"] !== "string" || !ACTOR_ID.test(value["actor"]["principalId"]) ||
     !Array.isArray(value["actor"]["activeAssignmentIds"]) || value["actor"]["activeAssignmentIds"].length !== 1 ||
-    value["actor"]["activeAssignmentIds"][0] !== browserTaskAssignmentId) {
+    value["actor"]["activeAssignmentIds"][0] !== browserTaskAssignmentId ||
+    (value["actor"]["workforcePersonId"] !== undefined && (typeof value["actor"]["workforcePersonId"] !== "string" || !/^[0-9a-f-]{36}$/u.test(value["actor"]["workforcePersonId"]))) ||
+    (value["sourceCommandReference"] !== undefined && (typeof value["sourceCommandReference"] !== "string" || value["sourceCommandReference"].length > 255))) {
     throw new Error("e2e_browser_task_command_invalid");
   }
   return Object.freeze({
-    actor: Object.freeze({ activeAssignmentIds: Object.freeze([browserTaskAssignmentId]), principalId: value["actor"]["principalId"] }),
+    actor: Object.freeze({ activeAssignmentIds: Object.freeze([browserTaskAssignmentId]), principalId: value["actor"]["principalId"], ...(typeof value["actor"]["workforcePersonId"] === "string" ? { workforcePersonId: value["actor"]["workforcePersonId"] } : {}) }),
     idempotencyKey: browserTaskIdempotencyKey,
     sourceTaskId: browserTaskSourceTaskId,
     sourceType: browserTaskSourceType,
+    ...(typeof value["sourceCommandReference"] === "string" ? { sourceCommandReference: value["sourceCommandReference"] } : {}),
     traceId: value["traceId"],
     version: 1,
   });

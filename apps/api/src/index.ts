@@ -21,6 +21,7 @@ export {
   type PcAuthenticationHttpAdapter,
   type RedisSessionConnection,
 } from "./auth/index.js";
+export { createFormSchemaHttpAdapter, type FormSchemaHttpAdapter } from "./platform-http/form-schema-http.js";
 
 export const applicationId = "@ai-crm/api" as const;
 const API_COMPOSITION = Symbol("api-composition");
@@ -295,30 +296,72 @@ class ApplicationRegistryController {
 class FormSchemaController {
   constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
 
-  private request(request: Request): Parameters<ApiPlatformHttpComposition["forms"]["handle"]>[0] {
+  private request(request: Request, operation: "read" | "validate"): Parameters<ApiPlatformHttpComposition["forms"]["handle"]>[0] {
     const rawBody = Reflect.get(request, "rawBody") as unknown;
     const contentType = platformHeader(request, "content-type", 128);
     const credential = credentialFromRequest(request);
     const traceparent = requestTraceparent(request);
+    const canonicalPath = `/form-definitions/${String(request.params["definitionId"])}/releases/${String(request.params["releaseVersion"])}${operation === "validate" ? "/validate" : ""}`;
+    const queryOffset = request.originalUrl.indexOf("?");
+    const rawPath = queryOffset === -1 ? request.originalUrl : request.originalUrl.slice(0, queryOffset);
+    const path = rawPath.endsWith(canonicalPath)
+      ? `${canonicalPath}${queryOffset === -1 ? "" : request.originalUrl.slice(queryOffset)}`
+      : request.originalUrl;
     return {
       at: new Date().toISOString(),
-      ...(rawBody instanceof Uint8Array ? { body: rawBody } : {}),
+      ...(request.method === "POST" && rawBody instanceof Uint8Array && rawBody.byteLength > 0 ? { body: rawBody } : {}),
       ...(contentType === undefined ? {} : { contentType }),
       ...(credential === undefined ? {} : { credential }),
       method: request.method,
-      path: request.path,
+      path,
       traceparent,
     };
   }
 
   @Get(":definitionId/releases/:releaseVersion")
   async release(@Req() request: Request, @Res() response: Response): Promise<void> {
-    sendPlatformResponse(response, await platform(this.composition).forms.handle(this.request(request)));
+    sendPlatformResponse(response, await platform(this.composition).forms.handle(this.request(request, "read")));
   }
 
   @Post(":definitionId/releases/:releaseVersion/validate")
   async validate(@Req() request: Request, @Res() response: Response): Promise<void> {
-    sendPlatformResponse(response, await platform(this.composition).forms.handle(this.request(request)));
+    sendPlatformResponse(response, await platform(this.composition).forms.handle(this.request(request, "validate")));
+  }
+}
+
+@Controller("__e2e/walking-skeleton")
+class WalkingSkeletonFormSubmissionController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Post("form-submissions")
+  async submit(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const adapter = this.composition.platformHttp?.walkingSkeletonFormSubmissions;
+    if (adapter === undefined) {
+      sendPlatformResponse(response, { body: { code: "not_found" }, headers: { "Cache-Control": "no-store" }, status: 404 });
+      return;
+    }
+    const rawBody = Reflect.get(request, "rawBody") as unknown;
+    const contentType = singleHeader(request, "content-type", 128, 1);
+    const csrfToken = singleHeader(request, "x-csrf-token", 512);
+    const idempotencyKey = singleHeader(request, "idempotency-key", 255, 1);
+    const origin = singleHeader(request, "origin", 512);
+    const referer = singleHeader(request, "referer", 2048);
+    if (!contentType.valid || !csrfToken.valid || !idempotencyKey.valid || !origin.valid || !referer.valid) {
+      sendPlatformResponse(response, { body: { code: "submission_request_invalid" }, headers: { "Cache-Control": "no-store" }, status: 400 });
+      return;
+    }
+    const credential = credentialFromRequest(request);
+    sendPlatformResponse(response, await adapter.handle({
+      ...(rawBody instanceof Uint8Array ? { body: rawBody } : {}),
+      ...(contentType.value === undefined ? {} : { contentType: contentType.value }),
+      ...(credential === undefined ? {} : { credential }),
+      ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }),
+      ...(idempotencyKey.value === undefined ? {} : { idempotencyKey: idempotencyKey.value }),
+      method: request.method,
+      ...(origin.value === undefined ? {} : { origin: origin.value }),
+      ...(referer.value === undefined ? {} : { referer: referer.value }),
+      traceparent: requestTraceparent(request),
+    }));
   }
 }
 
@@ -367,6 +410,7 @@ function taskResponseError(error: unknown): PlatformHttpResponse {
     || (typeof error === "object" && error !== null && Reflect.get(error, "name") === "AuthorizationDeniedError");
   const status = code === "authentication_csrf_rejected" ? 403
     : denied ? 403
+    : code.includes("INPUT_INVALID") ? 400
     : code.includes("NOT_FOUND") ? 404
       : code.includes("CONFLICT") || code.includes("IN_PROGRESS") ? 409
         : error instanceof BrowserSessionFailure ? 401 : 503;
@@ -376,6 +420,40 @@ function taskResponseError(error: unknown): PlatformHttpResponse {
 @Controller("tasks")
 class TaskController {
   constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get()
+  async list(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const credential = credentialFromRequest(request);
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const limitValue = singleQuery(request, "limit", 3);
+      const statusValue = singleQuery(request, "status", 9);
+      const cursorValue = singleQuery(request, "cursor", 511);
+      const limit = Number(limitValue.value ?? 50);
+      const status = statusValue.value;
+      if (!limitValue.valid || (limitValue.value !== undefined && (!/^\d{1,3}$/u.test(limitValue.value) || !Number.isSafeInteger(limit) || limit < 1 || limit > 100))
+        || !statusValue.valid || (status !== undefined && !["cancelled", "completed", "open"].includes(status))
+        || !cursorValue.valid || cursorValue.value === "") {
+        sendPlatformResponse(response, { body: { code: "task_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
+        return;
+      }
+      const traceContext = requestTraceContext(request);
+      const traceId = traceContext.traceId;
+      const authorized = await platform(this.composition).authorize({
+        at: new Date().toISOString(), credential, traceId,
+        permission: { action: "list", resource: "platform.task-center.task-projection" },
+      });
+      const list = platform(this.composition).tasks?.list;
+      if (typeof list !== "function") throw new Error("task_list_binding_missing");
+      const body = await list({
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) },
+        limit,
+        ...(status === undefined ? {} : { status: status as "cancelled" | "completed" | "open" }),
+        ...(cursorValue.value === undefined ? {} : { cursor: cursorValue.value }),
+      });
+      sendPlatformResponse(response, { body, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
 
   @Post(":sourceType/:sourceTaskId/complete")
   async complete(@Req() request: Request, @Res() response: Response): Promise<void> {
@@ -387,8 +465,13 @@ class TaskController {
       const origin = singleHeader(request, "origin", 512);
       const referer = singleHeader(request, "referer", 2048);
       const credential = credentialFromRequest(request);
+      const body = request.body as unknown;
+      const bodyRecord = typeof body === "object" && body !== null && !Array.isArray(body) ? body as Readonly<Record<string, unknown>> : undefined;
+      const bodyKeys = bodyRecord === undefined ? [] : Object.keys(bodyRecord);
+      const sourceCommandReference = bodyRecord?.["sourceCommandReference"];
+      const bodyValid = body === undefined || (bodyRecord !== undefined && bodyKeys.length === 1 && bodyKeys[0] === "sourceCommandReference" && typeof sourceCommandReference === "string" && TASK_REF.test(sourceCommandReference));
       if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-      if (sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value) || !csrfToken.valid || !origin.valid || !referer.valid) {
+      if (!bodyValid || sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value) || !csrfToken.valid || !origin.valid || !referer.valid) {
         sendPlatformResponse(response, { body: { code: "task_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
         return;
       }
@@ -403,13 +486,57 @@ class TaskController {
         at: new Date().toISOString(), credential, traceId,
         permission: { action: "complete", resource: "platform.task-center.task-projection" },
       });
-      const complete = platform(this.composition).tasks?.complete;
-      if (typeof complete !== "function") throw new Error("task_completion_binding_missing");
-      const result = await complete({
-        actor: { principalId: stableActorId(authorized), activeAssignmentIds: authorized.workforce.assignments.map((assignment) => assignment.assignmentId) },
+      const command = {
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map((assignment) => assignment.assignmentId) },
         sourceType, sourceTaskId, idempotencyKey: idempotencyKey.value,
-      });
+        ...(typeof sourceCommandReference === "string" ? { sourceCommandReference } : {}),
+      };
+      const completeWithTrace = platform(this.composition).taskCompletionWithTrace;
+      const complete = platform(this.composition).tasks?.complete;
+      const result = typeof completeWithTrace === "function"
+        ? await completeWithTrace(command, requestTraceparent(request))
+        : typeof complete === "function"
+          ? await complete(command)
+          : (() => { throw new Error("task_completion_binding_missing"); })();
       sendPlatformResponse(response, { body: result, headers: { "Cache-Control": "no-store" }, status: 202 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+}
+
+@Controller("notifications")
+class NotificationController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get()
+  async list(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const credential = credentialFromRequest(request);
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const limitValue = singleQuery(request, "limit", 3);
+      const cursorValue = singleQuery(request, "cursor", 128);
+      const includeArchivedValue = singleQuery(request, "includeArchived", 5);
+      const limit = Number(limitValue.value ?? 50);
+      const includeArchived = includeArchivedValue.value === "true";
+      if (!limitValue.valid || (limitValue.value !== undefined && (!/^\d{1,3}$/u.test(limitValue.value) || !Number.isSafeInteger(limit) || limit < 1 || limit > 100))
+        || !cursorValue.valid || cursorValue.value === "" || !includeArchivedValue.valid
+        || (includeArchivedValue.value !== undefined && includeArchivedValue.value !== "true" && includeArchivedValue.value !== "false")) {
+        sendPlatformResponse(response, { body: { code: "notification_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
+        return;
+      }
+      const traceId = requestTraceContext(request).traceId;
+      const authorized = await platform(this.composition).authorize({
+        at: new Date().toISOString(), credential, traceId,
+        permission: { action: "list", resource: "platform.notifications.in-app-notification" },
+      });
+      const list = platform(this.composition).notifications?.list;
+      if (typeof list !== "function") throw new Error("notification_list_binding_missing");
+      const body = await list({
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) },
+        limit,
+        includeArchived,
+        ...(cursorValue.value === undefined ? {} : { cursor: cursorValue.value }),
+      });
+      sendPlatformResponse(response, { body, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
     } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
   }
 }
@@ -463,7 +590,7 @@ class ApiLifecycle implements OnApplicationShutdown {
 class ApiModule {}
 
 const createApiModule = (composition: ApiComposition, state: ApiRuntimeState): DynamicModule => ({
-  controllers: [HealthController, PcAuthenticationController, ApplicationRegistryController, FormSchemaController, FileCenterController, TaskController],
+  controllers: [HealthController, PcAuthenticationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController],
   module: ApiModule,
   providers: [
     { provide: API_COMPOSITION, useValue: composition },

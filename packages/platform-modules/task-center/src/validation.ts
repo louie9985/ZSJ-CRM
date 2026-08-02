@@ -21,7 +21,8 @@ export const validateActor = (value: TaskActor): TaskActor => {
   const assignments=input["activeAssignmentIds"];
   if(assignments!==undefined&&(!Array.isArray(assignments)||assignments.length>100))invalid();
   const activeAssignmentIds=assignments===undefined?undefined:Object.freeze((assignments as unknown[]).map(validateId));
-  return { principalId: validateId(input["principalId"]),...(activeAssignmentIds===undefined?{}:{activeAssignmentIds}) };
+  const workforcePersonId=input["workforcePersonId"]===undefined?undefined:validateId(input["workforcePersonId"]);
+  return { principalId: validateId(input["principalId"]),...(activeAssignmentIds===undefined?{}:{activeAssignmentIds}),...(workforcePersonId===undefined?{}:{workforcePersonId}) };
 };
 export const validateTimestamp = (value: unknown): string => {
   if (typeof value !== "string") return invalid();

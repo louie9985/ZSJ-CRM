@@ -219,23 +219,25 @@
 
 ## 17. 主 Walking Skeleton E2E
 
-- [ ] 合成用户通过 Keycloak/BFF 登录。
-- [ ] 解析有效 Person、Employment、Assignment 和 Permission。
-- [ ] Workbench 加载合成注册应用。
-- [ ] 合成表单与 BPMN 发布成功。
-- [ ] 测试流程创建 Flowable Task。
-- [ ] Task Center 收到投影。
-- [ ] Notification Center 生成站内通知。
-- [ ] PC Web 轮询看到任务和通知。
-- [ ] 表单渲染、服务端校验和文件上传/扫描完成。
-- [ ] 用户完成任务。
-- [ ] Workflow 请求测试来源正式命令。
-- [ ] 测试来源重新授权并接受命令。
-- [ ] Task 投影关闭并生成结果通知。
-- [ ] 重复事件不产生重复副作用。
-- [ ] 无权限用户被拒绝。
-- [ ] Trace 从浏览器/BFF/API/Outbox/RabbitMQ/Worker 连通。
-- [ ] Audit 可追溯，日志/Sentry 无敏感内容。
+- [x] 合成用户通过 Keycloak/BFF 登录。
+- [x] 解析有效 Person、Employment、Assignment 和 Permission。
+- [x] Workbench 加载合成注册应用。
+- [x] 合成表单与 BPMN 发布成功。
+- [x] 测试流程创建 Flowable Task。
+- [x] Task Center 收到投影。
+- [x] Notification Center 生成站内通知。
+- [x] PC Web 轮询看到任务和通知。
+- [x] 表单渲染、服务端校验和文件上传/扫描完成。
+- [x] 用户完成任务。
+- [x] Workflow 请求测试来源正式命令。
+- [x] 测试来源重新授权并接受命令。
+- [x] Task 投影关闭并生成结果通知。
+- [x] 重复事件不产生重复副作用。
+- [x] 无权限用户被拒绝。
+- [x] Trace 从浏览器/BFF/API/Outbox/RabbitMQ/Worker 连通。
+- [x] Audit 可追溯，仓库内敏感字段验证器通过；托管 Sentry 抽样仍归第 18、22 节外部证据。
+
+本节勾选基于 2026-08-02 的本地业务中立合成组合验收，不代表预发布、生产、托管 Sentry 或恢复演练已经完成。
 
 ## 18. 可观测与健康验收
 

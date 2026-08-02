@@ -145,9 +145,12 @@ describe("API composition root", () => {
       confirmUpload: vi.fn(),
       createUpload: vi.fn().mockResolvedValue({ body: { replayed: false }, headers: { "Cache-Control": "no-store" }, status: 201 }),
     };
+    const tasks = { list: vi.fn().mockResolvedValue({ items: [{ sourceTaskId: "task.synthetic", sourceType: "tests.synthetic", sourceVersion: 2, status: "completed" }] }) };
+    const notifications = { list: vi.fn().mockResolvedValue({ items: [{ notificationId: "notification.synthetic", sourceId: "task.synthetic", sourceType: "tests.synthetic" }] }) };
+    const validateFormMutation = vi.fn();
     const app = createApiApplication({
       logger,
-      platformHttp: { applicationRegistry, authorize, fileCenter, forms, validateTaskMutation: vi.fn() },
+      platformHttp: { applicationRegistry, authorize, fileCenter, forms, notifications, tasks, validateFormMutation, validateTaskMutation: vi.fn() },
     });
     await app.start(0, "127.0.0.1");
     const address = await app.instance()?.getUrl();
@@ -170,6 +173,28 @@ describe("API composition root", () => {
       workforcePersonId: "20000000-0000-4000-8000-000000000001",
       traceId: requestTraceId,
     }));
+    const [taskResponse, notificationResponse] = await Promise.all([
+      fetch(`${address}/tasks?limit=50&status=completed&cursor=cursor.synthetic`, { headers: { cookie, traceparent: `00-${requestTraceId}-00f067aa0ba902b7-01` } }),
+      fetch(`${address}/notifications?limit=50&cursor=cursor.synthetic&includeArchived=true`, { headers: { cookie, traceparent: `00-${requestTraceId}-00f067aa0ba902b7-01` } }),
+    ]);
+    expect(taskResponse.status).toBe(200);
+    expect(notificationResponse.status).toBe(200);
+    const taskQuery = (tasks.list.mock.calls[0] as unknown as readonly [{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string }; readonly limit: number }] | undefined)?.[0];
+    const notificationQuery = (notifications.list.mock.calls[0] as unknown as readonly [{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string }; readonly limit: number }] | undefined)?.[0];
+    expect(taskQuery?.limit).toBe(50);
+    expect(taskQuery).toMatchObject({ cursor: "cursor.synthetic", status: "completed" });
+    expect(taskQuery?.actor.principalId).toMatch(/^subject:/u);
+    expect(taskQuery?.actor.workforcePersonId).toBe("20000000-0000-4000-8000-000000000001");
+    expect(notificationQuery?.limit).toBe(50);
+    expect(notificationQuery).toMatchObject({ cursor: "cursor.synthetic", includeArchived: true });
+    expect(notificationQuery?.actor.principalId).toMatch(/^subject:/u);
+    expect(notificationQuery?.actor.workforcePersonId).toBe("20000000-0000-4000-8000-000000000001");
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      permission: { action: "list", resource: "platform.task-center.task-projection" },
+    }));
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      permission: { action: "list", resource: "platform.notifications.in-app-notification" },
+    }));
 
     for (const traceparent of [undefined, "malformed"] as const) {
       const response = await fetch(`${address}/application-registry`, { headers: {
@@ -189,6 +214,14 @@ describe("API composition root", () => {
     expect(repeated).toEqual({ status: 400 });
     expect(authorize).toHaveBeenCalledTimes(authorizationCallsBeforeRepeated);
 
+    const releaseResponse = await fetch(`${address}/form-definitions/platform.synthetic/releases/1`, {
+      headers: { cookie },
+    });
+    expect(releaseResponse.status).toBe(200);
+    const releaseRequest = forms.handle.mock.calls[0]?.[0] as { readonly body?: Uint8Array; readonly path?: string };
+    expect(releaseRequest.path).toBe("/form-definitions/platform.synthetic/releases/1");
+    expect(releaseRequest.body).toBeUndefined();
+
     const rawFormBody = JSON.stringify({ data: { synthetic: "value" } });
     const formResponse = await fetch(`${address}/form-definitions/platform.synthetic/releases/1/validate`, {
       body: rawFormBody,
@@ -196,7 +229,7 @@ describe("API composition root", () => {
       method: "POST",
     });
     expect(formResponse.status).toBe(200);
-    const formRequest = forms.handle.mock.calls[0]?.[0] as { readonly body?: Uint8Array; readonly path?: string };
+    const formRequest = forms.handle.mock.calls[1]?.[0] as { readonly body?: Uint8Array; readonly path?: string };
     expect(formRequest.path).toBe("/form-definitions/platform.synthetic/releases/1/validate");
     expect(new TextDecoder().decode(formRequest.body)).toBe(rawFormBody);
     const withinContractBody = JSON.stringify({ data: "x".repeat(120_000) });
@@ -212,6 +245,7 @@ describe("API composition root", () => {
       method: "POST",
     })).status).toBe(413);
     expect(forms.handle).toHaveBeenCalledTimes(callsBeforeOversize);
+    expect(validateFormMutation).not.toHaveBeenCalled();
 
     const uploadResponse = await fetch(`${address}/files/upload-sessions`, {
       body: JSON.stringify({ declaredMediaType: "text/plain", declaredSizeBytes: 1, displayName: "synthetic.txt", ownerModule: "platform.synthetic" }),
@@ -233,6 +267,76 @@ describe("API composition root", () => {
     await app.stop();
   });
 
+  it("fails Task and Notification lists closed without a session or when authorization is unavailable", async () => {
+    const authorize = vi.fn().mockRejectedValue(new AuthorizationUnavailableError());
+    const tasks = { list: vi.fn() };
+    const notifications = { list: vi.fn() };
+    const app = createApiApplication({
+      logger,
+      platformHttp: {
+        applicationRegistry: { loadRegistry: vi.fn(), resolveDeepLink: vi.fn() }, authorize,
+        fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
+        forms: { handle: vi.fn() }, notifications, tasks,
+        validateFormMutation: vi.fn(), validateTaskMutation: vi.fn(),
+      },
+    });
+    await app.start(0, "127.0.0.1");
+    try {
+      const address = await app.instance()?.getUrl();
+      if (address === undefined) throw new Error("api_not_started");
+      const paths = ["/tasks", "/notifications"] as const;
+      const unauthenticated = await Promise.all(paths.map((path) => fetch(`${address}${path}`)));
+      expect(unauthenticated.map(({ status }) => status)).toEqual([401, 401]);
+      const cookie = `__Host-ai_crm_pc_session=${"a".repeat(43)}`;
+      const unavailable = await Promise.all(paths.map((path) => fetch(`${address}${path}`, { headers: { cookie } })));
+      expect(unavailable.map(({ status }) => status)).toEqual([503, 503]);
+      expect(tasks.list).not.toHaveBeenCalled();
+      expect(notifications.list).not.toHaveBeenCalled();
+      expect(authorize).toHaveBeenCalledTimes(2);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it.each([
+    ["/tasks?limit=0", "task_invalid_input"],
+    ["/tasks?limit=1.5", "task_invalid_input"],
+    ["/tasks?status=unknown", "task_invalid_input"],
+    ["/tasks?status=open&status=completed", "task_invalid_input"],
+    ["/tasks?cursor=", "task_invalid_input"],
+    ["/notifications?limit=101", "notification_invalid_input"],
+    ["/notifications?cursor=", "notification_invalid_input"],
+    ["/notifications?cursor=one&cursor=two", "notification_invalid_input"],
+    ["/notifications?includeArchived=TRUE", "notification_invalid_input"],
+    ["/notifications?includeArchived=true&includeArchived=false", "notification_invalid_input"],
+  ] as const)("rejects an invalid list query %s before authorization", async (path, code) => {
+    const authorize = vi.fn();
+    const tasks = { list: vi.fn() };
+    const notifications = { list: vi.fn() };
+    const app = createApiApplication({
+      logger,
+      platformHttp: {
+        applicationRegistry: { loadRegistry: vi.fn(), resolveDeepLink: vi.fn() }, authorize,
+        fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
+        forms: { handle: vi.fn() }, notifications, tasks,
+        validateFormMutation: vi.fn(), validateTaskMutation: vi.fn(),
+      },
+    });
+    await app.start(0, "127.0.0.1");
+    try {
+      const address = await app.instance()?.getUrl();
+      if (address === undefined) throw new Error("api_not_started");
+      const response = await fetch(`${address}${path}`, { headers: { cookie: `__Host-ai_crm_pc_session=${"a".repeat(43)}` } });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({ code });
+      expect(authorize).not.toHaveBeenCalled();
+      expect(tasks.list).not.toHaveBeenCalled();
+      expect(notifications.list).not.toHaveBeenCalled();
+    } finally {
+      await app.stop();
+    }
+  });
+
   it("distinguishes Task authorization denial from unavailable authorization", async () => {
     const complete = vi.fn()
       .mockRejectedValueOnce(new AuthorizationDeniedError("decision-task-denied"))
@@ -251,6 +355,7 @@ describe("API composition root", () => {
         fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
         forms: { handle: vi.fn() },
         tasks: { complete },
+        validateFormMutation: vi.fn(),
         validateTaskMutation: vi.fn(),
       },
     });
@@ -267,6 +372,19 @@ describe("API composition root", () => {
         },
         method: "POST",
       });
+      const emptyObject = await fetch(`${address}/tasks/tests.walking-skeleton/source-task.synthetic/complete`, {
+        body: "{}",
+        headers: {
+          "content-type": "application/json",
+          cookie: `__Host-ai_crm_pc_session=${"a".repeat(43)}`,
+          "idempotency-key": "task-complete.synthetic-empty-body",
+          origin: "https://workbench.invalid",
+          "x-csrf-token": "c".repeat(43),
+        },
+        method: "POST",
+      });
+      expect(emptyObject.status).toBe(400);
+      await expect(emptyObject.json()).resolves.toEqual({ code: "task_invalid_input" });
       const responses = [await request(), await request(), await request(), await request()];
       expect(responses.map((response) => response.status)).toEqual([403, 403, 503, 503]);
       const bodies = await Promise.all(responses.map(async (response) => response.json() as Promise<{ readonly code: string }>));
@@ -294,6 +412,7 @@ describe("API composition root", () => {
           fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
           forms: { handle: vi.fn() },
           tasks: { complete },
+          validateFormMutation: vi.fn(),
           validateTaskMutation: vi.fn(),
         },
       });

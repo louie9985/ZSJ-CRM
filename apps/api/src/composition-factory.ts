@@ -143,7 +143,7 @@ function managementAuditPort(
 ) {
   return Object.freeze({
     async record(event: {
-      readonly actor: { readonly principalId: string };
+      readonly actor: { readonly principalId: string; readonly workforcePersonId?: string };
       readonly decisionId: string;
       readonly errorCode?: string;
       readonly operation: string;
@@ -156,7 +156,7 @@ function managementAuditPort(
       try {
         await audit.record({
           action: `${capability}.${event.operation}`,
-          actor: { actorId: event.actor.principalId, actorType: "authenticated_subject", workforcePersonId: event.actor.principalId },
+          actor: { actorId: event.actor.principalId, actorType: "authenticated_subject", ...(event.actor.workforcePersonId === undefined ? {} : { workforcePersonId: event.actor.workforcePersonId }) },
           reason: { code: event.errorCode === undefined ? `${capability}_query` : `${capability}_query_failed` },
           resource: {
             resourceId: event.referenceId,
@@ -504,20 +504,30 @@ export async function createProductionApiPlatformBindings(
   const notificationStore = createPrismaNotificationStore(activeDatabase);
   const queryDecisionTraces = new Map<string, string>();
   const taskAuthorization: TaskAuthorization = Object.freeze({
-    authorize: async ({ actor, operation }: Parameters<TaskAuthorization["authorize"]>[0]) => {
-      if (operation !== "task_list") {
-        throw new Error("task_object_or_mutation_authorization_unavailable");
-      }
+    authorize: async ({ actor, operation, task }: Parameters<TaskAuthorization["authorize"]>[0]) => {
+      const action = operation === "task_list" ? "list"
+        : operation === "task_detail" ? "read"
+          : operation === "task_complete" ? "complete"
+            : "reconcile";
+      const workforcePersonId = actor.workforcePersonId;
+      if (workforcePersonId === undefined) throw new Error("task_workforce_context_unavailable");
       const traceId = authorizationTrace.getStore() ?? createTraceContext().traceId;
       const decision = await authorizationTrace.run(traceId, () => authorization.check(
-        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId: actor.principalId },
+        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId },
         {
-          action: "list",
+          action,
           resource: "platform.task-center.task-projection",
         },
       ));
       queryDecisionTraces.set(decision.decisionId, traceId);
-      return { allowed: decision.allowed, decisionId: decision.decisionId };
+      if (!decision.allowed || operation === "task_list") {
+        return { allowed: decision.allowed, decisionId: decision.decisionId };
+      }
+      if (task === undefined) return { allowed: false, decisionId: decision.decisionId };
+      const projection = await taskStore.get(task);
+      const objectAllowed = projection?.assigneeReference !== undefined
+        && (actor.activeAssignmentIds ?? []).includes(projection.assigneeReference);
+      return { allowed: objectAllowed, decisionId: decision.decisionId };
     },
   });
   const notificationAuthorization: NotificationAuthorization = Object.freeze({
@@ -526,9 +536,11 @@ export async function createProductionApiPlatformBindings(
         ? "list"
         : operation === "notification_detail" ? "read" : undefined;
       if (action === undefined) throw new Error("notification_mutation_authorization_unavailable");
+      const workforcePersonId = actor.workforcePersonId;
+      if (workforcePersonId === undefined) throw new Error("notification_workforce_context_unavailable");
       const traceId = authorizationTrace.getStore() ?? createTraceContext().traceId;
       const decision = await authorizationTrace.run(traceId, () => authorization.check(
-        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId: actor.principalId },
+        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId },
         { action, resource: "platform.notifications.in-app-notification" },
       ));
       queryDecisionTraces.set(decision.decisionId, traceId);

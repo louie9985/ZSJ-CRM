@@ -10,6 +10,7 @@ coverage/
 packages/database/src/generated/prisma/
 playwright-report/
 test-results/
+tests/e2e/.ai-crm-e2e-browser-auth-*
 
 .env
 .env.*

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-crm.local/forms/v1/walking-skeleton-form-submission-command.schema.json",
+  "title": "Walking Skeleton Form Submission Command V1",
+  "description": "Test-scoped transient command. The server validates data but never persists it. Idempotency-Key and authenticated actor context are supplied by the HTTP boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["data", "fileReference", "version"],
+  "properties": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_version_id", "file_id", "synthetic_value"],
+      "properties": {
+        "content_version_id": { "$ref": "#/$defs/uuid" },
+        "file_id": { "$ref": "#/$defs/uuid" },
+        "synthetic_value": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "fileReference": { "$ref": "#/$defs/fileReference" },
+    "version": { "const": 1 }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "fileReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentVersionId", "displayName", "fileId", "version"],
+      "properties": {
+        "contentVersionId": { "$ref": "#/$defs/uuid" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^\\u0000-\\u001F\\u007F]+$" },
+        "fileId": { "$ref": "#/$defs/uuid" },
+        "mediaType": { "type": "string", "minLength": 3, "maxLength": 255 },
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "version": { "const": 1 }
+      }
+    }
+  }
+}

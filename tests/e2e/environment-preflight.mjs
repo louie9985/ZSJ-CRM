@@ -23,11 +23,16 @@ const requiredFiles = Object.freeze([
   "tests/e2e/migrations/0000000016_e2e_walking_skeleton_durable_stores.meta.json",
   "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.sql",
   "tests/e2e/migrations/0000000017_e2e_submission_trace_audit_evidence.meta.json",
+  "tests/e2e/migrations/0000000018_e2e_form_submission_command_receipts.sql",
+  "tests/e2e/migrations/0000000018_e2e_form_submission_command_receipts.meta.json",
   "tests/e2e/src/api-main.ts",
   "tests/e2e/src/api-main.test.ts",
   "tests/e2e/src/apply-e2e-migration.ts",
   "tests/e2e/src/browser-authentication-bff.ts",
   "tests/e2e/src/browser-task-command.ts",
+  "tests/e2e/src/walking-skeleton-form-submission.ts",
+  "tests/e2e/src/walking-skeleton-task-command.ts",
+  "tests/e2e/src/durable-audit-evidence.ts",
   "tests/e2e/src/durable-evidence.ts",
   "tests/e2e/src/durable-main-chain.ts",
   "tests/e2e/src/file-clamav-integration.mjs",
@@ -122,13 +127,17 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     || !flowableDriver.includes('status: "e2e-flowable-workflow-passed"')) {
     throw new Error("e2e_environment_preflight_flowable_workflow_evidence_changed");
   }
-  if (!browserAuthRunner.includes('status: "e2e-browser-authentication-passed"')
+  if (!browserAuthRunner.includes('"e2e-browser-authentication-passed"')
+    || !browserAuthRunner.includes('"e2e-browser-durable-observation-passed"')
     || !browserAuthRunner.includes("Network.getAllCookies")
     || !browserAuthRunner.includes("browserTraceId")
     || !browserAuthRunner.includes("browserTraceparent")
     || !browserAuthRunner.includes("taskCompletionAccepted")
     || !browserAuthBff.includes("createPcBffSessionService")
     || !browserAuthBff.includes("recordBrowserTaskCommand")
+    || !browserAuthBff.includes("createPrismaTaskCenterStore")
+    || !browserAuthBff.includes("createPrismaNotificationStore")
+    || !browserAuthBff.includes("durableDatabaseUrlFile")
     || !browserTaskCommand.includes("parseBrowserTaskCommand")) {
     throw new Error("e2e_environment_preflight_browser_auth_evidence_changed");
   }
@@ -151,7 +160,12 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     || !mainChain.includes('environment["AI_CRM_E2E_FILE_REFERENCE_JSON"]')
     || !mainChainRunner.includes("AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE")
     || !combinedEvidence.includes('status: "e2e-browser-to-worker-causal-evidence-passed"')
-    || !combinedEvidence.includes("AI_CRM_E2E_TASK_COMMAND_FILE")
+    || !combinedEvidence.includes("causalBrowserEvidence")
+    || !combinedEvidence.includes("formSubmissionReference")
+    || combinedEvidence.includes("AI_CRM_E2E_TASK_COMMAND_FILE:")
+    || combinedEvidence.includes("AI_CRM_E2E_FORM_SUBMISSION_FILE:")
+    || !combinedEvidence.includes("AI_CRM_E2E_KEYCLOAK_DUMP_FILE")
+    || !mainChainRunner.includes("AI_CRM_E2E_DURABLE_DATABASE_URL_FILE")
     || !combinedEvidence.includes("assert.deepEqual(mainChainEvidence.fileReference, fileEvidence.cleanFileReference)")) {
     throw new Error("e2e_environment_preflight_external_evidence_bridge_changed");
   }
@@ -200,7 +214,7 @@ export async function runEnvironmentPreflight(options = {}) {
     implementationGaps,
     composeScope: "full-process-skeleton",
     externalEvidenceBridge: "verified-by-browser-api-combined-execution",
-    mainWalkingSkeletonReady: true,
+    mainWalkingSkeletonReady: false,
     nodeMajor,
     rabbitJobChain: "real-rabbitmq-with-postgresql-stores",
     services: Object.freeze(validateServices(serviceOutput)),

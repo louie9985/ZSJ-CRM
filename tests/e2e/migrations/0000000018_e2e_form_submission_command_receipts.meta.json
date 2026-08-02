@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "tests/e2e",
+  "purpose": "Persist server-generated, idempotent Walking Skeleton Form submission-command receipts, their same-transaction Outbox evidence, and a reserved Task-command request metadata boundary linked by the server receipt.",
+  "applicationCompatibility": { "minimumInclusive": "0.0.0" },
+  "lockImpact": "Creates three E2E-only tables in the disposable E2E database; no production module table is altered.",
+  "dataImpact": "Stores authenticated-subject/workforce/assignment references, fingerprints, exact release references, stable FileReference metadata, and safe Trace correlation only. Submitted form data and file content are never stored.",
+  "backfill": "None.",
+  "recovery": "Drop task_command_requests, then form_submission_command_outbox, then form_submission_command_receipts only in the disposable E2E database after preserving required evidence.",
+  "forwardFix": "Append a new globally unique migration; never edit this migration after it has been applied.",
+  "destructive": false
+}

@@ -6,6 +6,7 @@ import { Component, lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { getNavigationSelection, navigation } from "./navigation";
+import { usePolledCollections } from "./collection-polling";
 import { runtimeWorkbenchPort } from "./runtime";
 import { stateCopy, SystemState } from "./system-state";
 import type { BootstrapResult, PlatformCollection, WorkbenchPort } from "./workbench-port";
@@ -15,6 +16,7 @@ const CollectionPage = lazy(async () => ({ default: (await import("./pages")).Co
 const Overview = lazy(async () => ({ default: (await import("./overview-page")).Overview }));
 const SettingsPage = lazy(async () => ({ default: (await import("./settings-page")).SettingsPage }));
 const StatusRoutePage = lazy(async () => ({ default: (await import("./status-route-page")).StatusRoutePage }));
+const SyntheticFormEvidencePage = lazy(async () => ({ default: (await import("./synthetic-form-evidence-page")).SyntheticFormEvidencePage }));
 
 const route = {
   path: "/",
@@ -113,18 +115,29 @@ function CollectionRoutes({ path, collection }: { path: string; collection: Plat
   ];
 }
 
+function SyntheticFormEvidenceRoute({ port }: { port: NonNullable<WorkbenchPort["syntheticFormEvidence"]> }): React.JSX.Element {
+  const release = useQuery({ queryKey: ["synthetic-form-evidence-release"], queryFn: () => port.loadRelease(), retry: false });
+  if (release.isPending) return <Flex className="full-state" align="center" justify="center"><Spin size="large" description="正在加载表单版本" /></Flex>;
+  if (release.isError) return <DirectSystemState kind="failure" onRetry={() => { void release.refetch(); }} />;
+  return <SyntheticFormEvidencePage fileReference={port.fileReference} port={port} release={release.data} />;
+}
+
 function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port: WorkbenchPort }): React.JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [logoutState, setLogoutState] = useState<"error" | "idle" | "pending">("idle");
   const selection = getNavigationSelection(location.pathname);
+  const collections = usePolledCollections(port, data.collections, data.context.assignmentReference);
 
   const requestLogout = (): void => {
     if (logoutState === "pending") return;
     setLogoutState("pending");
     port.logout().then(
-      (result) => { queryClient.setQueryData(["workbench-bootstrap"], result); },
+      (result) => {
+        queryClient.removeQueries({ queryKey: ["workbench-collections"] });
+        queryClient.setQueryData(["workbench-bootstrap"], result);
+      },
       () => { setLogoutState("error"); },
     );
   };
@@ -182,10 +195,11 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
         <Route path="/coordination" element={<Navigate to="/tasks" replace />} />
         <Route path="/resources" element={<Navigate to="/forms" replace />} />
         <Route path="/workspace" element={<Overview data={data} />} />
-        {CollectionRoutes({ path: "/tasks", collection: data.collections.tasks })}
-        {CollectionRoutes({ path: "/notifications", collection: data.collections.notifications })}
-        {CollectionRoutes({ path: "/forms", collection: data.collections.forms })}
-        {CollectionRoutes({ path: "/files", collection: data.collections.files })}
+        {CollectionRoutes({ path: "/tasks", collection: collections.tasks })}
+        {CollectionRoutes({ path: "/notifications", collection: collections.notifications })}
+        {port.syntheticFormEvidence === undefined ? null : <Route path="/forms/platform.synthetic.task-completion" element={<SyntheticFormEvidenceRoute port={port.syntheticFormEvidence} />} />}
+        {CollectionRoutes({ path: "/forms", collection: collections.forms })}
+        {CollectionRoutes({ path: "/files", collection: collections.files })}
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/status/403" element={<StatusRoutePage kind="forbidden" />} />
         <Route path="/status/500" element={<StatusRoutePage kind="failure" />} />

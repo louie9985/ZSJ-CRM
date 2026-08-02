@@ -44,7 +44,7 @@ function bindings(overrides: Partial<ApiPlatformBindings> = {}): ApiPlatformBind
       tasks: { get: vi.fn(), list: vi.fn() },
     },
     readiness: () => [],
-    sessions: { resolvePrincipal: vi.fn().mockResolvedValue(principal), sessionForMutation: vi.fn() },
+    sessions: { resolvePrincipal: vi.fn().mockResolvedValue(principal), sessionForMutation: vi.fn().mockResolvedValue({ csrfToken: "c".repeat(43) }) },
     ...overrides,
   };
 }
@@ -102,5 +102,18 @@ describe("API platform composition", () => {
     const composition = createApiPlatformComposition(configured);
     await composition.lifecycle.onStart?.(new AbortController().signal);
     expect(configured.databaseCompatibility.assertCompatible).toHaveBeenCalledOnce();
+  });
+
+  it("uses the same browser-session mutation boundary for Form and Task POSTs", async () => {
+    const configured = bindings();
+    const composition = createApiPlatformComposition(configured);
+    const input = { credential: "synthetic-credential", csrfToken: "c".repeat(43), origin: "https://workbench.invalid" };
+    await expect(composition.lifecycle.platformHttp?.validateFormMutation(input)).resolves.toBeUndefined();
+    await expect(composition.lifecycle.platformHttp?.validateTaskMutation(input)).resolves.toBeUndefined();
+    await expect(composition.lifecycle.platformHttp?.validateFormMutation({ ...input, origin: "https://outside.invalid" }))
+      .rejects.toMatchObject({ code: "authentication_csrf_rejected" });
+    await expect(composition.lifecycle.platformHttp?.validateFormMutation({ credential: input.credential, csrfToken: input.csrfToken, referer: "https://workbench.invalid/forms/synthetic" }))
+      .resolves.toBeUndefined();
+    expect(configured.sessions.sessionForMutation).toHaveBeenCalledTimes(4);
   });
 });

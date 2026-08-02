@@ -26,6 +26,7 @@ class Runtime implements E2ePostgresRuntime {
       return Promise.resolve({ rowCount: 1, rows: [] });
     }
     if (sql.includes("operation_id=$2")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
+    if (sql.includes("action='task.task_complete'")) return Promise.resolve({ rowCount: 1, rows: [{ count: "1" } as Row] });
     if (sql.includes("from audit.records")) return Promise.resolve({ rowCount: 1, rows: [{ count: "12" } as Row] });
     if (sql.includes("from platform_eventing.inbox_receipts")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
     if (sql.includes("from platform_eventing.outbox_messages")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
@@ -47,7 +48,7 @@ describe("durable main-chain evidence", () => {
 
   it("reports durable submission, Outbox, Inbox, and Audit correlation counts", async () => {
     const evidence = createPostgresMainChainEvidence(new Runtime());
-    await expect(evidence.inspect(input.traceId, input.traceparent)).resolves.toEqual({ auditCount: 12, auditFactCount: 2, inboxCount: 2, outboxTraceCount: 2, submissionCount: 1 });
+    await expect(evidence.inspect(input.traceId, input.traceparent)).resolves.toEqual({ auditCount: 12, auditFactCount: 2, taskAuditFactCount: 1, inboxCount: 2, outboxTraceCount: 2, submissionCount: 1 });
     expect(stableUuid("same")).toBe(stableUuid("same"));
     expect(auditOperationId("operation", "failed")).not.toBe(auditOperationId("operation", "succeeded"));
   });

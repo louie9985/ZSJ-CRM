@@ -36,6 +36,9 @@ paths:
       x-ai-crm-permission: { version: 1, owner: platform.task-center, code: platform.task-center.task-projection:complete, resource: platform.task-center.task-projection, action: complete }
       description: Routes an idempotent completion command to the authoritative source. It does not close the projection.
       parameters: [ { $ref: "#/components/parameters/SourceType" }, { $ref: "#/components/parameters/SourceTaskId" }, { $ref: "#/components/parameters/IdempotencyKey" } ]
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/TaskCompletionContext" } } }
       responses:
         "202": { description: Source command accepted; wait for a source lifecycle event., content: { application/json: { schema: { $ref: "#/components/schemas/TaskCommandResult" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -97,6 +100,12 @@ components:
       additionalProperties: false
       required: [sourceCommandId,status]
       properties: { sourceCommandId: { $ref: "#/components/schemas/StableId" }, status: { const: accepted } }
+    TaskCompletionContext:
+      type: object
+      additionalProperties: false
+      required: [sourceCommandReference]
+      description: Optional stable reference forwarded opaquely to the authoritative source and included in the idempotency fingerprint.
+      properties: { sourceCommandReference: { $ref: "#/components/schemas/StableId" } }
     ReconciliationResult:
       type: object
       additionalProperties: false

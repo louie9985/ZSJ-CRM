@@ -3209,6 +3209,27 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "Optional stable reference forwarded opaquely to the authoritative source and included in the idempotency fingerprint.",
+                "properties": {
+                  "sourceCommandReference": {
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceCommandReference"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "202": {
             "content": {

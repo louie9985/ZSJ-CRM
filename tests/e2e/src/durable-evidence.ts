@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { createAuditService, createPrismaAuditStore, type AuditService, type RecordAuditCommand } from "@ai-crm/platform-audit";
+import { createAuditService, createPrismaAuditStore, type AuditRecord, type AuditService, type RecordAuditCommand } from "@ai-crm/platform-audit";
 import type { FileReference } from "@ai-crm/platform-file-center";
 
 import type { E2ePostgresRuntime } from "./postgres-runtime.js";
@@ -18,6 +18,7 @@ export interface DurableSubmissionInput {
 export interface DurableEvidenceSnapshot {
   readonly auditCount: number;
   readonly auditFactCount: number;
+  readonly taskAuditFactCount: number;
   readonly inboxCount: number;
   readonly outboxTraceCount: number;
   readonly submissionCount: number;
@@ -25,6 +26,7 @@ export interface DurableEvidenceSnapshot {
 
 export interface MainChainEvidence {
   readonly audit: AuditService;
+  readCorrelatedAuditRecords(traceId: string): Promise<readonly AuditRecord[]>;
   inspect(traceId: string, traceparent: string, fileReference?: FileReference): Promise<DurableEvidenceSnapshot>;
   saveSubmission(input: DurableSubmissionInput): Promise<{ readonly replayed: boolean }>;
 }
@@ -77,17 +79,28 @@ export function createPostgresMainChainEvidence(runtime: E2ePostgresRuntime): Ma
   );
   return Object.freeze({
     audit,
+    async readCorrelatedAuditRecords(traceId: string) {
+      const result = await runtime.execute<{ readonly audit_id: string }>("select audit_id from audit.records where trace_id=$1 and (((action='form.submission.validate' or action='form.submission.accept') and result='succeeded' and resource_type='form_submission') or (action='task.task_complete' and result='succeeded' and resource_type='task_projection')) order by action", [traceId]);
+      return Promise.all(result.rows.map(({ audit_id: recordId }, index) => audit.readSensitive({
+        actor: { actorId: "system.e2e-audit-verifier", actorType: "system" },
+        operationId: stableUuid(`e2e.audit-correlation-read:${traceId}:${String(index)}`),
+        reason: "walking skeleton correlation verification",
+        recordId,
+        traceId,
+      })));
+    },
     async inspect(traceId: string, traceparent: string, fileReference?: FileReference) {
-      const [audits, auditFacts, inbox, outbox, submissions] = await Promise.all([
+      const [audits, auditFacts, taskAuditFacts, inbox, outbox, submissions] = await Promise.all([
         runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1", [traceId]),
-        runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1 and ((operation_id=$2 and action='form.submission.validate' and result='failed' and reason_code='inactive_release' and resource_type='form_definition') or (operation_id=$3 and action='form.submission.validate' and result='succeeded' and reason_code='synthetic_e2e' and resource_type='form_submission'))", [traceId, auditOperationId("form:inactive-validation", "failed"), auditOperationId("form:submission-validation", "succeeded")]),
+        runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1 and ((operation_id=$2 and action='form.submission.validate' and result='failed' and reason_code='inactive_release' and resource_type='form_definition') or ((operation_id=$3 and action='form.submission.validate') or action='form.submission.accept') and result='succeeded' and reason_code='synthetic_e2e' and resource_type='form_submission')", [traceId, auditOperationId("form:inactive-validation", "failed"), auditOperationId("form:submission-validation", "succeeded")]),
+        runtime.execute<CountRow>("select count(*)::text as count from audit.records where trace_id=$1 and action='task.task_complete' and result='succeeded' and reason_code='synthetic_e2e' and resource_type='task_projection' and resource_id='tests.walking-skeleton:source-task.main-chain-synthetic'", [traceId]),
         runtime.execute<CountRow>("select count(*)::text as count from platform_eventing.inbox_receipts where (message_id=$1 and consumer=$3) or (message_id=$2 and consumer=$4)", ["91000000-0000-4000-8000-000000000001", "92000000-0000-4000-8000-000000000001", "tests.walking-skeleton-source.v1", "tests.notification-intent.v1"]),
         runtime.execute<CountRow>("select count(*)::text as count from platform_eventing.outbox_messages where traceparent=$1 and status='published' and message_kind='job' and message_version=1 and ((message_id=$2 and message_type='tests.walking-skeleton.source-command') or (message_id=$3 and message_type='platform.notifications.intent-submit'))", [traceparent, "91000000-0000-4000-8000-000000000001", "92000000-0000-4000-8000-000000000001"]),
         fileReference === undefined
-          ? runtime.execute<CountRow>("select count(*)::text as count from e2e_walking_skeleton.form_submissions where trace_id=$1 and traceparent=$2", [traceId, traceparent])
-          : runtime.execute<CountRow>("select count(*)::text as count from e2e_walking_skeleton.form_submissions where trace_id=$1 and traceparent=$2 and file_id=$3 and content_version_id=$4 and file_reference_version=$5 and display_name=$6 and media_type is not distinct from $7 and size_bytes is not distinct from $8", [traceId, traceparent, fileReference.fileId, fileReference.contentVersionId, fileReference.version, fileReference.displayName, fileReference.mediaType ?? null, fileReference.sizeBytes ?? null]),
+          ? runtime.execute<CountRow>("select sum(entry_count)::text as count from (select count(*) entry_count from e2e_walking_skeleton.form_submissions where trace_id=$1 union all select count(*) entry_count from e2e_walking_skeleton.form_submission_command_receipts where trace_id=$1) evidence", [traceId])
+          : runtime.execute<CountRow>("select sum(entry_count)::text as count from (select count(*) entry_count from e2e_walking_skeleton.form_submissions where trace_id=$1 and file_id=$2 and content_version_id=$3 and file_reference_version=$4 and display_name=$5 and media_type is not distinct from $6 and size_bytes is not distinct from $7 union all select count(*) entry_count from e2e_walking_skeleton.form_submission_command_receipts where trace_id=$1 and file_id=$2 and content_version_id=$3 and file_reference_version=$4 and display_name=$5 and media_type is not distinct from $6 and size_bytes is not distinct from $7) evidence", [traceId, fileReference.fileId, fileReference.contentVersionId, fileReference.version, fileReference.displayName, fileReference.mediaType ?? null, fileReference.sizeBytes ?? null]),
       ]);
-      return Object.freeze({ auditCount: count(audits.rows[0]), auditFactCount: count(auditFacts.rows[0]), inboxCount: count(inbox.rows[0]), outboxTraceCount: count(outbox.rows[0]), submissionCount: count(submissions.rows[0]) });
+      return Object.freeze({ auditCount: count(audits.rows[0]), auditFactCount: count(auditFacts.rows[0]), taskAuditFactCount: count(taskAuditFacts.rows[0]), inboxCount: count(inbox.rows[0]), outboxTraceCount: count(outbox.rows[0]), submissionCount: count(submissions.rows[0]) });
     },
     async saveSubmission(input: DurableSubmissionInput) {
       const digest = fingerprint(input);

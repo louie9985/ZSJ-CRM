@@ -7,12 +7,14 @@ import {
   createOidcClient,
   createPcAuthenticationHttpAdapter,
   createPcBffSessionService,
+  createFormSchemaHttpAdapter,
   createRedisBrowserSessionStore,
   validateBrowserMutation,
   type ApiComposition,
   type RedisSessionConnection,
 } from "@ai-crm/api";
 import { createOidcTokenVerifier } from "@ai-crm/platform-auth-context";
+import { createDatabaseRuntime, type DatabaseRuntime } from "@ai-crm/database";
 import {
   createAuthorizationService,
   type AuthorizationCache,
@@ -23,8 +25,17 @@ import {
 } from "@ai-crm/platform-authorization";
 import { createMemoryOrganizationService, type OrganizationServiceApi } from "@ai-crm/platform-organization";
 import type { AuthenticationSubject, WorkforceContext } from "@ai-crm/platform-organization";
+import { createPrismaNotificationStore } from "@ai-crm/platform-notifications";
+import { createPrismaTaskCenterStore, createTaskCenter } from "@ai-crm/platform-task-center";
+import { createPrismaFormSchemaQueryService, type FormQueryAuthorizationRequest } from "@ai-crm/platform-form-schema";
 
 import { recordBrowserTaskCommand } from "./browser-task-command.js";
+import { createBrowserApplicationRegistryFixture } from "./browser-application-registry.js";
+import { createBrowserFormEvidenceFixture } from "./browser-form-evidence.js";
+import { createWalkingSkeletonTaskCommandStore } from "./walking-skeleton-task-command.js";
+import { createWalkingSkeletonFormSubmissionHttpAdapter } from "./walking-skeleton-form-submission-http.js";
+import { createWalkingSkeletonFormSubmissionPostgresStore } from "./walking-skeleton-form-submission-postgres-store.js";
+import { createWalkingSkeletonFormSubmissionService, WalkingSkeletonFormSubmissionError } from "./walking-skeleton-form-submission.js";
 
 export interface BrowserAuthenticationBffOptions {
   readonly clientSecretFile: string;
@@ -35,6 +46,7 @@ export interface BrowserAuthenticationBffOptions {
   readonly publicOrigin: string;
   readonly redisPasswordFile: string;
   readonly redisUrl: string;
+  readonly durableDatabaseUrlFile?: string;
   readonly taskCompletionCommandFile?: string;
   readonly taskAuthorizationSubject?: string;
 }
@@ -48,14 +60,17 @@ export interface RunningBrowserAuthenticationBff {
 export type BrowserTaskAuthorizationScenario = "allowed" | "inactive_employment" | "permission_denied" | "unlinked";
 
 type BrowserPlatformHttp = NonNullable<ApiComposition["platformHttp"]>;
-type BrowserTaskCommand = Parameters<NonNullable<BrowserPlatformHttp["tasks"]>["complete"]>[0];
+type BrowserTaskCommand = Parameters<NonNullable<NonNullable<BrowserPlatformHttp["tasks"]>["complete"]>>[0];
 type BrowserTaskMutation = Parameters<BrowserPlatformHttp["validateTaskMutation"]>[0];
+type BrowserNotificationQuery = Parameters<NonNullable<BrowserPlatformHttp["notifications"]>["list"]>[0];
+type BrowserTaskQuery = Parameters<NonNullable<NonNullable<BrowserPlatformHttp["tasks"]>["list"]>>[0];
 
 export async function closeBrowserAuthenticationBffResources(
   application: Readonly<{ stop(): Promise<void> }>,
   connection: Readonly<{ close(): Promise<void> }>,
+  durableRuntime?: Pick<DatabaseRuntime, "close">,
 ): Promise<void> {
-  const results = await Promise.allSettled([application.stop(), connection.close()]);
+  const results = await Promise.allSettled([application.stop(), connection.close(), ...(durableRuntime === undefined ? [] : [durableRuntime.close()])]);
   const failures: unknown[] = [];
   for (const result of results) {
     if (result.status === "rejected") failures.push(result.reason as unknown);
@@ -123,12 +138,20 @@ async function organizationFixture(
 }
 
 function authorizationFixture(ids: FixtureIds, grant: boolean) {
-  const permission = Object.freeze({ action: "complete", code: "platform.task-center.task-projection:complete", resource: "platform.task-center.task-projection", scopeDimensions: Object.freeze([]) });
+  const permissions = Object.freeze([
+    Object.freeze({ action: "complete", code: "platform.task-center.task-projection:complete", resource: "platform.task-center.task-projection", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "read", code: "platform.app-registry.registry:read", resource: "platform.app-registry.registry", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "resolve", code: "platform.app-registry.deep-link:resolve", resource: "platform.app-registry.deep-link", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "read", code: "platform.form-schema.form-release:read", resource: "platform.form-schema.form-release", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "validate", code: "platform.form-schema.form-release:validate", resource: "platform.form-schema.form-release", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "list", code: "platform.task-center.task-projection:list", resource: "platform.task-center.task-projection", scopeDimensions: Object.freeze([]) }),
+    Object.freeze({ action: "list", code: "platform.notifications.in-app-notification:list", resource: "platform.notifications.in-app-notification", scopeDimensions: Object.freeze([]) }),
+  ]);
   const roleId = "74000000-0000-4000-8000-000000000001";
   const snapshot: AuthorizationPolicySnapshot = Object.freeze({
     grants: grant ? Object.freeze([{ grantId: "74000000-0000-4000-8000-000000000002", roleId, subject: { assignmentId: ids.assignment, kind: "assignment" as const }, validFrom: "2026-01-01T00:00:00.000Z" }]) : Object.freeze([]),
-    permissions: Object.freeze([permission]),
-    roles: Object.freeze([{ permissions: Object.freeze([{ permissionCode: permission.code, scope: Object.freeze({ terms: Object.freeze([{ kind: "all" as const }]), version: 1 as const }) }]), roleId }]),
+    permissions,
+    roles: Object.freeze([{ permissions: Object.freeze(permissions.map((permission) => Object.freeze({ permissionCode: permission.code, scope: Object.freeze({ terms: Object.freeze([{ kind: "all" as const }]), version: 1 as const }) }))), roleId }]),
     version: grant ? "e2e-browser-task-allowed-v1" : "e2e-browser-task-denied-v1",
   });
   const store: AuthorizationPolicyStore = { currentVersion: () => Promise.resolve(snapshot.version), load: (version) => Promise.resolve(version === snapshot.version ? snapshot : undefined) };
@@ -230,56 +253,179 @@ export async function startBrowserAuthenticationBff(
       service,
     });
     const taskSubject = Object.freeze({ issuer: options.issuer, subject: options.taskAuthorizationSubject ?? "" });
-    const taskFixtures = options.taskCompletionCommandFile === undefined || options.taskAuthorizationSubject === undefined
+    const taskFixtures = options.taskAuthorizationSubject === undefined
       ? undefined
       : await createBrowserTaskAuthorizationFixtures(taskSubject);
+    const registryFixture = await createBrowserApplicationRegistryFixture();
+    const formFixture = await createBrowserFormEvidenceFixture();
+    let durableRuntime: DatabaseRuntime | undefined;
+    if (options.durableDatabaseUrlFile !== undefined) {
+      const connectionString = (await readFile(options.durableDatabaseUrlFile, "utf8")).trim();
+      const target = new URL(connectionString);
+      if (target.hostname !== "127.0.0.1" || target.pathname !== "/ai_crm" || !/^\d{4,5}$/u.test(target.port)) {
+        throw new Error("e2e_browser_durable_database_target_invalid");
+      }
+      durableRuntime = createDatabaseRuntime({ applicationName: "e2e_browser_durable_observation", connectionString, connectionTimeoutMs: 5_000, idleTimeoutMs: 5_000, maxConnections: 2, statementTimeoutMs: 5_000 });
+    }
+    const durableTaskStore = durableRuntime === undefined ? undefined : createPrismaTaskCenterStore(durableRuntime);
+    const durableTaskCommands = durableRuntime === undefined ? undefined : createWalkingSkeletonTaskCommandStore(durableRuntime);
+    const durableTaskCenter = durableTaskStore === undefined ? undefined : createTaskCenter({
+      audit: { record: () => Promise.resolve() },
+      authorization: {
+        authorize: async ({ actor, operation, task }) => {
+          if (actor.workforcePersonId === undefined || actor.activeAssignmentIds === undefined || actor.activeAssignmentIds.length === 0) {
+            return Object.freeze({ allowed: false, decisionId: "decision.e2e-browser-task-workforce-missing" });
+          }
+          if (operation === "task_list") return Object.freeze({ allowed: true, decisionId: "decision.e2e-browser-task-list" });
+          if (operation !== "task_detail" || task === undefined) {
+            return Object.freeze({ allowed: false, decisionId: "decision.e2e-browser-task-operation-denied" });
+          }
+          const projection = await durableTaskStore.get(task);
+          // Candidate-scope semantics are intentionally not invented by this fixture. Until an
+          // owning resolver is confirmed, only an exact active-assignment assignee is visible.
+          const allowed = projection?.assigneeReference !== undefined &&
+            actor.activeAssignmentIds.includes(projection.assigneeReference);
+          return Object.freeze({ allowed, decisionId: allowed ? "decision.e2e-browser-task-detail" : "decision.e2e-browser-task-detail-denied" });
+        },
+      },
+      router: { complete: () => Promise.reject(new Error("e2e_browser_task_router_not_available")) },
+      sourceReader: { get: () => Promise.reject(new Error("e2e_browser_task_source_not_available")) },
+      store: durableTaskStore,
+    });
     let taskAuthorizationScenario: BrowserTaskAuthorizationScenario = "allowed";
     const traceByActor = new Map<string, string>();
-    const platformHttp: ApiComposition["platformHttp"] = options.taskCompletionCommandFile === undefined ? undefined : Object.freeze({
-      applicationRegistry: {} as BrowserPlatformHttp["applicationRegistry"],
-      authorize: async (input: Parameters<BrowserPlatformHttp["authorize"]>[0]) => {
-        if (input.permission.action !== "complete" || input.permission.resource !== "platform.task-center.task-projection" || input.traceId === undefined) {
-          throw new Error("e2e_browser_task_authorization_denied");
-        }
-        const principal = await service.resolvePrincipal(input.credential);
-        const subject = principal.authenticationSubject;
-        if (taskFixtures === undefined || subject.issuer !== taskSubject.issuer || subject.subject !== taskSubject.subject) {
-          throw new Error("e2e_browser_task_authorization_denied");
-        }
-        const { decision, workforce } = await authorizeBrowserTaskFixture(taskFixtures, taskAuthorizationScenario, subject, {
-          at: input.at,
-          permission: input.permission,
-          traceId: input.traceId,
-        });
-        const actorId = `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
+    const authorizePlatform = async (input: Parameters<BrowserPlatformHttp["authorize"]>[0]) => {
+      const taskPermission = input.permission.action === "complete" && input.permission.resource === "platform.task-center.task-projection";
+      const registryPermission = (input.permission.action === "read" && input.permission.resource === "platform.app-registry.registry") ||
+        (input.permission.action === "resolve" && input.permission.resource === "platform.app-registry.deep-link");
+      const formPermission = (input.permission.action === "read" || input.permission.action === "validate") && input.permission.resource === "platform.form-schema.form-release";
+      const observationPermission = input.permission.action === "list" && (input.permission.resource === "platform.task-center.task-projection" || input.permission.resource === "platform.notifications.in-app-notification");
+      if ((!taskPermission && !registryPermission && !formPermission && !observationPermission) || input.traceId === undefined) {
+        throw new Error("e2e_browser_task_authorization_denied");
+      }
+      const principal = await service.resolvePrincipal(input.credential);
+      const subject = principal.authenticationSubject;
+      if (taskFixtures === undefined || subject.issuer !== taskSubject.issuer || subject.subject !== taskSubject.subject) {
+        throw new Error("e2e_browser_task_authorization_denied");
+      }
+      const { decision, workforce } = await authorizeBrowserTaskFixture(taskFixtures, taskAuthorizationScenario, subject, {
+        at: input.at,
+        permission: input.permission,
+        traceId: input.traceId,
+      });
+      const actorId = `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
+      if (taskPermission) {
         if (traceByActor.has(actorId)) throw new Error("e2e_browser_task_request_concurrent");
         traceByActor.set(actorId, input.traceId);
+      }
+      return Object.freeze({ decision, principal, workforce });
+    };
+    const validateMutation = async (input: BrowserTaskMutation): Promise<void> => {
+      const session = await service.sessionForMutation(input.credential);
+      validateBrowserMutation({
+        allowedOrigins: [options.publicOrigin],
+        csrfHeader: input.csrfToken,
+        csrfSessionValue: session.csrfToken,
+        origin: input.origin,
+        referer: input.referer,
+      });
+    };
+    const authorizeFormQuery = async (request: FormQueryAuthorizationRequest) => {
+      if (taskFixtures === undefined) throw new Error("e2e_browser_form_authorization_unavailable");
+      const selected = taskFixtures[taskAuthorizationScenario];
+      selected.authorization.setTraceId(request.traceId);
+      const result = await selected.authorization.service.check(request.subject, request.permission);
+      return Object.freeze({ allowed: result.allowed, decisionId: result.decisionId });
+    };
+    const activeFormService = durableRuntime === undefined
+      ? formFixture.service
+      : createPrismaFormSchemaQueryService(durableRuntime, { authorize: authorizeFormQuery });
+    const resolveFormContext = async (input: Readonly<{ readonly credential: string; readonly permission: PermissionRequest; readonly traceparent: string }>) => {
+      const traceId = input.traceparent.split("-")[1];
+      if (traceId === undefined) throw new Error("e2e_browser_form_trace_missing");
+      const authorized = await authorizePlatform({
+        at: new Date(nowMs).toISOString(), credential: input.credential,
+        permission: input.permission,
+        traceId,
+      });
+      const actorId = `subject:${createHash("sha256").update(`${authorized.principal.authenticationSubject.issuer}\0${authorized.principal.authenticationSubject.subject}`).digest("hex")}`;
+      const assignments = authorized.workforce.assignments.map(({ assignmentId }) => assignmentId);
+      return Object.freeze({
+        actor: Object.freeze({ actorId, actorType: "authenticated_subject" as const, ...(assignments[0] === undefined ? {} : { assignmentId: assignments[0] }) }),
+        subject: Object.freeze({ activeAssignmentIds: Object.freeze(assignments), ...(assignments[0] === undefined ? {} : { selectedAssignmentId: assignments[0] }), workforcePersonId: authorized.workforce.workforcePersonId }),
+        traceId,
+      });
+    };
+    const walkingSkeletonFormSubmissions = durableRuntime === undefined ? undefined : createWalkingSkeletonFormSubmissionHttpAdapter({
+      resolveContext: async (input) => {
+        try { return await resolveFormContext({ ...input, permission: { action: "validate", resource: "platform.form-schema.form-release" } }); }
+        catch (error) {
+          if (taskAuthorizationScenario !== "allowed") throw new WalkingSkeletonFormSubmissionError("submission_denied", false, { cause: error });
+          throw error;
+        }
+      },
+      service: createWalkingSkeletonFormSubmissionService({
+        authorizer: { authorize: ({ context }) => authorizeFormQuery({
+          action: "validate",
+          actor: context.actor,
+          definitionId: "platform.synthetic.task-completion",
+          permission: { action: "validate", code: "platform.form-schema.form-release:validate", resource: "platform.form-schema.form-release" },
+          releaseVersion: 1,
+          subject: context.subject,
+          traceId: context.traceId,
+        }) },
+        onDependencyFailure: (stage) => {
+          process.stderr.write(`${JSON.stringify({ formSubmissionDependencyFailure: { stage } })}\n`);
+        },
+        store: createWalkingSkeletonFormSubmissionPostgresStore(durableRuntime),
+        validator: activeFormService,
+      }),
+      validateMutation,
+    });
+    const formHttp = createFormSchemaHttpAdapter({
+      authorize: async (input) => {
+        if (input.traceparent === undefined) throw new Error("e2e_browser_form_context_missing");
+        const context = await resolveFormContext({ credential: input.credential, permission: input.permission, traceparent: input.traceparent });
         return Object.freeze({
-          decision,
-          principal,
-          workforce,
+          activeAssignmentIds: context.subject.activeAssignmentIds,
+          actorId: context.actor.actorId,
+          ...(context.actor.assignmentId === undefined ? {} : { assignmentId: context.actor.assignmentId }),
+          traceId: context.traceId,
+          workforcePersonId: context.subject.workforcePersonId,
         });
       },
+      service: activeFormService,
+    });
+    const platformHttp: BrowserPlatformHttp = Object.freeze({
+      applicationRegistry: registryFixture.applicationRegistry,
+      authorize: authorizePlatform,
       fileCenter: {} as BrowserPlatformHttp["fileCenter"],
-      forms: {} as BrowserPlatformHttp["forms"],
-      tasks: Object.freeze({
+      forms: formHttp,
+      ...(walkingSkeletonFormSubmissions === undefined ? {} : { walkingSkeletonFormSubmissions }),
+      ...(durableRuntime === undefined ? {} : { notifications: Object.freeze({
+        list: (query: BrowserNotificationQuery) => createPrismaNotificationStore(durableRuntime).list({ principalId: query.actor.principalId, limit: query.limit ?? 50, includeArchived: query.includeArchived ?? false, ...(query.cursor === undefined ? {} : { cursor: query.cursor }) }),
+      }) }),
+      ...(durableTaskCommands === undefined ? {} : { taskCompletionWithTrace: async (command: BrowserTaskCommand, traceparent: string) => {
+        const traceId = traceByActor.get(command.actor.principalId);
+        const propagatedTraceId = /^00-([0-9a-f]{32})-[0-9a-f]{16}-0[01]$/u.exec(traceparent)?.[1];
+        if (traceId === undefined || propagatedTraceId !== traceId) throw new Error("e2e_browser_task_trace_unavailable");
+        traceByActor.delete(command.actor.principalId);
+        const accepted = await durableTaskCommands.accept({ command, traceId, traceparent });
+        return Object.freeze({ sourceCommandId: accepted.sourceCommandId, status: accepted.status });
+      } }),
+      ...((options.taskCompletionCommandFile === undefined && durableRuntime === undefined) ? {} : { tasks: Object.freeze({
+        ...(durableTaskCenter === undefined ? {} : { list: (query: BrowserTaskQuery) => durableTaskCenter.list(query) }),
+        ...(options.taskCompletionCommandFile === undefined ? {} : {
         complete: async (command: BrowserTaskCommand) => {
           const traceId = traceByActor.get(command.actor.principalId);
           if (traceId === undefined) throw new Error("e2e_browser_task_trace_unavailable");
           traceByActor.delete(command.actor.principalId);
           return recordBrowserTaskCommand(options.taskCompletionCommandFile ?? "", command, traceId);
         },
-      }),
-      validateTaskMutation: async (input: BrowserTaskMutation) => {
-        const session = await service.sessionForMutation(input.credential);
-        validateBrowserMutation({
-          allowedOrigins: [options.publicOrigin],
-          csrfHeader: input.csrfToken,
-          csrfSessionValue: session.csrfToken,
-          origin: input.origin,
-          referer: input.referer,
-        });
-      },
+        }),
+      }) }),
+      validateFormMutation: validateMutation,
+      validateTaskMutation: validateMutation,
     });
     const application = createApiApplication({
       authentication,
@@ -288,7 +434,7 @@ export async function startBrowserAuthenticationBff(
         { healthy: connection.isReady(), name: "redis-session-store", required: true },
       ],
       logger: { log: () => undefined },
-      ...(platformHttp === undefined ? {} : { platformHttp }),
+      platformHttp,
     });
     // Docker Desktop reaches the test-only host BFF through host.docker.internal.
     await application.start(options.port, "0.0.0.0");
@@ -300,7 +446,7 @@ export async function startBrowserAuthenticationBff(
         nowMs += milliseconds;
       },
       async close(): Promise<void> {
-        await closeBrowserAuthenticationBffResources(application, connection);
+        await closeBrowserAuthenticationBffResources(application, connection, durableRuntime);
       },
       setTaskAuthorizationScenario(scenario: BrowserTaskAuthorizationScenario): void {
         taskAuthorizationScenario = scenario;
