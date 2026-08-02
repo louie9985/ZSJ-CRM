@@ -13,6 +13,7 @@ import {
   createRabbitConfirmTransport,
 } from "@ai-crm/platform-eventing-outbox";
 import { createPrismaTaskCenterStore } from "@ai-crm/platform-task-center";
+import { createPrismaWorkforceAccessStore, WorkforceAccessService } from "@ai-crm/platform-workforce-access";
 import {
   createAmqplibPublisherAdapter,
   createAmqplibConsumerAdapter,
@@ -22,6 +23,9 @@ import {
 import { createTaskProjectionConsumerHandler } from "./task-projection-composition.js";
 import { taskProjectionRabbitTopology, taskProjectionRuntimePolicy } from "./task-projection-policy.js";
 import { createOutboxPublisherLoopHandler } from "./handlers.js";
+import { createWorkforceKeycloakClient } from "./workforce-keycloak-client.js";
+import { createWorkforceKeycloakSyncRabbitBinding } from "./workforce-keycloak-sync.js";
+import { workforceKeycloakSyncRabbitTopology } from "./workforce-keycloak-sync-policy.js";
 import { loadProductionWorkerConfiguration, type ProductionWorkerConfiguration } from "./production-config.js";
 import type { WorkerDependency, WorkerHandler } from "./index.js";
 
@@ -44,7 +48,7 @@ export interface ProductionWorkerResourceDependencies {
 const productionDependencies: ProductionWorkerResourceDependencies = Object.freeze({
   checkCompatibility: checkMigrationCompatibility,
   createConsumerResource: (configuration: ProductionWorkerConfiguration["rabbit"]["consumer"], signal: AbortSignal) =>
-    createAmqplibConsumerAdapter(configuration, [taskProjectionRabbitTopology], taskProjectionRuntimePolicy, undefined, signal),
+    createAmqplibConsumerAdapter(configuration, [taskProjectionRabbitTopology, workforceKeycloakSyncRabbitTopology], taskProjectionRuntimePolicy, undefined, signal),
   createDatabase: createDatabaseRuntime,
   createPublisherResource: (configuration: ProductionWorkerConfiguration["rabbit"]["publisher"], signal: AbortSignal) =>
     createAmqplibPublisherAdapter(configuration, undefined, signal),
@@ -183,6 +187,12 @@ export async function createProductionWorkerResources(
   const eventingStore = createPrismaEventingStore(database);
   const eventing = createEventingCore(eventingStore);
   const taskStore = createPrismaTaskCenterStore(database);
+  const workforceAccounts = new WorkforceAccessService(createPrismaWorkforceAccessStore(database), {
+    authorize: (input) => input.action === "identity_sync_result_record"
+      ? Promise.resolve()
+      : Promise.reject(new Error("worker_workforce_mutation_forbidden")),
+  });
+  const workforceKeycloak = createWorkforceKeycloakClient(configuration.workforceKeycloak);
   const runtimeRoleProbe = dependencies.createRuntimeRoleProbe(database);
   let publisher: RabbitPublisherAdapter | undefined;
   let consumer: AbortableRabbitConsumerAdapter | undefined;
@@ -201,7 +211,7 @@ export async function createProductionWorkerResources(
       signal,
     );
     if (startupAborted(signal)) throw new Error("worker_start_cancelled");
-    const transport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
+    const eventTransport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
       exchange: taskProjectionRabbitTopology.exchange,
       exchangeType: taskProjectionRabbitTopology.exchangeType,
       routes: Object.freeze([Object.freeze({
@@ -211,12 +221,18 @@ export async function createProductionWorkerResources(
         routingKey: taskProjectionRabbitTopology.routingKey,
       })]),
     }));
+    const workforceJobTransport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
+      exchange: workforceKeycloakSyncRabbitTopology.exchange,
+      exchangeType: workforceKeycloakSyncRabbitTopology.exchangeType,
+      routes: Object.freeze([Object.freeze({ messageKind: "job" as const, messageType: "workforce-access.keycloak-sync.v1", messageVersion: 1, routingKey: workforceKeycloakSyncRabbitTopology.routingKey })]),
+    }));
+    const transport = Object.freeze({ publish: (message: Parameters<typeof eventTransport.publish>[0]) => message.messageKind === "job" && message.messageType === "workforce-access.keycloak-sync.v1" ? workforceJobTransport.publish(message) : eventTransport.publish(message) });
     const outboxPublisher = createOutboxPublisher(eventingStore, transport, configuration.outbox);
     handlers = Object.freeze([
       createOutboxPublisherLoopHandler(outboxPublisher, configuration.outbox.intervalMs),
       createTaskProjectionConsumerHandler(eventing, consumer, {
         apply: (event, activeSignal) => taskStore.apply(event, activeSignal),
-      }),
+      }, [createWorkforceKeycloakSyncRabbitBinding(workforceAccounts, workforceKeycloak)]),
     ]);
   } catch (error) {
     const acquiredPublisher = publisher;
@@ -346,7 +362,7 @@ export async function createProductionWorkerResources(
       { healthy: !state.closed && state.databaseCompatible && state.databaseHealthy, name: "application-database", required: true },
       { healthy: !state.closed && state.runtimeRoleReady, name: "database-runtime-role", required: true },
       { healthy: !state.closed && activePublisher.healthy(), name: "rabbitmq-publisher", required: true },
-      { healthy: !state.closed && activeConsumer.healthy(), name: "task-projection-consumer", required: true },
+      { healthy: !state.closed && activeConsumer.healthy(), name: "rabbit-inbox-consumers", required: true },
     ]),
   });
 }

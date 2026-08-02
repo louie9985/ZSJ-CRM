@@ -16,6 +16,7 @@ import type {
   OrganizationCommandAuthorizer,
   OrganizationServiceApi,
   WorkforceContext,
+  WorkforcePersonContext,
 } from "./types.js";
 import { intervalContains, isActive, requireId, requireInterval, requireText, requireTimestamp } from "./validation.js";
 
@@ -161,6 +162,13 @@ export class OrganizationService implements OrganizationServiceApi {
     if (!association) throw new OrganizationError("subject_not_associated");
     if (associations.length !== 1) throw new OrganizationError("conflicting_subject_association");
     const workforcePersonId = association.workforcePersonId;
+    const context = await this.resolveWorkforcePersonContext(workforcePersonId, at, assignmentId);
+    return { ...context, subject: { ...subject } };
+  }
+
+  async resolveWorkforcePersonContext(workforcePersonId: string, at: string, assignmentId?: string): Promise<WorkforcePersonContext> {
+    requireId(workforcePersonId);
+    requireTimestamp(at);
     const employments = await this.store.listActiveEmployments(workforcePersonId, at);
     if (employments.length === 0) throw new OrganizationError("employment_not_active");
     const activeEmploymentIds = new Set(employments.map(({ employmentId }) => employmentId));
@@ -186,7 +194,6 @@ export class OrganizationService implements OrganizationServiceApi {
       assignments: assignments.map((assignment) => this.#assignmentReference(assignment)),
       employmentIds: [...activeEmploymentIds].sort(),
       resolvedAt: at,
-      subject: { ...subject },
       workforcePersonId,
     };
   }

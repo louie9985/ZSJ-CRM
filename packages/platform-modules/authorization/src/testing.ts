@@ -79,6 +79,20 @@ export const syntheticPolicySnapshot = (): AuthorizationPolicySnapshot => ({
   ],
 });
 
+export const syntheticPolicySnapshotV2 = (): AuthorizationPolicySnapshot => {
+  const legacy = syntheticPolicySnapshot();
+  return {
+    grants: legacy.grants,
+    permissions: legacy.permissions.map((permission) => ({ ...permission, applicationId: "synthetic" })),
+    roles: legacy.roles.map((role, index) => ({
+      ...role, displayName: `Synthetic role ${String(index + 1)}`, roleKey: `synthetic.role-${String(index + 1)}`,
+    })),
+    schemaVersion: 2,
+    superAdministratorGrants: [],
+    version: legacy.version,
+  };
+};
+
 export class InMemoryAuthorizationPolicyStore implements AuthorizationPolicyStore {
   readonly #snapshots = new Map<string, unknown>();
   #version: string;

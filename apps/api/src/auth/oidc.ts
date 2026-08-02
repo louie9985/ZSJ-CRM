@@ -30,8 +30,17 @@ export interface OidcClientConfiguration {
 export interface LoginTransaction {
   readonly codeVerifier: string;
   readonly nonce: string;
+  readonly reauthentication?: Readonly<{
+    readonly sessionReference: string;
+    readonly subjectIssuer: string;
+    readonly subjectId: string;
+  }>;
   readonly returnTo: string;
   readonly state: string;
+}
+
+export interface BeginLoginOptions {
+  readonly promptLogin?: boolean;
 }
 
 export interface BeginLoginResult {
@@ -46,7 +55,7 @@ export interface OidcTokenResult {
 }
 
 export interface OidcClientPort {
-  beginLogin(returnTo: string): Promise<Readonly<BeginLoginResult>>;
+  beginLogin(returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<Readonly<BeginLoginResult>>;
   exchangeCallback(callbackUrl: string, transaction: LoginTransaction): Promise<Readonly<OidcTokenResult>>;
   refresh(tokens: SessionTokenSet): Promise<Readonly<OidcTokenResult>>;
   endSessionUrl(): string | undefined;
@@ -187,7 +196,7 @@ export async function createOidcClient(
   }
 
   return Object.freeze({
-    async beginLogin(returnTo: string): Promise<Readonly<BeginLoginResult>> {
+    async beginLogin(returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<Readonly<BeginLoginResult>> {
       const codeVerifier = randomPKCECodeVerifier();
       const nonce = randomNonce();
       const state = randomState();
@@ -200,6 +209,7 @@ export async function createOidcClient(
         response_type: "code",
         scope: "openid",
         state,
+        ...(options?.promptLogin === true ? { prompt: "login" } : {}),
       });
       return Object.freeze({
         authorizationUrl: authorizationUrl.href,

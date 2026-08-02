@@ -26,6 +26,11 @@ services:
       AI_CRM_API_SHUTDOWN_TIMEOUT_MS: ${AI_CRM_API_SHUTDOWN_TIMEOUT_MS:?API shutdown timeout is required}
       AI_CRM_POSTGRES_URL_FILE: /run/secrets/api_postgres_url
       AI_CRM_MIGRATIONS_ROOT: /app
+      AI_CRM_KEYCLOAK_ADMIN_BASE_URL: ${AI_CRM_KEYCLOAK_ADMIN_BASE_URL:?Keycloak admin base URL is required}
+      AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS: ${AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS:?Keycloak admin timeout is required}
+      AI_CRM_KEYCLOAK_REALM: ${AI_CRM_KEYCLOAK_REALM:?Keycloak Realm is required}
+      AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_ID: ${AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_ID:?Worker Keycloak client ID is required}
+      AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_SECRET_FILE: /run/secrets/workforce_worker_client_secret
       AI_CRM_FILE_DOWNLOAD_GRANT_TTL_MS: ${AI_CRM_FILE_DOWNLOAD_GRANT_TTL_MS:?reviewed download grant TTL is required}
       AI_CRM_FILE_MAXIMUM_SCAN_BYTES: ${AI_CRM_FILE_MAXIMUM_SCAN_BYTES:?reviewed scan limit is required}
       AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES: ${AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES:?reviewed upload limit is required}
@@ -99,7 +104,7 @@ services:
       AI_CRM_RABBIT_PUBLISHER_PASSWORD_FILE: /run/secrets/rabbitmq_publisher_password
       AI_CRM_RABBIT_CONSUMER_USERNAME_FILE: /run/secrets/rabbitmq_consumer_username
       AI_CRM_RABBIT_CONSUMER_PASSWORD_FILE: /run/secrets/rabbitmq_consumer_password
-    secrets: [worker_postgres_url, rabbitmq_ca_certificate, rabbitmq_publisher_username, rabbitmq_publisher_password, rabbitmq_consumer_username, rabbitmq_consumer_password]
+    secrets: [worker_postgres_url, workforce_worker_client_secret, rabbitmq_ca_certificate, rabbitmq_publisher_username, rabbitmq_publisher_password, rabbitmq_consumer_username, rabbitmq_consumer_password]
     networks: [app]
     healthcheck:
       test: [CMD, node, /app/dist/worker-healthcheck.mjs]
@@ -149,6 +154,7 @@ networks:
 
 secrets:
   worker_postgres_url: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/worker_postgres_url" }
+  workforce_worker_client_secret: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/workforce_worker_client_secret" }
   rabbitmq_ca_certificate: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/rabbitmq_ca_certificate" }
   rabbitmq_publisher_username: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/rabbitmq_publisher_username" }
   rabbitmq_publisher_password: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/rabbitmq_publisher_password" }

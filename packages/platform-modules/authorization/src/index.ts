@@ -61,4 +61,5 @@ export type {
   RoleDefinition,
   RolePermissionBinding,
   ScopeConstraint,
+  SuperAdministratorGrant,
 } from "./types.js";

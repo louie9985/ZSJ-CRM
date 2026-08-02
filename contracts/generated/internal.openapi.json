@@ -331,7 +331,7 @@
         ],
         "responses": {
           "302": {
-            "description": "Establish an opaque BFF session, rotate its identifier, and redirect to the allowlisted return path.",
+            "description": "Establish a normal opaque BFF session, or rotate the same bound session after a successful same-subject reauthentication, then redirect to the allowlisted return path.",
             "headers": {
               "Location": {
                 "required": true,
@@ -674,6 +674,216 @@
               }
             },
             "description": "Session storage or durable authentication audit is unavailable; logout fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/reauthentication": {
+      "post": {
+        "description": "Start a short-lived same-subject reauthentication transaction. The BFF requires the existing session and CSRF proof and sends prompt=login to Keycloak; ordinary login time is not accepted as fresh proof.",
+        "operationId": "beginPcReauthentication",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "redirectUrl": {
+                      "format": "uri",
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "redirectUrl"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Browser-safe JSON authorization redirect for same-origin fetch callers that send Accept application/json."
+          },
+          "302": {
+            "description": "Redirect to Keycloak with prompt=login. The one-time transaction is bound to the current logical BFF session and Keycloak subject.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The requested local return path is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The existing BFF session is missing or invalid."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_required",
+                        "authentication_callback_invalid",
+                        "authentication_csrf_rejected",
+                        "authentication_dependency_unavailable",
+                        "authentication_refresh_in_progress"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Keycloak, session storage, or durable authentication audit is unavailable."
           }
         },
         "x-ai-crm-audiences": [
@@ -3429,6 +3639,1533 @@
           "code": "platform.task-center.task-projection:reconcile",
           "owner": "platform.task-center",
           "resource": "platform.task-center.task-projection",
+          "version": 1
+        }
+      }
+    },
+    "/workbench/bootstrap": {
+      "get": {
+        "description": "Resolves the current opaque BFF session, workforce context and authorized navigation without exposing provider tokens or requiring an Assignment.",
+        "operationId": "getWorkbenchBootstrap",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "collections": {
+                      "additionalProperties": true,
+                      "description": "Initial browser collection summaries; entries may be empty when no feature is authorized.",
+                      "type": "object"
+                    },
+                    "context": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "accountKind": {
+                          "enum": [
+                            "system_administrator",
+                            "workforce"
+                          ]
+                        },
+                        "assignmentReference": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "sessionScope": {
+                          "maxLength": 128,
+                          "minLength": 16,
+                          "pattern": "^[A-Za-z0-9._:-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountKind",
+                        "displayName",
+                        "sessionScope"
+                      ],
+                      "type": "object"
+                    },
+                    "counts": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "files": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "forms": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "notifications": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "tasks": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "files",
+                        "forms",
+                        "notifications",
+                        "tasks"
+                      ],
+                      "type": "object"
+                    },
+                    "fixture": {
+                      "const": false
+                    },
+                    "kind": {
+                      "const": "ready"
+                    },
+                    "navigationIds": {
+                      "items": {
+                        "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                        "type": "string"
+                      },
+                      "maxItems": 128,
+                      "type": "array",
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "collections",
+                    "context",
+                    "counts",
+                    "fixture",
+                    "kind",
+                    "navigationIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Browser-safe current workbench context."
+          },
+          "401": {
+            "description": "No valid BFF session."
+          },
+          "403": {
+            "description": "The authenticated subject is not an active internal account."
+          },
+          "503": {
+            "description": "A required identity, organization, authorization or registry dependency is unavailable."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.workbench.shell:read",
+          "owner": "platform.workbench",
+          "resource": "platform.workbench.shell",
+          "version": 1
+        }
+      }
+    },
+    "/workforce-administration": {
+      "get": {
+        "description": "Returns only accounts, organization directory facts and server-computed actions visible to the current administrator.",
+        "operationId": "getWorkforceAdministrationSnapshot",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "accounts": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "accountId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "allowedActions": {
+                            "items": {
+                              "enum": [
+                                "deactivate",
+                                "edit",
+                                "grant_crm_administrator",
+                                "reactivate",
+                                "release_phone",
+                                "reset_password",
+                                "retry_identity_sync",
+                                "revoke_crm_administrator",
+                                "transfer"
+                              ]
+                            },
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "crmAdministrator": {
+                            "type": "boolean"
+                          },
+                          "departmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "departmentName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "latestIdentitySync": {
+                            "additionalProperties": false,
+                            "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
+                            "properties": {
+                              "action": {
+                                "enum": [
+                                  "disable",
+                                  "revoke_sessions",
+                                  "synchronize_login_identifiers"
+                                ]
+                              },
+                              "completedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "errorCode": {
+                                "enum": [
+                                  "eventing_handler_timeout",
+                                  "identity_sync_failed",
+                                  "keycloak_administration_unavailable",
+                                  "keycloak_entity_conflict"
+                                ]
+                              },
+                              "operationId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "requestedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "retryOfOperationId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "enum": [
+                                  "pending",
+                                  "succeeded",
+                                  "failed",
+                                  "superseded"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "action",
+                              "operationId",
+                              "requestedAt",
+                              "status"
+                            ],
+                            "type": "object"
+                          },
+                          "legalName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "phone": {
+                            "pattern": "^\\+?[0-9]{6,20}$",
+                            "type": "string"
+                          },
+                          "positionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "positionName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "releasablePhones": {
+                            "description": "Historical phone login identifiers that remain occupied and may be explicitly released. The current phone is never included.",
+                            "items": {
+                              "pattern": "^\\+?[0-9]{6,20}$",
+                              "type": "string"
+                            },
+                            "maxItems": 100,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "provisioning",
+                              "credential_pending",
+                              "active",
+                              "disabled",
+                              "failed"
+                            ]
+                          },
+                          "username": {
+                            "maxLength": 32,
+                            "minLength": 4,
+                            "pattern": "^[A-Za-z0-9._-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "allowedActions",
+                          "crmAdministrator",
+                          "legalName",
+                          "releasablePhones",
+                          "revision",
+                          "status",
+                          "username"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "departments": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "allowedActions": {
+                            "items": {
+                              "enum": [
+                                "deactivate",
+                                "edit",
+                                "reactivate"
+                              ]
+                            },
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "departmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "name": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "parentDepartmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "positionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "active",
+                              "disabled"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "allowedActions",
+                          "name",
+                          "revision",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1000,
+                      "type": "array"
+                    },
+                    "positions": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "allowedActions": {
+                            "items": {
+                              "enum": [
+                                "deactivate",
+                                "edit",
+                                "reactivate"
+                              ]
+                            },
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "departmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "name": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "parentDepartmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "positionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "active",
+                              "disabled"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "allowedActions",
+                          "name",
+                          "revision",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 10000,
+                      "type": "array"
+                    },
+                    "systemAccount": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "accountId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "allowedActions": {
+                          "items": {
+                            "enum": [
+                              "deactivate",
+                              "edit",
+                              "grant_crm_administrator",
+                              "reactivate",
+                              "release_phone",
+                              "reset_password",
+                              "retry_identity_sync",
+                              "revoke_crm_administrator",
+                              "transfer"
+                            ]
+                          },
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "crmAdministrator": {
+                          "type": "boolean"
+                        },
+                        "departmentId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "latestIdentitySync": {
+                          "additionalProperties": false,
+                          "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
+                          "properties": {
+                            "action": {
+                              "enum": [
+                                "disable",
+                                "revoke_sessions",
+                                "synchronize_login_identifiers"
+                              ]
+                            },
+                            "completedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "errorCode": {
+                              "enum": [
+                                "eventing_handler_timeout",
+                                "identity_sync_failed",
+                                "keycloak_administration_unavailable",
+                                "keycloak_entity_conflict"
+                              ]
+                            },
+                            "operationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "requestedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "retryOfOperationId": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "status": {
+                              "enum": [
+                                "pending",
+                                "succeeded",
+                                "failed",
+                                "superseded"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "action",
+                            "operationId",
+                            "requestedAt",
+                            "status"
+                          ],
+                          "type": "object"
+                        },
+                        "legalName": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "phone": {
+                          "pattern": "^\\+?[0-9]{6,20}$",
+                          "type": "string"
+                        },
+                        "positionId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "positionName": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "releasablePhones": {
+                          "description": "Historical phone login identifiers that remain occupied and may be explicitly released. The current phone is never included.",
+                          "items": {
+                            "pattern": "^\\+?[0-9]{6,20}$",
+                            "type": "string"
+                          },
+                          "maxItems": 100,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "revision": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "status": {
+                          "enum": [
+                            "provisioning",
+                            "credential_pending",
+                            "active",
+                            "disabled",
+                            "failed"
+                          ]
+                        },
+                        "username": {
+                          "maxLength": 32,
+                          "minLength": 4,
+                          "pattern": "^[A-Za-z0-9._-]+$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "allowedActions",
+                        "crmAdministrator",
+                        "legalName",
+                        "releasablePhones",
+                        "revision",
+                        "status",
+                        "username"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "accounts",
+                    "departments",
+                    "positions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Authorized management snapshot."
+          },
+          "401": {
+            "description": "No valid BFF session."
+          },
+          "403": {
+            "description": "The current principal is not permitted to perform this operation."
+          },
+          "503": {
+            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.workforce-access.console:read",
+          "owner": "platform.workforce-access",
+          "resource": "platform.workforce-access.console",
+          "version": 1
+        }
+      }
+    },
+    "/workforce-administration/accounts": {
+      "get": {
+        "description": "Returns one stable page of accounts visible to the current administrator. Filters are combined with AND; phone input is normalized server-side. ZSJ system accounts never appear in this collection.",
+        "operationId": "listWorkforceAccounts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match.",
+            "in": "query",
+            "name": "username",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Substring match.",
+            "in": "query",
+            "name": "legalName",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Substring match after removing spaces and hyphens.",
+            "in": "query",
+            "name": "phone",
+            "required": false,
+            "schema": {
+              "pattern": "^\\+?[0-9 -]{6,24}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "departmentId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "positionId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "provisioning",
+                "credential_pending",
+                "active",
+                "disabled",
+                "failed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "accountId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "allowedActions": {
+                            "items": {
+                              "enum": [
+                                "deactivate",
+                                "edit",
+                                "grant_crm_administrator",
+                                "reactivate",
+                                "release_phone",
+                                "reset_password",
+                                "retry_identity_sync",
+                                "revoke_crm_administrator",
+                                "transfer"
+                              ]
+                            },
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "crmAdministrator": {
+                            "type": "boolean"
+                          },
+                          "departmentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "departmentName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "latestIdentitySync": {
+                            "additionalProperties": false,
+                            "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
+                            "properties": {
+                              "action": {
+                                "enum": [
+                                  "disable",
+                                  "revoke_sessions",
+                                  "synchronize_login_identifiers"
+                                ]
+                              },
+                              "completedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "errorCode": {
+                                "enum": [
+                                  "eventing_handler_timeout",
+                                  "identity_sync_failed",
+                                  "keycloak_administration_unavailable",
+                                  "keycloak_entity_conflict"
+                                ]
+                              },
+                              "operationId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "requestedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "retryOfOperationId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "enum": [
+                                  "pending",
+                                  "succeeded",
+                                  "failed",
+                                  "superseded"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "action",
+                              "operationId",
+                              "requestedAt",
+                              "status"
+                            ],
+                            "type": "object"
+                          },
+                          "legalName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "phone": {
+                            "pattern": "^\\+?[0-9]{6,20}$",
+                            "type": "string"
+                          },
+                          "positionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "positionName": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "releasablePhones": {
+                            "description": "Historical phone login identifiers that remain occupied and may be explicitly released. The current phone is never included.",
+                            "items": {
+                              "pattern": "^\\+?[0-9]{6,20}$",
+                              "type": "string"
+                            },
+                            "maxItems": 100,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "provisioning",
+                              "credential_pending",
+                              "active",
+                              "disabled",
+                              "failed"
+                            ]
+                          },
+                          "username": {
+                            "maxLength": 32,
+                            "minLength": 4,
+                            "pattern": "^[A-Za-z0-9._-]+$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "allowedActions",
+                          "crmAdministrator",
+                          "legalName",
+                          "releasablePhones",
+                          "revision",
+                          "status",
+                          "username"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 100,
+                      "type": "array"
+                    },
+                    "page": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "pageSize": {
+                      "maximum": 100,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "page",
+                    "pageSize",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Authorized account page."
+          },
+          "400": {
+            "description": "Invalid pagination or filter value."
+          },
+          "401": {
+            "description": "No valid BFF session."
+          },
+          "403": {
+            "description": "The current principal is not permitted to perform this operation."
+          },
+          "503": {
+            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.workforce-access.console:read",
+          "owner": "platform.workforce-access",
+          "resource": "platform.workforce-access.console",
+          "version": 1
+        }
+      }
+    },
+    "/workforce-administration/commands": {
+      "post": {
+        "description": "Executes one reviewed account, department, position or fixed CRM administrator command. Password values are forbidden; credential operations return a Keycloak-hosted ceremony URL.",
+        "operationId": "executeWorkforceAdministrationCommand",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "Discriminated command. Each kind has an exact server-side shape; password, token and arbitrary attributes are rejected.",
+                "discriminator": {
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "create_account"
+                      },
+                      "legalName": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "phone": {
+                        "pattern": "^\\+?[0-9 -]{6,24}$",
+                        "type": "string"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "username": {
+                        "maxLength": 32,
+                        "minLength": 4,
+                        "pattern": "^[A-Za-z0-9._-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "legalName",
+                      "positionId",
+                      "username"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "update_account"
+                      },
+                      "legalName": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "phone": {
+                        "pattern": "^\\+?[0-9 -]{6,24}$",
+                        "type": "string"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "username": {
+                        "maxLength": 32,
+                        "minLength": 4,
+                        "pattern": "^[A-Za-z0-9._-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "departmentId",
+                      "expectedRevision",
+                      "legalName",
+                      "positionId",
+                      "username"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "Updates only the current ZSJ super administrator's login identifiers after BFF-enforced prompt=login reauthentication. Organization and personal-profile fields are forbidden.",
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "update_system_account"
+                      },
+                      "phone": {
+                        "pattern": "^\\+?[0-9 -]{6,24}$",
+                        "type": "string"
+                      },
+                      "username": {
+                        "maxLength": 32,
+                        "minLength": 4,
+                        "pattern": "^[A-Za-z0-9._-]+$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "expectedRevision",
+                      "username"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "deactivate_account"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "reactivate_account"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "departmentId",
+                      "expectedRevision",
+                      "positionId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "reset_password"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "ceremonyOperationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "complete_credential_ceremony"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "ceremonyOperationId",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "release_phone"
+                      },
+                      "phone": {
+                        "description": "Must exactly match a value currently returned in releasablePhones; the current phone is forbidden.",
+                        "pattern": "^\\+?[0-9]{6,20}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "expectedRevision",
+                      "phone"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "description": "Creates a new synchronization Operation linked to one currently failed operation. The server resolves the action and current identifiers; clients cannot replay an old payload.",
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "failedOperationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "retry_identity_sync"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "expectedRevision",
+                      "failedOperationId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "accountId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "set_crm_administrator"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "accountId",
+                      "enabled",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "create_department"
+                      },
+                      "name": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "parentDepartmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "update_department"
+                      },
+                      "name": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "parentDepartmentId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "expectedRevision",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "deactivate_department"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "reactivate_department"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "expectedRevision"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "departmentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "create_position"
+                      },
+                      "name": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "departmentId",
+                      "name",
+                      "positionId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "update_position"
+                      },
+                      "name": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "expectedRevision",
+                      "name",
+                      "positionId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "deactivate_position"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "expectedRevision",
+                      "positionId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "reactivate_position"
+                      },
+                      "positionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "expectedRevision",
+                      "positionId"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "credentialRedirectUrl": {
+                      "maxLength": 1024,
+                      "pattern": "^/(?!/)[A-Za-z0-9_./?=&%-]+$",
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "replayed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Durable command result or replay."
+          },
+          "400": {
+            "description": "Invalid command shape."
+          },
+          "401": {
+            "description": "No valid BFF session."
+          },
+          "403": {
+            "description": "The current principal is not permitted to perform this operation."
+          },
+          "409": {
+            "description": "Revision, identifier, hierarchy, reference or idempotency conflict."
+          },
+          "503": {
+            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "header": "X-CSRF-Token",
+          "mode": "required"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
+        "x-ai-crm-permission": {
+          "action": "manage",
+          "code": "platform.workforce-access.console:manage",
+          "owner": "platform.workforce-access",
+          "resource": "platform.workforce-access.console",
           "version": 1
         }
       }

@@ -9,6 +9,7 @@ import { evaluateHealth, extractTraceContext, injectTraceContext, type Applicati
 import type { PermissionRequest } from "@ai-crm/platform-authorization";
 import { BrowserSessionFailure } from "./auth/errors.js";
 import { parsePcSessionCredential, type AuthenticationHttpResponse, type BrowserRequestContext, type PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
+import { clearPcSessionCookie } from "./auth/session-security.js";
 import type { ApiPlatformHttpComposition, AuthorizedOperationContext } from "./composition.js";
 
 export {
@@ -22,6 +23,9 @@ export {
   type RedisSessionConnection,
 } from "./auth/index.js";
 export { createFormSchemaHttpAdapter, type FormSchemaHttpAdapter } from "./platform-http/form-schema-http.js";
+export { createWorkbenchBootstrapFacade, type WorkbenchFacadeDependencies } from "./workbench/facade.js";
+export { createWorkbenchHttpAdapter, type WorkbenchBootstrapFacade } from "./platform-http/workbench-http.js";
+export { createWorkforceAdministrationHttpAdapter, type WorkforceAdministrationFacade } from "./platform-http/workforce-administration-http.js";
 
 export const applicationId = "@ai-crm/api" as const;
 const API_COMPOSITION = Symbol("api-composition");
@@ -37,6 +41,15 @@ export interface ApiComposition {
   readonly onStart?: (signal: AbortSignal) => void | Promise<void>;
   readonly onStop?: () => void | Promise<void>;
   readonly platformHttp?: Readonly<ApiPlatformHttpComposition>;
+  readonly revokeBrowserSession?: (credential: string, traceId: string) => Promise<void>;
+  readonly workbenchHttp?: Readonly<{
+    bootstrap(input: Readonly<{ credential: string; traceId: string }>): Promise<PlatformHttpResponse>;
+  }>;
+  readonly workforceAdministrationHttp?: Readonly<{
+    execute(input: Readonly<{ body: unknown; credential: string; idempotencyKey: string; traceId: string }>): Promise<PlatformHttpResponse>;
+    listAccounts(input: Readonly<{ credential: string; query: unknown; traceId: string }>): Promise<PlatformHttpResponse>;
+    load(input: Readonly<{ credential: string; traceId: string }>): Promise<PlatformHttpResponse>;
+  }>;
   readonly shutdownTimeoutMs?: number;
   readonly startupTimeoutMs?: number;
 }
@@ -182,7 +195,16 @@ class PcAuthenticationController {
     }
     const callbackUrl = this.composition.authenticationCallbackUrl?.(request.originalUrl);
     if (callbackUrl === undefined) throw new Error("api_authentication_callback_binding_missing");
-    sendAuthenticationResponse(response, await this.adapter().completeLogin(callbackUrl, requestTraceContext(request).traceId));
+    const cookie = singleHeader(request, "cookie", 4096);
+    if (!cookie.valid) {
+      sendAuthenticationResponse(response, invalidCallbackResponse);
+      return;
+    }
+    sendAuthenticationResponse(response, await this.adapter().completeLogin(
+      callbackUrl,
+      requestTraceContext(request).traceId,
+      cookie.value,
+    ));
   }
 
   @Get("session")
@@ -205,6 +227,49 @@ class PcAuthenticationController {
     sendAuthenticationResponse(response, await this.adapter().refresh(context.value));
   }
 
+  @Post("reauthentication")
+  async reauthentication(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const returnTo = singleQuery(request, "returnTo", 512);
+    const context = this.mutationContext(request, true);
+    if (!returnTo.valid) {
+      sendAuthenticationResponse(response, invalidCallbackResponse);
+      return;
+    }
+    if (context.error) {
+      sendAuthenticationResponse(response, context.error);
+      return;
+    }
+    const adapter = this.adapter();
+    if (adapter.beginReauthentication === undefined) {
+      sendAuthenticationResponse(response, Object.freeze({
+        body: Object.freeze({ code: "authentication_dependency_unavailable", message: "Authentication is temporarily unavailable." }),
+        headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
+        status: 503,
+      }));
+      return;
+    }
+    const result = await adapter.beginReauthentication(context.value, returnTo.value);
+    const accept = singleHeader(request, "accept", 512);
+    if (!accept.valid) {
+      sendAuthenticationResponse(response, invalidCallbackResponse);
+      return;
+    }
+    if (result.status === 302 && accept.value?.split(",").some((value) => value.trim().split(";")[0] === "application/json")) {
+      const redirectUrl = result.headers["Location"];
+      if (redirectUrl === undefined || redirectUrl.length === 0 || redirectUrl.length > 4096 || /[\0\r\n]/u.test(redirectUrl)) {
+        sendAuthenticationResponse(response, invalidCallbackResponse);
+        return;
+      }
+      sendAuthenticationResponse(response, Object.freeze({
+        body: Object.freeze({ redirectUrl }),
+        headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
+        status: 200,
+      }));
+      return;
+    }
+    sendAuthenticationResponse(response, result);
+  }
+
   @Post("logout")
   async logout(@Req() request: Request, @Res() response: Response): Promise<void> {
     const context = this.mutationContext(request, false);
@@ -225,6 +290,107 @@ class PcAuthenticationController {
     const referer = singleHeader(request, "referer", 2048);
     if (!csrfToken.valid || !origin.valid || !referer.valid) return { error: invalidCsrfResponse };
     return { value: { cookie: cookie.value, csrfToken: csrfToken.value, origin: origin.value, referer: referer.value, traceId: requestTraceContext(request).traceId } };
+  }
+}
+
+function unavailablePlatformResponse(code: string): PlatformHttpResponse {
+  return Object.freeze({ body: Object.freeze({ code }), headers: Object.freeze({ "Cache-Control": "no-store" }), status: 503 });
+}
+
+@Controller("workbench")
+class WorkbenchController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get("bootstrap")
+  async bootstrap(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const credential = credentialFromRequest(request);
+    if (credential === undefined) {
+      sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
+      return;
+    }
+    const binding = this.composition.workbenchHttp;
+    sendPlatformResponse(response, binding === undefined
+      ? unavailablePlatformResponse("workbench_unavailable")
+      : await binding.bootstrap({ credential, traceId: requestTraceContext(request).traceId }));
+  }
+}
+
+@Controller("workforce-administration")
+class WorkforceAdministrationController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get()
+  async load(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const credential = credentialFromRequest(request);
+    if (credential === undefined) {
+      sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
+      return;
+    }
+    const binding = this.composition.workforceAdministrationHttp;
+    sendPlatformResponse(response, binding === undefined
+      ? unavailablePlatformResponse("workforce_administration_unavailable")
+      : await binding.load({ credential, traceId: requestTraceContext(request).traceId }));
+  }
+
+  @Get("accounts")
+  async listAccounts(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const credential = credentialFromRequest(request);
+    if (credential === undefined) {
+      sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
+      return;
+    }
+    const binding = this.composition.workforceAdministrationHttp;
+    sendPlatformResponse(response, binding === undefined
+      ? unavailablePlatformResponse("workforce_administration_unavailable")
+      : await binding.listAccounts({ credential, query: request.query, traceId: requestTraceContext(request).traceId }));
+  }
+
+  @Post("commands")
+  async execute(@Req() request: Request, @Res() response: Response): Promise<void> {
+    const credential = credentialFromRequest(request);
+    const csrfToken = singleHeader(request, "x-csrf-token", 512, 32);
+    const idempotencyKey = singleHeader(request, "idempotency-key", 64, 36);
+    const origin = singleHeader(request, "origin", 512);
+    const referer = singleHeader(request, "referer", 2048);
+    if (credential === undefined || !csrfToken.valid || !idempotencyKey.valid || idempotencyKey.value === undefined || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(idempotencyKey.value) || !origin.valid || !referer.valid) {
+      sendPlatformResponse(response, { body: { code: "workforce_administration_request_invalid" }, headers: { "Cache-Control": "no-store" }, status: credential === undefined ? 401 : 400 });
+      return;
+    }
+    try {
+      await platform(this.composition).validateFormMutation({
+        credential,
+        ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }),
+        ...(origin.value === undefined ? {} : { origin: origin.value }),
+        ...(referer.value === undefined ? {} : { referer: referer.value }),
+      });
+    } catch {
+      sendPlatformResponse(response, { body: { code: "workforce_administration_csrf_rejected" }, headers: { "Cache-Control": "no-store" }, status: 403 });
+      return;
+    }
+    const requestBody: unknown = request.body;
+    const commandKind: unknown = typeof requestBody === "object" && requestBody !== null && !Array.isArray(requestBody)
+      ? Object.getOwnPropertyDescriptor(requestBody, "kind")?.value as unknown
+      : undefined;
+    const revokeCurrentSession = commandKind === "update_system_account";
+    if (revokeCurrentSession && this.composition.revokeBrowserSession === undefined) {
+      sendPlatformResponse(response, unavailablePlatformResponse("workforce_administration_unavailable"));
+      return;
+    }
+    const binding = this.composition.workforceAdministrationHttp;
+    const traceId = requestTraceContext(request).traceId;
+    const result = binding === undefined
+      ? unavailablePlatformResponse("workforce_administration_unavailable")
+      : await binding.execute({ body: request.body, credential, idempotencyKey: idempotencyKey.value, traceId });
+    if (revokeCurrentSession && result.status === 200) {
+      try {
+        await this.composition.revokeBrowserSession?.(credential, traceId);
+        sendPlatformResponse(response, Object.freeze({ ...result, headers: Object.freeze({ ...result.headers, "Set-Cookie": clearPcSessionCookie() }) }));
+      } catch {
+        sendPlatformResponse(response, unavailablePlatformResponse("workforce_administration_session_revocation_failed"));
+      }
+      return;
+    }
+    sendPlatformResponse(response, result);
   }
 }
 
@@ -590,7 +756,7 @@ class ApiLifecycle implements OnApplicationShutdown {
 class ApiModule {}
 
 const createApiModule = (composition: ApiComposition, state: ApiRuntimeState): DynamicModule => ({
-  controllers: [HealthController, PcAuthenticationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController],
+  controllers: [HealthController, PcAuthenticationController, WorkbenchController, WorkforceAdministrationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController],
   module: ApiModule,
   providers: [
     { provide: API_COMPOSITION, useValue: composition },

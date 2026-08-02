@@ -5,6 +5,7 @@ import type { OutgoingHttpHeaders } from "node:http";
 import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/platform-authorization";
 import { TaskCenterError } from "@ai-crm/platform-task-center";
 import { describe, expect, it, vi } from "vitest";
+import type { ApiPlatformHttpComposition } from "./composition.js";
 import { createApiApplication } from "./index.js";
 
 const logger = { log: () => undefined };
@@ -64,6 +65,7 @@ describe("API composition root", () => {
   it("exposes the reviewed PC BFF HTTP adapter without returning credentials in bodies", async () => {
     const authentication = {
       beginLogin: vi.fn().mockResolvedValue({ headers: { Location: "https://identity.invalid/login" }, status: 302 }),
+      beginReauthentication: vi.fn().mockResolvedValue({ headers: { Location: "https://identity.invalid/login?prompt=login" }, status: 302 }),
       completeLogin: vi.fn(),
       currentSession: vi.fn(),
       logout: vi.fn(),
@@ -85,12 +87,43 @@ describe("API composition root", () => {
     });
     expect(response.headers.get("x-trace-id")).toMatch(/^(?!0{32})[0-9a-f]{32}$/u);
     expect(authentication.beginLogin).toHaveBeenCalledWith("/workspace", response.headers.get("x-trace-id"));
+    const reauthentication = await fetch(`${url}/auth/pc/reauthentication?returnTo=%2Faccount`, {
+      headers: {
+        cookie: `__Host-ai_crm_pc_session=${"c".repeat(43)}`,
+        origin: "https://workbench.example.test",
+        "x-csrf-token": "x".repeat(43),
+      },
+      method: "POST",
+      redirect: "manual",
+    });
+    expect(reauthentication.status).toBe(302);
+    expect(reauthentication.headers.get("location")).toBe("https://identity.invalid/login?prompt=login");
+    const jsonReauthentication = await fetch(`${url}/auth/pc/reauthentication?returnTo=%2Faccount`, {
+      headers: {
+        accept: "application/json",
+        cookie: `__Host-ai_crm_pc_session=${"c".repeat(43)}`,
+        origin: "https://workbench.example.test",
+        "x-csrf-token": "x".repeat(43),
+      },
+      method: "POST",
+    });
+    const jsonReauthenticationBody: unknown = await jsonReauthentication.json();
+    expect({ body: jsonReauthenticationBody, location: jsonReauthentication.headers.get("location"), status: jsonReauthentication.status }).toEqual({
+      body: { redirectUrl: "https://identity.invalid/login?prompt=login" },
+      location: null,
+      status: 200,
+    });
+    expect(authentication.beginReauthentication).toHaveBeenCalledWith(expect.objectContaining({
+      cookie: `__Host-ai_crm_pc_session=${"c".repeat(43)}`,
+      csrfToken: "x".repeat(43),
+      origin: "https://workbench.example.test",
+    }), "/account");
     await app.stop();
   });
 
   it("rejects repeated or out-of-contract authentication inputs before the adapter", async () => {
     const authentication = {
-      beginLogin: vi.fn(), completeLogin: vi.fn(), currentSession: vi.fn(), logout: vi.fn(), refresh: vi.fn(),
+      beginLogin: vi.fn(), beginReauthentication: vi.fn(), completeLogin: vi.fn(), currentSession: vi.fn(), logout: vi.fn(), refresh: vi.fn(),
     };
     const app = createApiApplication({
       authentication,
@@ -547,6 +580,71 @@ describe("API composition root", () => {
     await app.start(0);
     await expect(app.stop()).rejects.toThrow("api_stop_failed");
     await expect(app.start(0)).rejects.toThrow("api_terminal");
+  });
+
+  it("exposes token-free workbench and workforce administration BFF bindings", async () => {
+    const bootstrap = vi.fn().mockResolvedValue({
+      body: { kind: "ready", context: { displayName: "Synthetic Administrator" }, navigationIds: ["crm.workforce-administration"] },
+      headers: { "Cache-Control": "no-store" },
+      status: 200,
+    });
+    const load = vi.fn().mockResolvedValue({ body: { accounts: [], departments: [], positions: [] }, headers: { "Cache-Control": "no-store" }, status: 200 });
+    const listAccounts = vi.fn().mockResolvedValue({ body: { items: [], page: 1, pageSize: 20, total: 0 }, headers: { "Cache-Control": "no-store" }, status: 200 });
+    const execute = vi.fn();
+    const app = createApiApplication({ logger, workbenchHttp: { bootstrap }, workforceAdministrationHttp: { execute, listAccounts, load } });
+    await app.start(0, "127.0.0.1");
+    const address = await app.instance()?.getUrl();
+    if (address === undefined) throw new Error("api_not_started");
+    const cookie = `__Host-ai_crm_pc_session=${"a".repeat(43)}`;
+    const workbench = await fetch(`${address}/workbench/bootstrap`, { headers: { cookie } });
+    const workforce = await fetch(`${address}/workforce-administration`, { headers: { cookie } });
+    const workbenchBody: unknown = await workbench.json();
+    const workforceBody: unknown = await workforce.json();
+    expect({ body: workbenchBody, status: workbench.status }).toEqual({ body: { kind: "ready", context: { displayName: "Synthetic Administrator" }, navigationIds: ["crm.workforce-administration"] }, status: 200 });
+    expect({ body: workforceBody, status: workforce.status }).toEqual({ body: { accounts: [], departments: [], positions: [] }, status: 200 });
+    const bootstrapInput: unknown = bootstrap.mock.calls[0]?.[0];
+    const loadInput: unknown = load.mock.calls[0]?.[0];
+    expect(bootstrapInput).toMatchObject({ credential: "a".repeat(43) });
+    expect(loadInput).toMatchObject({ credential: "a".repeat(43) });
+    if (typeof bootstrapInput !== "object" || bootstrapInput === null || typeof loadInput !== "object" || loadInput === null) throw new Error("binding_input_missing");
+    expect(Reflect.get(bootstrapInput, "traceId")).toMatch(/^[0-9a-f]{32}$/u);
+    expect(Reflect.get(loadInput, "traceId")).toMatch(/^[0-9a-f]{32}$/u);
+    expect((await fetch(`${address}/workforce-administration/commands`, { method: "POST" })).status).toBe(401);
+    expect(execute).not.toHaveBeenCalled();
+    await app.stop();
+  });
+
+  it("revokes the current BFF session and clears its cookie after a system-account identifier update", async () => {
+    const execute = vi.fn().mockResolvedValue({ body: { replayed: false }, headers: { "Cache-Control": "no-store" }, status: 200 });
+    const revokeBrowserSession = vi.fn().mockResolvedValue(undefined);
+    const validateFormMutation = vi.fn().mockResolvedValue(undefined);
+    const platformHttp = { validateFormMutation } as unknown as ApiPlatformHttpComposition;
+    const app = createApiApplication({
+      logger,
+      platformHttp,
+      revokeBrowserSession,
+      workforceAdministrationHttp: { execute, listAccounts: vi.fn(), load: vi.fn() },
+    });
+    await app.start(0, "127.0.0.1");
+    const address = await app.instance()?.getUrl();
+    if (address === undefined) throw new Error("api_not_started");
+    const credential = "a".repeat(43);
+    const response = await fetch(`${address}/workforce-administration/commands`, {
+      body: JSON.stringify({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", username: "system.admin.two" }),
+      headers: {
+        "content-type": "application/json",
+        cookie: `__Host-ai_crm_pc_session=${credential}`,
+        "idempotency-key": "30000000-0000-4000-8000-000000000001",
+        origin: "https://workbench.example.test",
+        "x-csrf-token": "c".repeat(32),
+      },
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(revokeBrowserSession).toHaveBeenCalledWith(credential, response.headers.get("x-trace-id"));
+    expect(execute).toHaveBeenCalledOnce();
+    await app.stop();
   });
 
   it("closes a Nest application that is created after startup cancellation", async () => {

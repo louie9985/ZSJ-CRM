@@ -88,3 +88,79 @@ model OrganizationOperationReceipt {
   @@map("operation_receipts")
   @@schema("organization")
 }
+
+model OrganizationWorkforcePersonProfile {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  realName          String   @db.VarChar(100) @map("real_name")
+  revision          Int
+  updatedAt         DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("workforce_person_profiles")
+  @@schema("organization")
+}
+
+model OrganizationWorkforcePersonProfileHistory {
+  workforcePersonId String   @db.Uuid @map("workforce_person_id")
+  revision          Int
+  realName          String   @db.VarChar(100) @map("real_name")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([workforcePersonId, revision])
+  @@map("workforce_person_profile_history")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectory {
+  organizationUnitId       String   @id @db.Uuid @map("organization_unit_id")
+  name                     String   @db.VarChar(100)
+  normalizedName           String   @db.VarChar(100) @map("normalized_name")
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  rootLocked               Boolean  @map("root_locked")
+  revision                 Int
+  updatedAt                DateTime @db.Timestamptz(6) @map("updated_at")
+  @@index([parentOrganizationUnitId], map: "department_parent_idx")
+  @@map("department_directory")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectoryHistory {
+  organizationUnitId       String   @db.Uuid @map("organization_unit_id")
+  revision                 Int
+  name                     String   @db.VarChar(100)
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  recordedAt               DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([organizationUnitId, revision])
+  @@map("department_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectory {
+  positionId         String   @id @db.Uuid @map("position_id")
+  organizationUnitId String   @db.Uuid @map("organization_unit_id")
+  name               String   @db.VarChar(100)
+  normalizedName     String   @db.VarChar(100) @map("normalized_name")
+  active             Boolean
+  revision           Int
+  updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("position_directory")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectoryHistory {
+  positionId String   @db.Uuid @map("position_id")
+  revision   Int
+  name       String   @db.VarChar(100)
+  active     Boolean
+  recordedAt DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([positionId, revision])
+  @@map("position_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationDirectoryOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+  @@map("directory_operation_receipts")
+  @@schema("organization")
+}

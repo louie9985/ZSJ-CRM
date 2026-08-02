@@ -40,6 +40,19 @@ describe("createRedisBrowserSessionStore", () => {
     expect(executor.commands[1]?.[0]).toBe("GETDEL");
   });
 
+  it("round-trips a session-bound reauthentication transaction", async () => {
+    const reauthentication = {
+      ...transaction,
+      reauthentication: {
+        sessionReference: "r".repeat(43),
+        subjectId: "keycloak-subject",
+        subjectIssuer: "https://identity.example.test/realms/test",
+      },
+    } as const;
+    const store = createRedisBrowserSessionStore(new ScriptedExecutor([JSON.stringify(reauthentication)]));
+    await expect(store.consumeLoginTransaction(index)).resolves.toEqual(reauthentication);
+  });
+
   it("uses a single Lua command for session touch and rotation", async () => {
     const record = {
       absoluteExpiresAtMs: 10_000,
@@ -47,6 +60,7 @@ describe("createRedisBrowserSessionStore", () => {
       createdAtMs: 1_000,
       csrfToken: "c".repeat(43),
       id: "d".repeat(43),
+      reauthenticatedUntilMs: 5_000,
       revision: 0,
       tokens: {
         algorithm: "A256GCM",

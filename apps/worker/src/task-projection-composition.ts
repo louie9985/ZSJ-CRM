@@ -5,7 +5,7 @@ import {
   type ValidatedMessage,
 } from "@ai-crm/platform-eventing-outbox";
 import type { TaskLifecycleEvent } from "@ai-crm/platform-task-center";
-import { createRabbitInboxHandler, type RabbitConsumerAdapter } from "./handlers.js";
+import { createRabbitInboxHandler, type RabbitConsumerAdapter, type RabbitInboxBinding } from "./handlers.js";
 import type { WorkerHandler } from "./index.js";
 import {
   classifyTaskProjectionError,
@@ -111,6 +111,7 @@ export function createTaskProjectionConsumerHandler(
   core: EventingCore,
   adapter: RabbitConsumerAdapter,
   port: AbortableTaskProjectionApplyPort,
+  additionalBindings: readonly RabbitInboxBinding[] = [],
 ): WorkerHandler {
   if (adapter.prefetch !== taskProjectionRuntimePolicy.prefetch || adapter.concurrency !== taskProjectionRuntimePolicy.concurrency) {
     throw new Error("worker_task_projection_runtime_policy_mismatch");
@@ -121,5 +122,5 @@ export function createTaskProjectionConsumerHandler(
     consumer: taskProjectionConsumerId,
     eventPolicy: taskProjectionRuntimePolicy,
     handler: createTaskProjectionMessageHandler(port),
-  })]);
+  }), ...additionalBindings]);
 }

@@ -5,7 +5,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App, normalizeReturnTo, pcLoginUrl, RouteErrorBoundary } from "./App";
 import { developmentFixturePort } from "./development-fixture";
-import type { BootstrapResult, WorkbenchPort } from "./workbench-port";
+import { WorkforceAdministrationPage } from "./workforce-administration-page";
+import type { BootstrapResult, WorkbenchPort, WorkforceAdministrationPort } from "./workbench-port";
 
 vi.mock("@ant-design/pro-components", () => ({
   PageContainer: ({ title, children }: { title?: ReactNode; children?: ReactNode }) => <main><h1>{title}</h1>{children}</main>,
@@ -46,6 +47,24 @@ function renderApp(entry: string, port: WorkbenchPort = developmentFixturePort):
       <MemoryRouter initialEntries={[entry]}><LocationProbe /><App port={port} /></MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "listAccounts"> & Partial<Pick<WorkforceAdministrationPort, "listAccounts">>, entry = "/workforce-administration"): void {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let snapshotPromise: ReturnType<WorkforceAdministrationPort["load"]> | undefined;
+  const load = (): ReturnType<WorkforceAdministrationPort["load"]> => {
+    snapshotPromise ??= port.load();
+    return snapshotPromise;
+  };
+  const resolved: WorkforceAdministrationPort = {
+    ...port,
+    listAccounts: port.listAccounts ?? (async (query) => {
+      const snapshot = await load();
+      return { items: snapshot.accounts.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), page: query.page, pageSize: query.pageSize, total: snapshot.accounts.length };
+    }),
+    load,
+  };
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><LocationProbe /><WorkforceAdministrationPage port={resolved} /></MemoryRouter></QueryClientProvider>);
 }
 
 const longText = "synthetic-platform-reference-with-a-deliberately-long-unbroken-value-0123456789";
@@ -257,7 +276,7 @@ describe("workbench shell", () => {
     expect(button).toBeDisabled();
     expect(logout).toHaveBeenCalledTimes(1);
     resolveLogout?.({ kind: "signed-out" });
-    expect(await screen.findByText("请登录平台工作台")).toBeInTheDocument();
+    expect(await screen.findByText("登录 ZSJ CRM")).toBeInTheDocument();
   });
 
   it("keeps the session active and exposes a retry when logout fails", async () => {
@@ -270,6 +289,120 @@ describe("workbench shell", () => {
     expect(screen.getByRole("button", { name: "退出当前会话" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "重试退出" })).toBeInTheDocument();
   });
+
+  it("shows an explicit empty workbench for an employee without authorized features", async () => {
+    renderApp("/workspace", {
+      bootstrap: () => Promise.resolve({ ...longReady, fixture: false, navigationIds: [] }),
+      logout: vi.fn(),
+    });
+
+    expect(await screen.findByText("暂无可用功能")).toBeInTheDocument();
+  });
+
+  it("keeps the workforce administration tab in the URL", async () => {
+    renderWorkforceAdministration({
+      execute: vi.fn().mockResolvedValue({}),
+      load: () => Promise.resolve({ accounts: [], departments: [], positions: [] }),
+    }, "/workforce-administration?tab=departments");
+
+    expect(await screen.findByRole("tab", { name: "部门" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "岗位" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/workforce-administration?tab=positions");
+    fireEvent.click(screen.getByRole("tab", { name: "员工账号" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/workforce-administration");
+  });
+
+  it("requires explicit confirmation before releasing a historical phone", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    renderWorkforceAdministration({
+      execute,
+      load: () => Promise.resolve({
+        accounts: [{
+          accountId: "10000000-0000-4000-8000-000000000001",
+          allowedActions: ["release_phone"],
+          crmAdministrator: false,
+          legalName: "测试员工",
+          phone: "+8613800000000",
+          releasablePhones: ["+8613700000000"],
+          revision: 7,
+          status: "active",
+          username: "employee.one",
+        }],
+        departments: [],
+        positions: [],
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "释放旧手机号" }));
+    expect(screen.getByText("释放后，该旧手机号可被其他账号使用。此操作不会修改当前登录手机号。")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择要释放的旧手机号" })).toBeInTheDocument();
+    expect(screen.getByText("+8613700000000")).toBeInTheDocument();
+    expect(execute).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认释放" }));
+    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, kind: "release_phone", phone: "+8613700000000" }); });
+  }, 20_000);
+
+  it("shows a failed identity synchronization and submits a reference-only retry", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    renderWorkforceAdministration({
+      execute,
+      load: () => Promise.resolve({
+        accounts: [{
+          accountId: "10000000-0000-4000-8000-000000000001",
+          allowedActions: ["retry_identity_sync"],
+          crmAdministrator: false,
+          latestIdentitySync: { action: "synchronize_login_identifiers", completedAt: "2026-08-02T00:00:05.000Z", errorCode: "keycloak_administration_unavailable", operationId: "40000000-0000-4000-8000-000000000001", requestedAt: "2026-08-02T00:00:00.000Z", status: "failed" },
+          legalName: "测试员工",
+          releasablePhones: [],
+          revision: 7,
+          status: "active",
+          username: "employee.one",
+        }],
+        departments: [],
+        positions: [],
+      }),
+    });
+
+    expect(await screen.findByText("同步失败")).toBeInTheDocument();
+    expect(screen.getByText("身份服务暂时不可用")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试同步" }));
+    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, failedOperationId: "40000000-0000-4000-8000-000000000001", kind: "retry_identity_sync" }); });
+  });
+
+  it("requires reauthentication before exposing the system-account identifier editor", async () => {
+    const beginSystemAccountReauthentication = vi.fn<NonNullable<WorkforceAdministrationPort["beginSystemAccountReauthentication"]>>().mockResolvedValue();
+    renderWorkforceAdministration({
+      beginSystemAccountReauthentication,
+      execute: vi.fn().mockResolvedValue({}),
+      load: () => Promise.resolve({
+        accounts: [], departments: [], positions: [],
+        systemAccount: { accountId: "10000000-0000-4000-8000-000000000009", allowedActions: [], crmAdministrator: false, legalName: "ZSJ系统管理员", phone: "+8613800000000", releasablePhones: [], revision: 4, status: "active", username: "system.admin" },
+      }),
+    });
+
+    expect(await screen.findByText("ZSJ系统管理员")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑登录标识" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新认证后编辑" }));
+    await waitFor(() => { expect(beginSystemAccountReauthentication).toHaveBeenCalledTimes(1); });
+  });
+
+  it("submits only system-account login identifiers after server-computed reauthentication", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    renderWorkforceAdministration({
+      execute,
+      load: () => Promise.resolve({
+        accounts: [], departments: [], positions: [],
+        systemAccount: { accountId: "10000000-0000-4000-8000-000000000009", allowedActions: ["edit"], crmAdministrator: false, legalName: "ZSJ系统管理员", phone: "+8613800000000", releasablePhones: [], revision: 4, status: "active", username: "system.admin" },
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "编辑登录标识" }));
+    fireEvent.change(screen.getByLabelText("用户名（昵称）"), { target: { value: "system.admin.two" } });
+    fireEvent.change(screen.getByLabelText("手机号（可用于登录）"), { target: { value: "+8613900000000" } });
+    fireEvent.click(screen.getByRole("button", { name: /保\s*存/u }));
+    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", phone: "+8613900000000", username: "system.admin.two" }); });
+    expect(JSON.stringify(execute.mock.calls)).not.toMatch(/legalName|department|position/u);
+  }, 10_000);
 
   it.each([320, 360])("keeps dynamic long text in bounded elements at %ipx", async (width) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });

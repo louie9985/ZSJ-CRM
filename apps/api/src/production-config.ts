@@ -44,6 +44,13 @@ const schema = {
     default: 30_000, maximum: 3_600_000, minimum: 1_000,
   }),
   jwksUri: configuration.url("AI_CRM_KEYCLOAK_JWKS_URI", { protocols: ["https:", "http:"] }),
+  keycloakAdminBaseUrl: configuration.url("AI_CRM_KEYCLOAK_ADMIN_BASE_URL", { protocols: ["https:", "http:"] }),
+  keycloakAdministrationClientId: configuration.string("AI_CRM_KEYCLOAK_ADMIN_CLIENT_ID", { maxLength: 255 }),
+  keycloakAdministrationClientSecret: configuration.secretFile("AI_CRM_KEYCLOAK_ADMIN_CLIENT_SECRET_FILE"),
+  keycloakAdministrationTimeoutMs: configuration.integer("AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS", { maximum: 60_000, minimum: 100 }),
+  keycloakCredentialReturnUri: configuration.url("AI_CRM_KEYCLOAK_CREDENTIAL_RETURN_URI", { protocols: ["https:", "http:"] }),
+  keycloakPublicRealmBasePath: configuration.string("AI_CRM_KEYCLOAK_PUBLIC_REALM_BASE_PATH", { maxLength: 255, pattern: /^\/realms\/[A-Za-z0-9._-]+$/u }),
+  keycloakRealm: configuration.string("AI_CRM_KEYCLOAK_REALM", { maxLength: 255, pattern: /^[A-Za-z0-9._-]+$/u }),
   migrationsRoot: configuration.string("AI_CRM_MIGRATIONS_ROOT", { maxLength: 512 }),
   oidcClockToleranceSeconds: configuration.integer("AI_CRM_OIDC_CLOCK_TOLERANCE_SECONDS", {
     default: 30, maximum: 300, minimum: 1,
@@ -72,6 +79,15 @@ export interface ProductionApiConfiguration {
     readonly uploadSessionTtlMs: number;
   }>;
   readonly migrations: readonly string[];
+  readonly workforceAdministration: Readonly<{
+    readonly keycloakAdminBaseUrl: string;
+    readonly keycloakClientId: string;
+    readonly keycloakClientSecret: string;
+    readonly keycloakPublicRealmBasePath: string;
+    readonly keycloakRealm: string;
+    readonly keycloakTimeoutMs: number;
+    readonly returnUri: string;
+  }>;
   readonly oidcVerifier: Readonly<{
     readonly audience: string;
     readonly clientId: string;
@@ -97,6 +113,7 @@ const migrationDirectories = [
   "packages/platform-modules/notifications/migrations",
   "packages/platform-modules/organization/migrations",
   "packages/platform-modules/task-center/migrations",
+  "packages/platform-modules/workforce-access/migrations",
 ] as const;
 
 export async function loadProductionApiConfiguration(
@@ -111,6 +128,7 @@ export async function loadProductionApiConfiguration(
     throw new Error("api_database_health_window_invalid");
   }
   if (raw.cosSecretId === raw.cosSecretKey) throw new Error("api_cos_credentials_not_separated");
+  if (raw.keycloakAdministrationClientSecret === pcBff.keycloakClientSecret) throw new Error("api_keycloak_credentials_not_separated");
   if (raw.fileCenterMaximumScanBytes > raw.fileCenterMaximumUploadBytes) throw new Error("api_file_center_size_window_invalid");
   return Object.freeze({
     applicationSchemaVersion: raw.applicationSchemaVersion,
@@ -134,6 +152,15 @@ export async function loadProductionApiConfiguration(
       uploadSessionTtlMs: raw.fileCenterUploadSessionTtlMs,
     }),
     migrations: Object.freeze(migrationDirectories.map((directory) => resolve(raw.migrationsRoot, directory))),
+    workforceAdministration: Object.freeze({
+      keycloakAdminBaseUrl: raw.keycloakAdminBaseUrl.replace(/\/$/u, ""),
+      keycloakClientId: raw.keycloakAdministrationClientId,
+      keycloakClientSecret: raw.keycloakAdministrationClientSecret,
+      keycloakPublicRealmBasePath: raw.keycloakPublicRealmBasePath,
+      keycloakRealm: raw.keycloakRealm,
+      keycloakTimeoutMs: raw.keycloakAdministrationTimeoutMs,
+      returnUri: raw.keycloakCredentialReturnUri,
+    }),
     oidcVerifier: Object.freeze({
       audience: pcBff.keycloakAudience,
       clientId: pcBff.keycloakClientId,

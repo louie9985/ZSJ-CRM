@@ -1,8 +1,10 @@
 import {
   handleRabbitDelivery,
+  type JobDeliveryIsolation,
   type EventingCore,
   type MessageHandler,
   type OutboxPublisher,
+  type RabbitConsumedNotice,
   type RabbitDelivery,
 } from "@ai-crm/platform-eventing-outbox";
 import type {
@@ -72,6 +74,8 @@ export interface RabbitInboxBinding {
   readonly handler: MessageHandler;
   readonly eventPolicy: { readonly maxAttempts: number; readonly backoffSeconds: readonly number[]; readonly timeoutMs: number };
   readonly classify: (error: unknown) => "retryable" | "terminal";
+  readonly onIsolated?: (input: JobDeliveryIsolation) => Promise<void>;
+  readonly onConsumed?: (input: RabbitConsumedNotice) => Promise<void>;
 }
 
 export function createRabbitInboxHandler(core: EventingCore, adapter: RabbitConsumerAdapter, bindings: readonly RabbitInboxBinding[]): WorkerHandler {
@@ -96,8 +100,17 @@ export function createRabbitInboxHandler(core: EventingCore, adapter: RabbitCons
       if (!binding) throw new Error("worker_rabbit_binding_unregistered");
       await handleRabbitDelivery(
         delivery,
-        (envelope, attempt, timeoutMs) => core.consume({ attempt, consumer: binding.consumer, envelope, timeoutMs }, binding.handler).then(() => undefined),
-        { classify: binding.classify, eventPolicy: binding.eventPolicy },
+        (envelope, attempt, timeoutMs) => core.consume({ attempt, consumer: binding.consumer, envelope, timeoutMs }, binding.handler),
+        {
+          classify: binding.classify,
+          eventPolicy: binding.eventPolicy,
+          ...(binding.handler.kind === "job" ? {
+            onIsolated: async (input: JobDeliveryIsolation) => {
+              await core.isolateJobForDeliveryFailure(input, binding.onIsolated);
+            },
+          } : {}),
+          ...(binding.onConsumed === undefined ? {} : { onConsumed: binding.onConsumed }),
+        },
       );
     }, signal),
     stop: async () => { await adapter.stop(); await adapter.drain(); },

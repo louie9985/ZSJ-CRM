@@ -26,6 +26,10 @@ secrets:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/test}/keycloak_bootstrap_password
   pc_oidc_client_secret:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/test}/pc_oidc_client_secret
+  workforce_admin_client_secret:
+    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/test}/workforce_admin_client_secret
+  workforce_worker_client_secret:
+    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/test}/workforce_worker_client_secret
   flowable_admin_password:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/test}/flowable_admin_password
   rabbitmq_password:

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AuthorizationDeniedError, AuthorizationPersistenceError, AuthorizationUnavailableError } from "./errors.js";
 import { createProtectedAuthorizationPolicyPublisher } from "./policy-publication.js";
-import { syntheticPolicySnapshot } from "./testing.js";
+import { syntheticPolicySnapshotV2 } from "./testing.js";
 import type {
   AuthorizationPolicyPublicationAuditRecord,
   ProtectedAuthorizationPolicyPublisherOptions,
@@ -27,12 +27,12 @@ const command = (): ProtectedPublishAuthorizationPolicyCommand => ({
     authorizationFailed: "60000000-0000-4000-8000-000000000008",
     publicationFailed: "60000000-0000-4000-8000-000000000009",
   },
-  contractVersion: "authorization-policy.v1",
+  contractVersion: "authorization-policy.v2",
   operationId: "60000000-0000-4000-8000-000000000005",
   publicationId: "60000000-0000-4000-8000-000000000006",
   publishedAt: "2026-07-28T05:00:00.000Z",
   reason: { code: "reviewed_policy_change" },
-  snapshot: syntheticPolicySnapshot(),
+  snapshot: syntheticPolicySnapshotV2(),
   traceId: "1234567890abcdef1234567890abcdef",
 });
 
@@ -49,7 +49,7 @@ function fixture() {
 
 describe("protected authorization policy publication", () => {
   it("keeps the source contract aligned with stable audit IDs and non-zero Trace", async () => {
-    const schema = JSON.parse(await readFile(new URL("../../../../contracts/permissions/protected-policy-publication-command.v1.schema.json", import.meta.url), "utf8")) as {
+    const schema = JSON.parse(await readFile(new URL("../../../../contracts/permissions/protected-policy-publication-command.v2.schema.json", import.meta.url), "utf8")) as {
       properties: { traceId: { pattern: string } };
       required: string[];
     };
@@ -57,6 +57,19 @@ describe("protected authorization policy publication", () => {
     const tracePattern = new RegExp(schema.properties.traceId.pattern, "u");
     expect(tracePattern.test("0".repeat(32))).toBe(false);
     expect(tracePattern.test(command().traceId)).toBe(true);
+  });
+
+  it("rejects a legacy v1 snapshot before authorization or persistence", async () => {
+    const { options, service } = fixture();
+    const legacy = { ...command(), snapshot: {
+      grants: command().snapshot.grants,
+      permissions: command().snapshot.permissions.map(({ action, code, resource, scopeDimensions }) => ({ action, code, resource, scopeDimensions })),
+      roles: command().snapshot.roles.map(({ permissions, roleId }) => ({ permissions, roleId })),
+      version: "legacy-v1",
+    } };
+    await expect(service.publish(legacy)).rejects.toMatchObject({ code: "authorization_policy_invalid" });
+    expect(options.authorizer.requireAllowed).not.toHaveBeenCalled();
+    expect(options.publisher.publish).not.toHaveBeenCalled();
   });
 
   it("authorizes the current workforce context before publishing and records management audit", async () => {

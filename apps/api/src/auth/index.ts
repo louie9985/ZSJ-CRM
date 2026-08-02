@@ -10,6 +10,7 @@ export {
 } from "./http-adapter.js";
 export {
   createOidcClient,
+  type BeginLoginOptions,
   type BeginLoginResult,
   type LoginTransaction,
   type OidcClientConfiguration,
@@ -42,6 +43,7 @@ export {
   type PcBffSessionService,
   type PcBffSessionServiceOptions,
   type RefreshedSession,
+  type ResolvedBrowserPrincipal,
 } from "./session-service.js";
 export {
   connectRedisSessionStore,

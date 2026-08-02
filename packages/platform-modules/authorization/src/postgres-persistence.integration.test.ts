@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDatabaseRuntime, runMigrations, type DatabaseRuntime } from "@ai-crm/database";
 import { createPostgresAuthorizationPersistence } from "./postgres-persistence.js";
-import { syntheticPolicySnapshot } from "./testing.js";
+import { syntheticPolicySnapshotV2 } from "./testing.js";
 import type { AuthorizationDecisionRecord, AuthorizationPolicySnapshot } from "./types.js";
 
 const urlFile = process.env.TEST_AUTHORIZATION_DATABASE_URL_FILE;
@@ -30,13 +30,13 @@ integration("PostgreSQL authorization policy persistence", () => {
 
   it("publishes complete policies atomically, serializes concurrent changes, and replays safely", async () => {
     const persistence = createPostgresAuthorizationPersistence(requiredRuntime());
-    const first = { contractVersion: "authorization-policy.v1", publicationId: randomUUID(), publishedAt: "2026-07-28T01:00:00.000Z", snapshot: syntheticPolicySnapshot() };
+    const first = { contractVersion: "authorization-policy.v2", publicationId: randomUUID(), publishedAt: "2026-07-28T01:00:00.000Z", snapshot: syntheticPolicySnapshotV2() };
     const published = await persistence.publisher.publish(first);
     expect(await persistence.store.currentVersion()).toBe("synthetic-v1");
     expect((await persistence.store.load("synthetic-v1") as AuthorizationPolicySnapshot).version).toBe("synthetic-v1");
     await expect(persistence.publisher.publish(first)).resolves.toEqual({ ...published, replayed: true });
 
-    const commands = ["synthetic-v2", "synthetic-v3"].map((version, index) => ({ ...first, publicationId: randomUUID(), publishedAt: `2026-07-28T01:00:0${String(index + 1)}.000Z`, snapshot: { ...syntheticPolicySnapshot(), version } }));
+    const commands = ["synthetic-v2", "synthetic-v3"].map((version, index) => ({ ...first, publicationId: randomUUID(), publishedAt: `2026-07-28T01:00:0${String(index + 1)}.000Z`, snapshot: { ...syntheticPolicySnapshotV2(), version } }));
     const results = await Promise.all(commands.map((command) => persistence.publisher.publish(command)));
     expect(results.filter(({ previousVersion }) => previousVersion === "synthetic-v1")).toHaveLength(1);
     expect(results.some(({ previousVersion }) => previousVersion === "synthetic-v2" || previousVersion === "synthetic-v3")).toBe(true);

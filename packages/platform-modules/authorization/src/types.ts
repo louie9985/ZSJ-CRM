@@ -14,6 +14,7 @@ export interface DataScope {
 
 export interface PermissionDeclaration {
   readonly action: string;
+  readonly applicationId?: string;
   readonly code: string;
   readonly resource: string;
   readonly scopeDimensions: readonly string[];
@@ -25,8 +26,10 @@ export interface RolePermissionBinding {
 }
 
 export interface RoleDefinition {
+  readonly displayName?: string;
   readonly permissions: readonly RolePermissionBinding[];
   readonly roleId: string;
+  readonly roleKey?: string;
 }
 
 export type GrantSubject =
@@ -41,10 +44,19 @@ export interface EffectiveRoleGrant {
   readonly validTo?: string;
 }
 
+export interface SuperAdministratorGrant {
+  readonly grantId: string;
+  readonly validFrom: string;
+  readonly validTo?: string;
+  readonly workforcePersonId: string;
+}
+
 export interface AuthorizationPolicySnapshot {
   readonly grants: readonly EffectiveRoleGrant[];
   readonly permissions: readonly PermissionDeclaration[];
   readonly roles: readonly RoleDefinition[];
+  readonly schemaVersion?: 2;
+  readonly superAdministratorGrants?: readonly SuperAdministratorGrant[];
   readonly version: string;
 }
 

@@ -2,6 +2,27 @@
   "version": 1,
   "permissions": [
     {
+      "owner": "platform.workbench",
+      "code": "platform.workbench.shell:read",
+      "resource": "platform.workbench.shell",
+      "action": "read",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.workforce-access",
+      "code": "platform.workforce-access.console:read",
+      "resource": "platform.workforce-access.console",
+      "action": "read",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.workforce-access",
+      "code": "platform.workforce-access.console:manage",
+      "resource": "platform.workforce-access.console",
+      "action": "manage",
+      "scopeDimensions": []
+    },
+    {
       "owner": "platform.app-registry",
       "code": "platform.app-registry.deep-link:resolve",
       "resource": "platform.app-registry.deep-link",

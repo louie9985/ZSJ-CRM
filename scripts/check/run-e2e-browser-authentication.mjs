@@ -26,6 +26,9 @@ let publicOrigin;
 let redisPort;
 let secretDirectory;
 let syntheticUserId = "";
+let syntheticPhone;
+let usernameLoginVerified = false;
+let phoneLoginVerified = false;
 let taskCompletionAccepted = false;
 let taskAuthorizationDenied = false;
 let taskCompletionReplayed = false;
@@ -140,14 +143,21 @@ async function createSyntheticUser(username, password) {
     syntheticUserId = fixture.userId;
     return;
   }
+  const userProfile = JSON.parse(await readFile("deploy/keycloak/user-profile-dev.json", "utf8"));
+  const profileResponse = await fetch(`http://localhost:${String(keycloakPort)}/admin/realms/ai-crm-dev/users/profile`, {
+    body: JSON.stringify(userProfile),
+    headers: { authorization: `Bearer ${adminAccessToken}`, "content-type": "application/json" },
+    method: "PUT",
+  });
+  if (profileResponse.status !== 200) throw new Error("e2e_browser_auth_user_profile_update_failed");
+  syntheticPhone = `+86139${String(randomBytes(4).readUInt32BE()).padStart(10, "0").slice(0, 8)}`;
   const response = await fetch(`http://localhost:${String(keycloakPort)}/admin/realms/ai-crm-dev/users`, {
     body: JSON.stringify({
+      attributes: { phone_login_key: [syntheticPhone] },
       credentials: [{ temporary: false, type: "password", value: password }],
       email: `${username}@example.test`,
       emailVerified: true,
       enabled: true,
-      firstName: "Synthetic",
-      lastName: "BrowserAuth",
       username,
     }),
     headers: { authorization: `Bearer ${adminAccessToken}`, "content-type": "application/json" },
@@ -308,9 +318,21 @@ async function launchBrowser(initialUrl) {
 }
 
 async function browserLogin(cdp, username, password) {
-  await waitFor(async () => cdp.evaluate(
-    `location.port === "${String(keycloakPort)}" && Boolean(document.querySelector("#username"))`,
-  ), "e2e_browser_auth_keycloak_form_missing");
+  try {
+    await waitFor(async () => cdp.evaluate(
+      `location.port === "${String(keycloakPort)}" && Boolean(document.querySelector("#username"))`,
+    ), "e2e_browser_auth_keycloak_form_missing");
+  } catch (error) {
+    const diagnostic = await cdp.evaluate(`({
+      origin: location.origin,
+      path: location.pathname,
+      pageId: globalThis.kcContext?.pageId ?? null,
+      readyState: document.readyState,
+      title: document.title,
+      usernamePresent: Boolean(document.querySelector("#username"))
+    })`);
+    throw new Error(`e2e_browser_auth_keycloak_form_missing:${JSON.stringify({ ...diagnostic, browserExceptions: cdp.exceptions.slice(-3), resourceEvents: cdp.resourceEvents.slice(-10) })}`, { cause: error });
+  }
   await cdp.evaluate(`(() => {
     document.querySelector("#username").value = ${JSON.stringify(username)};
     document.querySelector("#password").value = ${JSON.stringify(password)};
@@ -451,6 +473,19 @@ try {
       systemFailure: document.body.innerText.includes("请求未成功")
     })`);
     throw new Error(`e2e_browser_auth_workbench_not_mounted:${JSON.stringify({ ...diagnostic, browserExceptions: browser.exceptions.slice(-3), resourceEvents: browser.resourceEvents.slice(-10) })}`, { cause: error });
+  }
+  const usernameSessionStatus = await browser.evaluate(
+    `fetch("/auth/pc/session", { credentials: "include" }).then(response => response.status)`,
+  );
+  if (usernameSessionStatus !== 200) throw new Error("e2e_browser_auth_username_login_failed");
+  usernameLoginVerified = true;
+
+  if (syntheticPhone !== undefined) {
+    await browser.command("Network.clearBrowserCookies");
+    await browser.command("Page.navigate", { url: `${publicOrigin}/auth/pc/login?returnTo=%2Fsettings` });
+    const formattedPhone = `${syntheticPhone.slice(0, 3)} ${syntheticPhone.slice(3, 6)}-${syntheticPhone.slice(6)}`;
+    await browserLogin(browser, formattedPhone, password);
+    phoneLoginVerified = true;
   }
 
   const session = await browser.evaluate(`fetch("/auth/pc/session", {
@@ -750,6 +785,7 @@ try {
     formRendered,
     formServerValidated,
     httpOnlyCookie: true,
+    phoneLoginVerified,
     project,
     sessionFixationRejected: true,
     sessionRotated: true,
@@ -761,6 +797,7 @@ try {
     taskCompletionAccepted,
     taskCompletionReplayed,
     tokenExposedToBrowser: false,
+    usernameLoginVerified,
   })}\n`);
 } catch (error) {
   failures.push(error);

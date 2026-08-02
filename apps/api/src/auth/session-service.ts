@@ -20,6 +20,8 @@ import type { BrowserSessionStore, StoredBrowserSession } from "./session-store.
 export type AuthenticationAuditAction =
   | "login_started"
   | "login_completed"
+  | "reauthentication_started"
+  | "reauthentication_completed"
   | "session_refreshed"
   | "session_logout_requested";
 
@@ -44,6 +46,7 @@ export interface PcBffSessionServiceOptions {
   readonly loginTransactionTtlSeconds: number;
   readonly oidc: OidcClientPort;
   readonly refreshLeaseTtlMs: number;
+  readonly reauthenticationMarkerTtlSeconds?: number;
   readonly sessionAbsoluteTtlSeconds: number;
   readonly sessionIdleTtlSeconds: number;
   readonly store: BrowserSessionStore;
@@ -59,6 +62,10 @@ export interface BrowserSessionView {
 
 export interface LoginRedirect {
   readonly authorizationUrl: string;
+}
+
+export interface ResolvedBrowserPrincipal extends AuthenticatedPrincipal {
+  readonly reauthenticated?: boolean;
 }
 
 export interface CompletedLogin {
@@ -82,11 +89,12 @@ export interface BrowserMutationSession extends BrowserSessionView {
 
 export interface PcBffSessionService {
   beginLogin(returnTo: string, traceId?: string): Promise<Readonly<LoginRedirect>>;
-  completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<CompletedLogin>>;
+  beginReauthentication?(credential: string, returnTo: string, traceId?: string): Promise<Readonly<LoginRedirect>>;
+  completeLogin(callbackUrl: string, traceId?: string, credential?: string): Promise<Readonly<CompletedLogin>>;
   currentSession(credential: string): Promise<Readonly<BrowserSessionView>>;
   logout(credential: string | undefined, sessionReference?: string, traceId?: string): Promise<Readonly<LogoutResult>>;
   refresh(credential: string, traceId?: string): Promise<Readonly<RefreshedSession>>;
-  resolvePrincipal(credential: string): Promise<Readonly<AuthenticatedPrincipal>>;
+  resolvePrincipal(credential: string): Promise<Readonly<ResolvedBrowserPrincipal>>;
   sessionForMutation(credential: string): Promise<Readonly<BrowserMutationSession>>;
 }
 
@@ -208,9 +216,9 @@ function snapshotKeyring(options: PcBffSessionServiceOptions): Readonly<{
 async function verifyIssuedAccessToken(
   verifier: TokenVerifier,
   accessToken: string,
-): Promise<void> {
+): Promise<Readonly<AuthenticatedPrincipal>> {
   try {
-    await verifier.verify(accessToken);
+    return await verifier.verify(accessToken);
   } catch (error) {
     if (error instanceof AuthenticationFailure && error.code === "identity_provider_unavailable") {
       throw new BrowserSessionFailure("authentication_dependency_unavailable");
@@ -227,6 +235,7 @@ export function createPcBffSessionService(
   const loginTtlMs = secondsToMilliseconds(options.loginTransactionTtlSeconds);
   const idleTtlMs = secondsToMilliseconds(options.sessionIdleTtlSeconds);
   const absoluteTtlMs = secondsToMilliseconds(options.sessionAbsoluteTtlSeconds);
+  const reauthenticationTtlMs = secondsToMilliseconds(options.reauthenticationMarkerTtlSeconds ?? 300);
   if (absoluteTtlMs < idleTtlMs || options.refreshLeaseTtlMs <= 0) {
     throw new BrowserSessionFailure("authentication_session_invalid");
   }
@@ -279,7 +288,41 @@ export function createPcBffSessionService(
       return Object.freeze({ authorizationUrl: result.authorizationUrl });
     },
 
-    async completeLogin(callbackUrl: string, requestTrace?: string): Promise<Readonly<CompletedLogin>> {
+    async beginReauthentication(
+      credential: string,
+      returnTo: string,
+      requestTrace?: string,
+    ): Promise<Readonly<LoginRedirect>> {
+      const traceId = requestTraceId(requestTrace);
+      const current = await loadVerifiedSession(credential);
+      const subject = current.principal.authenticationSubject;
+      const result = await options.oidc.beginLogin(returnTo, { promptLogin: true });
+      const transaction = Object.freeze({
+        ...result.transaction,
+        reauthentication: Object.freeze({
+          sessionReference: current.session.id,
+          subjectId: subject.subject,
+          subjectIssuer: subject.issuer,
+        }),
+      });
+      const stateIndex = createSessionIndex(transaction.state, securityKeys.indexingKey);
+      await options.store.storeLoginTransaction(stateIndex, transaction, loginTtlMs);
+      try {
+        await auditOrFail(options.audit, authenticationAuditEvent(
+          "reauthentication_started", stateIndex, traceId, current.session.id,
+        ));
+      } catch (error) {
+        await options.store.consumeLoginTransaction(stateIndex);
+        throw error;
+      }
+      return Object.freeze({ authorizationUrl: result.authorizationUrl });
+    },
+
+    async completeLogin(
+      callbackUrl: string,
+      requestTrace?: string,
+      credential?: string,
+    ): Promise<Readonly<CompletedLogin>> {
       const traceId = requestTraceId(requestTrace);
       const state = stateFromCallback(callbackUrl);
       let stateIndex: string;
@@ -291,10 +334,55 @@ export function createPcBffSessionService(
       const transaction = await options.store.consumeLoginTransaction(stateIndex);
       if (!transaction) throw new BrowserSessionFailure("authentication_callback_invalid");
       const tokenResult = await options.oidc.exchangeCallback(callbackUrl, transaction);
-      await verifyIssuedAccessToken(options.tokenVerifier, tokenResult.tokens.accessToken);
+      const callbackPrincipal = await verifyIssuedAccessToken(options.tokenVerifier, tokenResult.tokens.accessToken);
       const timestamp = now();
-      const credential = createOpaqueCredential();
-      const sessionIndex = createSessionIndex(credential, securityKeys.indexingKey);
+      if (transaction.reauthentication !== undefined) {
+        if (credential === undefined) throw new BrowserSessionFailure("authentication_callback_invalid");
+        const current = await loadVerifiedSession(credential);
+        const expected = transaction.reauthentication;
+        const currentSubject = current.principal.authenticationSubject;
+        const callbackSubject = callbackPrincipal.authenticationSubject;
+        if (current.session.id !== expected.sessionReference ||
+          currentSubject.issuer !== expected.subjectIssuer || currentSubject.subject !== expected.subjectId ||
+          callbackSubject.issuer !== expected.subjectIssuer || callbackSubject.subject !== expected.subjectId) {
+          throw new BrowserSessionFailure("authentication_callback_invalid");
+        }
+        const previousIndex = createSessionIndex(credential, securityKeys.indexingKey);
+        const nextCredential = createOpaqueCredential();
+        const nextIndex = createSessionIndex(nextCredential, securityKeys.indexingKey);
+        const nextSession: StoredBrowserSession = Object.freeze({
+          ...current.session,
+          reauthenticatedUntilMs: Math.min(timestamp + reauthenticationTtlMs, current.session.absoluteExpiresAtMs),
+          revision: current.session.revision + 1,
+          tokens: encryptSessionTokens(tokenResult.tokens, securityKeys.encryptionKey, current.session.id),
+        });
+        const rotated = await options.store.rotateSession(
+          previousIndex,
+          nextIndex,
+          current.session.revision,
+          nextSession,
+          remainingSessionTtl(nextSession, timestamp, idleTtlMs),
+        );
+        if (!rotated) throw new BrowserSessionFailure("authentication_callback_invalid");
+        try {
+          await auditOrFail(options.audit, authenticationAuditEvent(
+            "reauthentication_completed",
+            `${nextSession.id}:${String(nextSession.revision)}`,
+            traceId,
+            nextSession.id,
+          ));
+        } catch (error) {
+          await options.store.deleteSession(nextIndex);
+          throw error;
+        }
+        return Object.freeze({
+          credential: nextCredential,
+          returnTo: transaction.returnTo,
+          session: sessionView(nextSession),
+        });
+      }
+      const newCredential = createOpaqueCredential();
+      const sessionIndex = createSessionIndex(newCredential, securityKeys.indexingKey);
       const sessionReference = createOpaqueCredential();
       const session: StoredBrowserSession = Object.freeze({
         absoluteExpiresAtMs: timestamp + absoluteTtlMs,
@@ -313,7 +401,7 @@ export function createPcBffSessionService(
         await options.store.deleteSession(sessionIndex);
         throw error;
       }
-      return Object.freeze({ credential, returnTo: transaction.returnTo, session: sessionView(session) });
+      return Object.freeze({ credential: newCredential, returnTo: transaction.returnTo, session: sessionView(session) });
     },
 
     async currentSession(credential: string): Promise<Readonly<BrowserSessionView>> {
@@ -386,8 +474,13 @@ export function createPcBffSessionService(
       }
     },
 
-    async resolvePrincipal(credential: string): Promise<Readonly<AuthenticatedPrincipal>> {
-      return (await loadVerifiedSession(credential)).principal;
+    async resolvePrincipal(credential: string): Promise<Readonly<ResolvedBrowserPrincipal>> {
+      const resolved = await loadVerifiedSession(credential);
+      return Object.freeze({
+        ...resolved.principal,
+        reauthenticated: resolved.session.reauthenticatedUntilMs !== undefined &&
+          resolved.session.reauthenticatedUntilMs > now(),
+      });
     },
 
     async sessionForMutation(credential: string): Promise<Readonly<BrowserMutationSession>> {

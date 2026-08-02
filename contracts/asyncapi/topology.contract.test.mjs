@@ -20,15 +20,18 @@ test("resolves document-relative Event and Job schemas from the AsyncAPI source 
     JSON.stringify(parsed.diagnostics),
   );
   const references = [...source.matchAll(/\$ref: (\.\.\/(?:events|jobs)\/[^\s]+)/g)].map((match) => match[1]);
-  assert.equal(references.length, 9);
+  assert.equal(references.length, 10);
   assert.equal(references.every((reference) => !reference.startsWith("contracts/")), true);
 });
 
 test("contracts the reviewed Task projection policy while blocking release activation without trusted evidence", () => {
   assert.deepEqual(Object.keys(topology.operations).sort(), [
     "consumeTaskProjectionLifecycle",
+    "consumeWorkforceKeycloakSync",
     "publishTaskProjectionLifecycle",
     "publishTaskProjectionLifecycleRetry",
+    "publishWorkforceKeycloakSync",
+    "publishWorkforceKeycloakSyncRetry",
   ]);
   const policy = topology.operations.consumeTaskProjectionLifecycle["x-ai-crm-runtime-policy"];
   assert.deepEqual(policy, {
@@ -105,6 +108,26 @@ test("contracts the reviewed Task projection policy while blocking release activ
     topology.components.schemas.rabbitMessageHeadersV1.required.includes("x-ai-crm-delivery-attempt"),
     true,
   );
+});
+
+test("contracts bounded Workforce Keycloak synchronization retry and isolation topology", () => {
+  const operation = topology.operations.consumeWorkforceKeycloakSync;
+  assert.deepEqual(operation["x-ai-crm-failure-handling"].retryRoute, {
+    exchange: "ai-crm.platform.retry.v1",
+    layers: [
+      { attempt: 2, delaySeconds: 5, routingKey: "workforce-access.keycloak-sync.v1.retry.5s" },
+      { attempt: 3, delaySeconds: 30, routingKey: "workforce-access.keycloak-sync.v1.retry.30s" },
+    ],
+  });
+  assert.deepEqual(topology.operations.publishWorkforceKeycloakSyncRetry["x-ai-crm-routing-keys"], [
+    "workforce-access.keycloak-sync.v1.retry.5s",
+    "workforce-access.keycloak-sync.v1.retry.30s",
+  ]);
+  const delays = [topology.channels.workforceKeycloakSyncRetry5Queue, topology.channels.workforceKeycloakSyncRetry30Queue];
+  assert.deepEqual(delays.map((channel) => channel["x-ai-crm-queue-arguments"]["x-message-ttl"]), [5000, 30000]);
+  assert.equal(delays.every((channel) => channel["x-ai-crm-consumer-forbidden"] === true), true);
+  assert.equal(topology.channels.workforceKeycloakSyncDeadLetterQueue["x-ai-crm-replay"].enabled, false);
+  assert.equal(topology.channels.workforceKeycloakSyncDeadLetterExchange.bindings.amqp.exchange.name, "ai-crm.platform.dead-letter.v1");
 });
 
 test("uses environment-isolated VHost configuration and routes only the owned consumer", () => {

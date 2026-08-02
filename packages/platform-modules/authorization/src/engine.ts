@@ -43,7 +43,7 @@ const recordSafely = (observer: AuthorizationObserver | undefined, event: Parame
 const permissionCode = (request: Pick<PermissionRequest, "action" | "resource">): string =>
   `${request.resource}:${request.action}`;
 
-const isActive = (grant: ValidatedGrant, at: Date): boolean =>
+const isActive = (grant: Pick<ValidatedGrant, "validFrom" | "validTo">, at: Date): boolean =>
   grant.validFrom <= at && (grant.validTo === undefined || at < grant.validTo);
 
 const applicableGrant = (
@@ -97,10 +97,20 @@ const evaluatePolicy = (
     }
   }
 
+  const superAdministrator = policy.superAdministratorGrants.some((grant) =>
+    grant.workforcePersonId === subject.workforcePersonId && isActive(grant, at));
+  if (superAdministrator) {
+    const scope = Object.freeze({ terms: Object.freeze([{ kind: "all" as const }]), version: 1 as const });
+    return { allowed: true, policyVersion: policy.version, reason: "allowed", scope };
+  }
+
   const scopes = policy.grants.flatMap((grant) => {
     if (!applicableGrant(grant, subject, at)) return [];
     const role = policy.roles.get(grant.roleId);
-    const binding = role?.permissions.find((candidate) => candidate.permissionCode === code);
+    const binding = role?.permissions.find((candidate) => candidate.permissionCode === code) ??
+      (role?.roleKey === "crm.system-administrator" && permission.applicationId === "crm"
+        ? Object.freeze({ permissionCode: code, scope: Object.freeze({ terms: Object.freeze([{ kind: "all" as const }]), version: 1 as const }) })
+        : undefined);
     return binding === undefined ? [] : [binding.scope];
   });
   if (scopes.length === 0) {
@@ -121,7 +131,8 @@ const cacheKey = (
 ): string => createHash("sha256").update(JSON.stringify({ operation, policyVersionValue, request, subject })).digest("hex");
 
 const nextPolicyBoundary = (policy: ValidatedPolicy, at: Date): Date | undefined => {
-  const future = policy.grants.flatMap((grant) => [grant.validFrom, ...(grant.validTo === undefined ? [] : [grant.validTo])])
+  const future = [...policy.grants, ...policy.superAdministratorGrants]
+    .flatMap((grant) => [grant.validFrom, ...(grant.validTo === undefined ? [] : [grant.validTo])])
     .filter((value) => value > at);
   return future.length === 0 ? undefined : new Date(Math.min(...future.map((value) => value.getTime())));
 };

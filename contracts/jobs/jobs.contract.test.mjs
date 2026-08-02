@@ -15,6 +15,7 @@ const schemas = await Promise.all([
   load("job-envelope.v1.schema.json"),
   load("walking-skeleton-source-command.v1.schema.json"),
   load("notification-intent-submit.v1.schema.json"),
+  load("workforce-keycloak-sync.v1.schema.json"),
   load("../notifications/notification-intent.v1.schema.json"),
 ]);
 const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -53,6 +54,35 @@ test("contracts a test-only source command with current-state and actor-context 
   assert.equal(validate({ ...valid, payload: { ...valid.payload, actor: { principalId: "untrusted" } } }), false);
   assert.equal(validate({ ...valid, payload: { ...valid.payload, expectedSourceVersion: 0 } }), false);
   assert.equal(validate({ ...valid, jobType: "crm.generic.command" }), false);
+});
+
+test("contracts Workforce Keycloak synchronization as a complete fixed-policy traced Job", () => {
+  const validate = ajv.getSchema("https://contracts.ai-crm.local/jobs/v1/workforce-keycloak-sync.schema.json");
+  assert(validate);
+  const valid = {
+    ...envelope,
+    jobType: "workforce-access.keycloak-sync.v1",
+    source: "urn:ai-crm:workforce-access",
+    idempotencyKey: "workforce-keycloak-sync/43000000-0000-4000-8000-000000000003",
+    policy: { maxAttempts: 3, backoffSeconds: [5, 30], timeoutMs: 10000, failureDisposition: "isolate" },
+    traceparent: `00-${"1".repeat(32)}-${"2".repeat(16)}-01`,
+    payload: {
+      accountId: "43000000-0000-4000-8000-000000000003",
+      action: "synchronize_login_identifiers",
+      keycloakUserId: "keycloak-user-1",
+      operationId: "43000000-0000-4000-8000-000000000004",
+      retryOfOperationId: "43000000-0000-4000-8000-000000000006",
+      phone: "+8613800000000",
+      username: "employee.one",
+    },
+  };
+  assert.equal(validate(valid), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...valid, traceparent: undefined }), false);
+  assert.equal(validate({ ...valid, source: "urn:ai-crm:api" }), false);
+  assert.equal(validate({ ...valid, policy: { ...valid.policy, backoffSeconds: [30, 300] } }), false);
+  assert.equal(validate({ ...valid, payload: { ...valid.payload, username: undefined } }), false);
+  assert.equal(validate({ ...valid, payload: { ...valid.payload, action: "disable" } }), false);
+  assert.equal(validate({ ...valid, payload: { ...valid.payload, retryOfOperationId: "not-an-operation" } }), false);
 });
 
 test("contracts Notification Intent submission without trusting an actor from the message", () => {

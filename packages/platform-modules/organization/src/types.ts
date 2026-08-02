@@ -45,6 +45,7 @@ export interface OrganizationServiceApi {
   createSubjectAssociation(command: CreateSubjectAssociationCommand): Promise<void>;
   createWorkforcePerson(command: CreateWorkforcePersonCommand): Promise<void>;
   resolveWorkforceContext(subject: AuthenticationSubject, at: string, assignmentId?: string): Promise<WorkforceContext>;
+  resolveWorkforcePersonContext(workforcePersonId: string, at: string, assignmentId?: string): Promise<WorkforcePersonContext>;
 }
 
 export interface WorkforcePerson {
@@ -97,6 +98,13 @@ export interface WorkforceContext {
   readonly employmentIds: readonly string[];
   readonly resolvedAt: string;
   readonly subject: AuthenticationSubject;
+  readonly workforcePersonId: string;
+}
+
+export interface WorkforcePersonContext {
+  readonly assignments: readonly WorkforceAssignmentReference[];
+  readonly employmentIds: readonly string[];
+  readonly resolvedAt: string;
   readonly workforcePersonId: string;
 }
 

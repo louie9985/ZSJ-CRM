@@ -28,6 +28,15 @@ const configuration: ProductionApiConfiguration = {
     uploadSessionTtlMs: 300_000,
   },
   migrations: ["/app/packages/database/migrations"],
+  workforceAdministration: {
+    keycloakAdminBaseUrl: "https://identity.example.test",
+    keycloakClientId: "ai-crm-workforce-provisioner",
+    keycloakClientSecret: "a".repeat(43),
+    keycloakPublicRealmBasePath: "/realms/ai-crm",
+    keycloakRealm: "ai-crm",
+    keycloakTimeoutMs: 5_000,
+    returnUri: "https://workbench.example.test/workforce-administration/credential-callback",
+  },
   oidcVerifier: {
     audience: "ai-crm-api",
     clientId: "ai-crm-pc-bff",

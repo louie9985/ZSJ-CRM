@@ -125,6 +125,12 @@ describe("createOidcClient", () => {
     expect(authorizationUrl.searchParams.get("state")).toBe(result.transaction.state);
     expect(authorizationUrl.searchParams.get("nonce")).toBe(result.transaction.nonce);
     expect(result.transaction.returnTo).toBe("/tasks?tab=assigned");
+    expect(authorizationUrl.searchParams.has("prompt")).toBe(false);
+  });
+
+  it("forces an identity-provider login prompt for reauthentication", async () => {
+    const result = await client.beginLogin("/account", { promptLogin: true });
+    expect(new URL(result.authorizationUrl).searchParams.get("prompt")).toBe("login");
   });
 
   it("validates the callback and refreshes without exposing provider types", async () => {

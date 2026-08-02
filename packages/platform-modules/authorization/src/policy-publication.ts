@@ -18,7 +18,7 @@ const ACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,254}$/u;
 const REASON_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
 const RESOURCE = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/u;
 const ACTION = /^[a-z][a-z0-9-]*$/u;
-const CONTRACT_VERSION = "authorization-policy.v1";
+const CONTRACT_VERSION = "authorization-policy.v2";
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const POLICY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
@@ -137,6 +137,7 @@ function command(value: ProtectedPublishAuthorizationPolicyCommand): ProtectedPu
     typeof publishedAt !== "string" || !TIMESTAMP.test(publishedAt) || Number.isNaN(publishedDate.getTime()) || publishedDate.toISOString() !== publishedAt ||
     typeof reason["code"] !== "string" || !REASON_CODE.test(reason["code"])) return invalid();
   const snapshot = canonicalizeAuthorizationPolicy(snapshotData(input["snapshot"]) as ProtectedPublishAuthorizationPolicyCommand["snapshot"]);
+  if (snapshot.schemaVersion !== 2) return invalid();
   const expectedPreviousVersion = input["expectedPreviousVersion"];
   if (expectedPreviousVersion !== undefined && expectedPreviousVersion !== null &&
     (typeof expectedPreviousVersion !== "string" || !POLICY_VERSION.test(expectedPreviousVersion))) return invalid();

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.ai-crm.local/jobs/v1/workforce-keycloak-sync.schema.json",
+  "title": "Workforce Keycloak synchronization Job v1",
+  "description": "Private, replay-safe Keycloak synchronization request. The consumer rechecks the current Workforce Access account, Keycloak link, status and login identifiers before every side effect. Payload values must never be logged or copied to Audit/Trace attributes.",
+  "allOf": [
+    { "$ref": "./job-envelope.v1.schema.json" },
+    {
+      "type": "object",
+      "required": ["jobType", "jobVersion", "source", "traceparent", "policy", "payload"],
+      "properties": {
+        "jobType": { "const": "workforce-access.keycloak-sync.v1" },
+        "jobVersion": { "const": 1 },
+        "source": { "const": "urn:ai-crm:workforce-access" },
+        "traceparent": {
+          "description": "Server-derived W3C trace context propagated from Browser/BFF/API through Outbox; it is correlation metadata, not audit evidence.",
+          "type": "string",
+          "pattern": "^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$"
+        },
+        "policy": {
+          "type": "object",
+          "required": ["maxAttempts", "backoffSeconds", "timeoutMs", "failureDisposition"],
+          "properties": {
+            "maxAttempts": { "const": 3 },
+            "backoffSeconds": { "const": [5, 30] },
+            "timeoutMs": { "const": 10000 },
+            "failureDisposition": { "const": "isolate" }
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accountId", "action", "keycloakUserId", "operationId"],
+          "properties": {
+            "accountId": { "$ref": "#/$defs/uuid" },
+            "action": { "enum": ["disable", "revoke_sessions", "synchronize_login_identifiers"] },
+            "keycloakUserId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$" },
+            "operationId": { "$ref": "#/$defs/uuid" },
+            "retryOfOperationId": {
+              "description": "Present only for an explicitly authorized retry. It references the immediately preceding failed identity synchronization Operation; it never authorizes payload replay.",
+              "$ref": "#/$defs/uuid"
+            },
+            "phone": { "type": "string", "pattern": "^\\+?[0-9]{6,20}$" },
+            "username": { "type": "string", "pattern": "^[A-Za-z0-9._-]{4,32}$" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "action": { "const": "synchronize_login_identifiers" } }, "required": ["action"] },
+              "then": { "properties": { "username": { "type": "string" } }, "required": ["username"] },
+              "else": { "properties": { "phone": false, "username": false } }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" }
+  }
+}

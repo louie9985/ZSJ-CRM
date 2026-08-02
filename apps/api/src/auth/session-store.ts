@@ -10,6 +10,7 @@ export interface StoredBrowserSession {
   readonly createdAtMs: number;
   readonly csrfToken: string;
   readonly id: string;
+  readonly reauthenticatedUntilMs?: number;
   readonly revision: number;
   readonly tokens: Readonly<EncryptedSessionTokenSet>;
 }
@@ -168,9 +169,23 @@ function parseLoginTransaction(value: unknown): Readonly<LoginTransaction> {
     parsed["returnTo"].length > 512) {
     throw new BrowserSessionFailure("authentication_session_invalid");
   }
+  const reauthentication = parsed["reauthentication"];
+  if (reauthentication !== undefined && (!isRecord(reauthentication) ||
+    typeof reauthentication["sessionReference"] !== "string" || !RANDOM_ID.test(reauthentication["sessionReference"]) ||
+    typeof reauthentication["subjectIssuer"] !== "string" || reauthentication["subjectIssuer"].length === 0 || reauthentication["subjectIssuer"].length > 2048 ||
+    typeof reauthentication["subjectId"] !== "string" || reauthentication["subjectId"].length === 0 || reauthentication["subjectId"].length > 255)) {
+    throw new BrowserSessionFailure("authentication_session_invalid");
+  }
   return Object.freeze({
     codeVerifier: parsed["codeVerifier"],
     nonce: parsed["nonce"],
+    ...(reauthentication === undefined ? {} : {
+      reauthentication: Object.freeze({
+        sessionReference: reauthentication["sessionReference"] as string,
+        subjectId: reauthentication["subjectId"] as string,
+        subjectIssuer: reauthentication["subjectIssuer"] as string,
+      }),
+    }),
     returnTo: parsed["returnTo"],
     state: parsed["state"],
   });
@@ -186,7 +201,9 @@ function parseStoredSession(value: unknown): Readonly<StoredBrowserSession> {
     !safeInteger(parsed["authenticatedAtMs"]) || !safeInteger(parsed["createdAtMs"]) ||
     typeof parsed["csrfToken"] !== "string" || !RANDOM_ID.test(parsed["csrfToken"]) ||
     typeof parsed["id"] !== "string" || !RANDOM_ID.test(parsed["id"]) ||
-    !safeInteger(parsed["revision"]) || !isRecord(parsed["tokens"])) {
+    !safeInteger(parsed["revision"]) ||
+    (parsed["reauthenticatedUntilMs"] !== undefined && !safeInteger(parsed["reauthenticatedUntilMs"])) ||
+    !isRecord(parsed["tokens"])) {
     throw new BrowserSessionFailure("authentication_session_invalid");
   }
   const tokens = parsed["tokens"];
@@ -201,6 +218,9 @@ function parseStoredSession(value: unknown): Readonly<StoredBrowserSession> {
     createdAtMs: parsed["createdAtMs"],
     csrfToken: parsed["csrfToken"],
     id: parsed["id"],
+    ...(parsed["reauthenticatedUntilMs"] === undefined ? {} : {
+      reauthenticatedUntilMs: parsed["reauthenticatedUntilMs"],
+    }),
     revision: parsed["revision"],
     tokens: Object.freeze({
       algorithm: "A256GCM",

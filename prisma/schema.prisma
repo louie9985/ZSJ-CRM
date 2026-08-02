@@ -8,7 +8,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas = ["app_registry", "audit", "authorization_core", "business_configuration", "file_center", "form_schema", "organization", "platform_eventing", "platform_notifications", "platform_task_center", "public"]
+  schemas = ["app_registry", "audit", "authorization_core", "business_configuration", "file_center", "form_schema", "organization", "platform_eventing", "platform_notifications", "platform_task_center", "public", "workforce_access"]
 }
 
 // source: packages/platform-modules/app-registry/prisma/app-registry.prisma
@@ -608,6 +608,82 @@ model OrganizationOperationReceipt {
   @@schema("organization")
 }
 
+model OrganizationWorkforcePersonProfile {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  realName          String   @db.VarChar(100) @map("real_name")
+  revision          Int
+  updatedAt         DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("workforce_person_profiles")
+  @@schema("organization")
+}
+
+model OrganizationWorkforcePersonProfileHistory {
+  workforcePersonId String   @db.Uuid @map("workforce_person_id")
+  revision          Int
+  realName          String   @db.VarChar(100) @map("real_name")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([workforcePersonId, revision])
+  @@map("workforce_person_profile_history")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectory {
+  organizationUnitId       String   @id @db.Uuid @map("organization_unit_id")
+  name                     String   @db.VarChar(100)
+  normalizedName           String   @db.VarChar(100) @map("normalized_name")
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  rootLocked               Boolean  @map("root_locked")
+  revision                 Int
+  updatedAt                DateTime @db.Timestamptz(6) @map("updated_at")
+  @@index([parentOrganizationUnitId], map: "department_parent_idx")
+  @@map("department_directory")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectoryHistory {
+  organizationUnitId       String   @db.Uuid @map("organization_unit_id")
+  revision                 Int
+  name                     String   @db.VarChar(100)
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  recordedAt               DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([organizationUnitId, revision])
+  @@map("department_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectory {
+  positionId         String   @id @db.Uuid @map("position_id")
+  organizationUnitId String   @db.Uuid @map("organization_unit_id")
+  name               String   @db.VarChar(100)
+  normalizedName     String   @db.VarChar(100) @map("normalized_name")
+  active             Boolean
+  revision           Int
+  updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("position_directory")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectoryHistory {
+  positionId String   @db.Uuid @map("position_id")
+  revision   Int
+  name       String   @db.VarChar(100)
+  active     Boolean
+  recordedAt DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([positionId, revision])
+  @@map("position_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationDirectoryOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+  @@map("directory_operation_receipts")
+  @@schema("organization")
+}
+
 // source: packages/platform-modules/task-center/prisma/task-center.prisma
 // CHECK constraints and monotonic projection semantics remain governed by
 // migration 0000000004 and the parameterized repository transaction.
@@ -656,5 +732,67 @@ model TaskCenterCommand {
 
   @@map("task_commands")
   @@schema("platform_task_center")
+}
+
+// source: packages/platform-modules/workforce-access/prisma/workforce-access.prisma
+model WorkforceAccessAccount {
+  accountId          String   @id @db.Uuid @map("account_id")
+  workforcePersonId  String?  @db.Uuid @map("workforce_person_id")
+  keycloakUserId     String?  @unique @db.Uuid @map("keycloak_user_id")
+  username           String   @db.VarChar(32)
+  usernameNormalized String   @db.VarChar(32) @map("username_normalized")
+  phone              String?  @db.VarChar(21)
+  status             String   @db.VarChar(24)
+  revision           Int
+  createdAt          DateTime @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("accounts")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessLoginIdentifierHistory {
+  identifierId   String    @id @db.Uuid @map("identifier_id")
+  accountId      String    @db.Uuid @map("account_id")
+  kind           String    @db.VarChar(16)
+  value          String    @db.VarChar(64)
+  normalizedValue String   @db.VarChar(64) @map("normalized_value")
+  releasedAt     DateTime? @db.Timestamptz(6) @map("released_at")
+
+  @@index([accountId], map: "login_identifier_history_account_idx")
+  @@index([kind, normalizedValue], map: "login_identifier_history_lookup_idx")
+  @@map("login_identifier_history")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessOperation {
+  operationId String   @id @db.Uuid @map("operation_id")
+  accountId   String   @db.Uuid @map("account_id")
+  fingerprint String   @db.VarChar(64)
+  status      String   @db.VarChar(16)
+  traceId     String   @db.VarChar(128) @map("trace_id")
+  errorCode   String?  @db.VarChar(64) @map("error_code")
+  result      Json?
+  recordedAt  DateTime @db.Timestamptz(6) @map("recorded_at")
+
+  @@index([accountId, recordedAt], map: "operations_account_time_idx")
+  @@map("operations")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessIdentitySyncOperation {
+  operationId       String    @id @db.Uuid @map("operation_id")
+  accountId         String    @db.Uuid @map("account_id")
+  action            String    @db.VarChar(40)
+  status            String    @db.VarChar(16)
+  retryOfOperationId String?  @unique @db.Uuid @map("retry_of_operation_id")
+  errorCode         String?   @db.VarChar(64) @map("error_code")
+  traceId           String    @db.VarChar(128) @map("trace_id")
+  requestedAt       DateTime  @db.Timestamptz(6) @map("requested_at")
+  completedAt       DateTime? @db.Timestamptz(6) @map("completed_at")
+
+  @@index([accountId, requestedAt], map: "identity_sync_operations_account_time_idx")
+  @@map("identity_sync_operations")
+  @@schema("workforce_access")
 }
 

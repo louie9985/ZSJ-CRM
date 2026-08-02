@@ -6,7 +6,7 @@ import {
   canonicalizeAuthorizationPolicy,
   createPostgresAuthorizationPersistence,
 } from "./postgres-persistence.js";
-import { syntheticPolicySnapshot } from "./testing.js";
+import { syntheticPolicySnapshot, syntheticPolicySnapshotV2 } from "./testing.js";
 import type {
   AuthorizationDecisionRecord,
   AuthorizationPersistenceResult,
@@ -85,8 +85,8 @@ class MemorySqlRuntime implements AuthorizationPersistenceRuntime {
 }
 
 const result = <Row>(rows: readonly Row[]): AuthorizationPersistenceResult<Row> => ({ rowCount: rows.length, rows });
-const command = (snapshot: AuthorizationPolicySnapshot = syntheticPolicySnapshot()) => ({
-  contractVersion: "authorization-policy.v1", publicationId: "60000000-0000-4000-8000-000000000001",
+const command = (snapshot: AuthorizationPolicySnapshot = syntheticPolicySnapshotV2()) => ({
+  contractVersion: "authorization-policy.v2", publicationId: "60000000-0000-4000-8000-000000000001",
   publishedAt: "2026-07-28T00:00:00.000Z", snapshot,
 });
 const decision = (): AuthorizationDecisionRecord => ({
@@ -97,6 +97,26 @@ const decision = (): AuthorizationDecisionRecord => ({
 });
 
 describe("PostgreSQL authorization persistence", () => {
+  it("continues to read a complete immutable v1 policy while new publication is v2-only", async () => {
+    const runtime = new MemorySqlRuntime();
+    const legacy = canonicalizeAuthorizationPolicy(syntheticPolicySnapshot());
+    const contentDigest = authorizationPolicyDigest(legacy);
+    runtime.versions.set(legacy.version, {
+      content_digest: contentDigest, contract_version: "authorization-policy.v1", snapshot: legacy, version: legacy.version,
+    });
+    runtime.publications.set("60000000-0000-4000-8000-000000000099", {
+      fingerprint: "f".repeat(64), policyVersion: legacy.version, result: {},
+    });
+    runtime.current = {
+      content_digest: contentDigest, publicationId: "60000000-0000-4000-8000-000000000099", version: legacy.version,
+    };
+    const persistence = createPostgresAuthorizationPersistence(runtime);
+    await expect(persistence.store.currentVersion()).resolves.toBe(legacy.version);
+    await expect(persistence.store.load(legacy.version)).resolves.toEqual(legacy);
+    await expect(persistence.publisher.publish({ ...command(legacy), contractVersion: "authorization-policy.v1" }))
+      .rejects.toMatchObject({ code: "authorization_policy_invalid" });
+  });
+
   it("canonicalizes semantically reordered complete policies to one digest", () => {
     const left = syntheticPolicySnapshot();
     const right = { ...left, grants: [...left.grants].reverse(), permissions: [...left.permissions].reverse(), roles: [...left.roles].reverse() };
@@ -125,11 +145,11 @@ describe("PostgreSQL authorization persistence", () => {
 
   it("rejects unsupported policy contract versions on publish and load", async () => {
     const runtime = new MemorySqlRuntime(); const persistence = createPostgresAuthorizationPersistence(runtime);
-    await expect(persistence.publisher.publish({ ...command(), contractVersion: "authorization-policy.v2" }))
+    await expect(persistence.publisher.publish({ ...command(), contractVersion: "authorization-policy.v1" }))
       .rejects.toMatchObject({ code: "authorization_policy_invalid" });
     await persistence.publisher.publish(command());
     const stored = runtime.versions.get("synthetic-v1"); if (!stored) throw new Error("stored fixture");
-    stored.contract_version = "authorization-policy.v2";
+    stored.contract_version = "authorization-policy.v9";
     await expect(persistence.store.currentVersion()).rejects.toMatchObject({ code: "authorization_persistence_unavailable" });
     await expect(persistence.store.load("synthetic-v1")).rejects.toMatchObject({ code: "authorization_persistence_unavailable" });
   });
@@ -139,7 +159,7 @@ describe("PostgreSQL authorization persistence", () => {
     const first = await persistence.publisher.publish(command());
     expect(first).toMatchObject({ replayed: false, version: "synthetic-v1" });
     expect(await persistence.store.currentVersion()).toBe("synthetic-v1");
-    expect(await persistence.store.load("synthetic-v1")).toEqual(canonicalizeAuthorizationPolicy(syntheticPolicySnapshot()));
+    expect(await persistence.store.load("synthetic-v1")).toEqual(canonicalizeAuthorizationPolicy(syntheticPolicySnapshotV2()));
     await expect(persistence.publisher.publish(command())).resolves.toEqual({ ...first, replayed: true });
     expect(runtime.publications.size).toBe(1);
   });
@@ -147,7 +167,7 @@ describe("PostgreSQL authorization persistence", () => {
   it("enforces the current-policy precondition inside the serialized publication transaction", async () => {
     const runtime = new MemorySqlRuntime(); const publisher = createPostgresAuthorizationPersistence(runtime).publisher;
     await expect(publisher.publish({ ...command(), expectedPreviousVersion: null })).resolves.toMatchObject({ version: "synthetic-v1" });
-    const replacement = { ...syntheticPolicySnapshot(), version: "synthetic-v2" };
+    const replacement = { ...syntheticPolicySnapshotV2(), version: "synthetic-v2" };
     await expect(publisher.publish({ ...command(replacement), expectedPreviousVersion: null,
       publicationId: "60000000-0000-4000-8000-000000000002" }))
       .rejects.toMatchObject({ code: "authorization_policy_conflict" });
@@ -164,7 +184,7 @@ describe("PostgreSQL authorization persistence", () => {
     await publisher.publish(command());
     await expect(publisher.publish({ ...command(), publishedAt: "2026-07-28T00:00:02.000Z" }))
       .rejects.toMatchObject({ code: "authorization_policy_conflict" });
-    const changed = syntheticPolicySnapshot();
+    const changed = syntheticPolicySnapshotV2();
     const firstRole = changed.roles[0]; if (!firstRole) throw new Error("fixture");
     const other = { ...changed, roles: [{ ...firstRole, permissions: [...firstRole.permissions].reverse() }, ...changed.roles.slice(1)] };
     const stored = runtime.versions.get("synthetic-v1"); if (!stored) throw new Error("stored fixture");

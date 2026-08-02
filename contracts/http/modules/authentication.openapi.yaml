@@ -55,7 +55,7 @@ paths:
             maxLength: 512
       responses:
         "302":
-          description: Establish an opaque BFF session, rotate its identifier, and redirect to the allowlisted return path.
+          description: Establish a normal opaque BFF session, or rotate the same bound session after a successful same-subject reauthentication, then redirect to the allowlisted return path.
           headers:
             Location:
               required: true
@@ -71,6 +71,63 @@ paths:
                 $ref: "#/components/schemas/AuthenticationError"
         "503":
           description: The identity provider or session store is unavailable; authentication fails closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+  /auth/pc/reauthentication:
+    post:
+      operationId: beginPcReauthentication
+      x-ai-crm-audiences: [internal]
+      description: Start a short-lived same-subject reauthentication transaction. The BFF requires the existing session and CSRF proof and sends prompt=login to Keycloak; ordinary login time is not accepted as fresh proof.
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/Referer"
+      responses:
+        "200":
+          description: Browser-safe JSON authorization redirect for same-origin fetch callers that send Accept application/json.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [redirectUrl]
+                properties:
+                  redirectUrl: { type: string, format: uri, maxLength: 4096 }
+        "302":
+          description: Redirect to Keycloak with prompt=login. The one-time transaction is bound to the current logical BFF session and Keycloak subject.
+          headers:
+            Location:
+              required: true
+              schema:
+                type: string
+        "400":
+          description: The requested local return path is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+        "401":
+          description: The existing BFF session is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+        "403":
+          description: CSRF or same-origin validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticationError"
+        "503":
+          description: Keycloak, session storage, or durable authentication audit is unavailable.
           content:
             application/json:
               schema:

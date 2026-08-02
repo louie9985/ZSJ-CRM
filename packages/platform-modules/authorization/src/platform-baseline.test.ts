@@ -21,9 +21,10 @@ describe("platform baseline authorization policy", () => {
     const snapshot = createPlatformBaselineAuthorizationPolicy(source);
     expect(snapshot.permissions).toHaveLength(source.catalog.permissions.length + source.managementCatalog.permissions.length);
     expect(snapshot.permissions).toContainEqual(expect.objectContaining({ code: "platform.authorization.policy:publish" }));
-    expect(snapshot.roles).toEqual([{ permissions: snapshot.permissions.map(({ code }) => ({
+    expect(snapshot.roles).toEqual([{ displayName: "Platform baseline administrator", permissions: snapshot.permissions.map(({ code }) => ({
       permissionCode: code, scope: { terms: [{ kind: "all" }], version: 1 },
-    })), roleId: source.roleId }]);
+    })), roleId: source.roleId, roleKey: "platform.baseline-administrator" }]);
+    expect(snapshot).toMatchObject({ schemaVersion: 2, superAdministratorGrants: [] });
     expect(snapshot.grants).toEqual([{
       grantId: source.grantId, roleId: source.roleId,
       subject: { assignmentId: source.assignmentId, kind: "assignment" }, validFrom: source.validFrom,

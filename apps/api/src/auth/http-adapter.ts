@@ -18,7 +18,15 @@ export interface BrowserRequestContext {
 
 export interface PcAuthenticationHttpAdapter {
   beginLogin(returnTo: string | undefined, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>>;
-  completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>>;
+  beginReauthentication?(
+    context: BrowserRequestContext,
+    returnTo: string | undefined,
+  ): Promise<Readonly<AuthenticationHttpResponse>>;
+  completeLogin(
+    callbackUrl: string,
+    traceId?: string,
+    cookieHeader?: string,
+  ): Promise<Readonly<AuthenticationHttpResponse>>;
   currentSession(cookieHeader: string | undefined): Promise<Readonly<AuthenticationHttpResponse>>;
   logout(context: BrowserRequestContext): Promise<Readonly<AuthenticationHttpResponse>>;
   refresh(context: BrowserRequestContext): Promise<Readonly<AuthenticationHttpResponse>>;
@@ -120,9 +128,45 @@ export function createPcAuthenticationHttpAdapter(
       }
     },
 
-    async completeLogin(callbackUrl: string, traceId?: string): Promise<Readonly<AuthenticationHttpResponse>> {
+    async beginReauthentication(
+      context: BrowserRequestContext,
+      returnTo: string | undefined,
+    ): Promise<Readonly<AuthenticationHttpResponse>> {
       try {
-        const result = await options.service.completeLogin(callbackUrl, traceId);
+        const credential = requiredCredential(context.cookie);
+        const session = await options.service.sessionForMutation(credential);
+        validateBrowserMutation({
+          allowedOrigins: options.allowedOrigins,
+          csrfHeader: context.csrfToken,
+          csrfSessionValue: session.csrfToken,
+          origin: context.origin,
+          referer: context.referer,
+        });
+        if (options.service.beginReauthentication === undefined) {
+          throw new BrowserSessionFailure("authentication_dependency_unavailable");
+        }
+        const result = await options.service.beginReauthentication(
+          credential,
+          returnTo ?? "/",
+          context.traceId,
+        );
+        return Object.freeze({ headers: noStoreHeaders({ Location: result.authorizationUrl }), status: 302 });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    },
+
+    async completeLogin(
+      callbackUrl: string,
+      traceId?: string,
+      cookieHeader?: string,
+    ): Promise<Readonly<AuthenticationHttpResponse>> {
+      try {
+        const result = await options.service.completeLogin(
+          callbackUrl,
+          traceId,
+          parsePcSessionCredential(cookieHeader),
+        );
         return Object.freeze({
           headers: noStoreHeaders({
             Location: result.returnTo,

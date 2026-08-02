@@ -89,6 +89,38 @@ body {
   margin-top: 16px;
 }
 
+.management-alert {
+  margin-bottom: 16px;
+}
+
+.empty-workbench {
+  padding-block: 32px;
+}
+
+.system-account-band {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #fafafa;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+}
+
+.system-account-band h5 {
+  margin-block: 0 8px;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 32px;
+  margin-bottom: 12px;
+}
+
+.account-search-form {
+  gap: 8px 0;
+  margin-bottom: 16px;
+}
+
 .master-detail {
   min-height: 480px;
   align-items: stretch;
@@ -184,6 +216,10 @@ body {
 
 .full-state {
   min-height: 100vh;
+}
+
+.route-loading {
+  min-height: 320px;
 }
 
 .direct-system-state-action {

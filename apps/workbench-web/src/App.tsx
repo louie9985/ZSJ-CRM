@@ -5,7 +5,7 @@ import { Alert, App as AntdApp, Avatar, Button, ConfigProvider, Flex, Result, Sp
 import { Component, lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { getNavigationSelection, navigation } from "./navigation";
+import { getNavigationSelection, navigationFor } from "./navigation";
 import { usePolledCollections } from "./collection-polling";
 import { runtimeWorkbenchPort } from "./runtime";
 import { stateCopy, SystemState } from "./system-state";
@@ -17,18 +17,7 @@ const Overview = lazy(async () => ({ default: (await import("./overview-page")).
 const SettingsPage = lazy(async () => ({ default: (await import("./settings-page")).SettingsPage }));
 const StatusRoutePage = lazy(async () => ({ default: (await import("./status-route-page")).StatusRoutePage }));
 const SyntheticFormEvidencePage = lazy(async () => ({ default: (await import("./synthetic-form-evidence-page")).SyntheticFormEvidencePage }));
-
-const route = {
-  path: "/",
-  routes: navigation.map((item) => ({
-    path: item.key,
-    name: item.label,
-    icon: item.icon,
-    ...(item.children
-      ? { routes: item.children.map((child) => ({ path: child.key, name: child.label, icon: child.icon })) }
-      : {}),
-  })),
-};
+const WorkforceAdministrationRoute = lazy(async () => ({ default: (await import("./workforce-administration-route")).WorkforceAdministrationRoute }));
 
 type StateKind = "expired" | "failure" | "forbidden" | "maintenance" | "missing" | "offline";
 
@@ -127,8 +116,18 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [logoutState, setLogoutState] = useState<"error" | "idle" | "pending">("idle");
-  const selection = getNavigationSelection(location.pathname);
-  const collections = usePolledCollections(port, data.collections, data.context.assignmentReference);
+  const visibleNavigation = navigationFor(data.navigationIds);
+  const selection = getNavigationSelection(location.pathname, visibleNavigation);
+  const collections = usePolledCollections(port, data.collections, data.context.sessionScope ?? data.context.assignmentReference ?? "current-session");
+  const route = {
+    path: "/",
+    routes: visibleNavigation.map((item) => ({
+      path: item.key,
+      name: item.label,
+      icon: item.icon,
+      ...(item.children ? { routes: item.children.map((child) => ({ path: child.key, name: child.label, icon: child.icon })) } : {}),
+    })),
+  };
 
   const requestLogout = (): void => {
     if (logoutState === "pending") return;
@@ -144,7 +143,7 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
 
   return (
     <ProLayout
-      title="平台工作台"
+      title="ZSJ CRM"
       logo={false}
       route={route}
       location={{ pathname: selection.selectedKey ?? location.pathname }}
@@ -195,6 +194,7 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
         <Route path="/coordination" element={<Navigate to="/tasks" replace />} />
         <Route path="/resources" element={<Navigate to="/forms" replace />} />
         <Route path="/workspace" element={<Overview data={data} />} />
+        {port.workforceAdministration === undefined ? null : <Route path="/workforce-administration" element={<WorkforceAdministrationRoute port={port.workforceAdministration} />} />}
         {CollectionRoutes({ path: "/tasks", collection: collections.tasks })}
         {CollectionRoutes({ path: "/notifications", collection: collections.notifications })}
         {port.syntheticFormEvidence === undefined ? null : <Route path="/forms/platform.synthetic.task-completion" element={<SyntheticFormEvidenceRoute port={port.syntheticFormEvidence} />} />}
@@ -249,7 +249,7 @@ function Workbench({ port }: { port: WorkbenchPort }): React.JSX.Element {
   if (query.isPending) return <Flex className="full-state" align="center" justify="center"><Spin size="large" description="正在恢复会话" /></Flex>;
   if (query.isError) return <SystemState kind="failure" retryable onRetry={retry} />;
   if (query.data.kind === "signed-out") {
-    return <Result title="请登录平台工作台" subTitle="登录由同站点 BFF 发起，浏览器脚本不会接收 Keycloak Token。" extra={<Button type="primary" href={pcLoginUrl(returnTo)} icon={<LoginOutlined />}>登录</Button>} />;
+    return <Result title="登录 ZSJ CRM" subTitle="请使用用户名或手机号登录。" extra={<Button type="primary" href={pcLoginUrl(returnTo)} icon={<LoginOutlined />}>登录</Button>} />;
   }
   if (query.data.kind === "session-expired") return <SystemState kind="expired" loginUrl={pcLoginUrl(returnTo)} />;
   if (query.data.kind === "maintenance") return <SystemState kind="maintenance" retryable onRetry={retry} />;

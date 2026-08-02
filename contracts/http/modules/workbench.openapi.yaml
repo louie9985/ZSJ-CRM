@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info: { title: AI-CRM Workbench BFF API, version: 0.1.0 }
+paths:
+  /workbench/bootstrap:
+    get:
+      operationId: getWorkbenchBootstrap
+      description: Resolves the current opaque BFF session, workforce context and authorized navigation without exposing provider tokens or requiring an Assignment.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.workbench, code: platform.workbench.shell:read, resource: platform.workbench.shell, action: read }
+      x-ai-crm-csrf: { mode: not-required, reason: read-only }
+      x-ai-crm-idempotency: { mode: none, reason: read-only }
+      responses:
+        "200": { description: Browser-safe current workbench context., content: { application/json: { schema: { $ref: "#/components/schemas/WorkbenchBootstrap" } } } }
+        "401": { description: No valid BFF session. }
+        "403": { description: The authenticated subject is not an active internal account. }
+        "503": { description: "A required identity, organization, authorization or registry dependency is unavailable." }
+components:
+  schemas:
+    WorkbenchBootstrap:
+      type: object
+      additionalProperties: false
+      required: [collections,context,counts,fixture,kind,navigationIds]
+      properties:
+        kind: { const: ready }
+        fixture: { const: false }
+        context:
+          type: object
+          additionalProperties: false
+          required: [accountKind,displayName,sessionScope]
+          properties:
+            accountKind: { enum: [system_administrator,workforce] }
+            assignmentReference: { type: string, format: uuid }
+            displayName: { type: string, minLength: 1, maxLength: 64 }
+            sessionScope: { type: string, minLength: 16, maxLength: 128, pattern: "^[A-Za-z0-9._:-]+$" }
+        navigationIds: { type: array, maxItems: 128, uniqueItems: true, items: { type: string, pattern: "^[a-z][a-z0-9_.-]{0,127}$" } }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [files,forms,notifications,tasks]
+          properties: { files: { type: integer, minimum: 0 }, forms: { type: integer, minimum: 0 }, notifications: { type: integer, minimum: 0 }, tasks: { type: integer, minimum: 0 } }
+        collections:
+          type: object
+          description: Initial browser collection summaries; entries may be empty when no feature is authorized.
+          additionalProperties: true

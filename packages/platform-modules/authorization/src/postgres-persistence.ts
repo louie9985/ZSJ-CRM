@@ -15,7 +15,8 @@ import type {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const DIGEST = /^[0-9a-f]{64}$/u;
-const SUPPORTED_CONTRACT_VERSION = "authorization-policy.v1";
+const READABLE_CONTRACT_VERSIONS = new Set(["authorization-policy.v1", "authorization-policy.v2"]);
+const PUBLISH_CONTRACT_VERSION = "authorization-policy.v2";
 const UNAVAILABLE_POLICY_VERSION = "unavailable";
 const TRACE_ID = /^[0-9a-f]{32}$/u;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -51,14 +52,17 @@ export const canonicalizeAuthorizationPolicy = (snapshot: AuthorizationPolicySna
   let validated: ReturnType<typeof validatePolicySnapshot>;
   try { validated = validatePolicySnapshot(snapshot, policyVersion(snapshot.version)); }
   catch { return fail("authorization_policy_invalid"); }
-  if (validated.permissions.size === 0 || validated.roles.size === 0 || validated.grants.length === 0) {
+  const hasRoleAuthorization = validated.roles.size > 0 && validated.grants.length > 0;
+  if (validated.permissions.size === 0 || (!hasRoleAuthorization && validated.superAdministratorGrants.length === 0)) {
     return fail("authorization_policy_invalid");
   }
   const permissions = [...validated.permissions.values()]
     .map((permission) => ({ ...permission, scopeDimensions: [...permission.scopeDimensions] }))
     .sort((left, right) => compareCodeUnits(left.code, right.code));
   const roles = [...validated.roles.values()].map((role) => ({
+    ...(role.displayName === undefined ? {} : { displayName: role.displayName }),
     roleId: role.roleId,
+    ...(role.roleKey === undefined ? {} : { roleKey: role.roleKey }),
     permissions: [...role.permissions].map((binding) => ({
       permissionCode: binding.permissionCode,
       scope: {
@@ -79,7 +83,18 @@ export const canonicalizeAuthorizationPolicy = (snapshot: AuthorizationPolicySna
     validFrom: grant.validFrom.toISOString(),
     ...(grant.validTo === undefined ? {} : { validTo: grant.validTo.toISOString() }),
   })).sort((left, right) => compareCodeUnits(left.grantId, right.grantId));
-  return Object.freeze({ grants: Object.freeze(grants), permissions: Object.freeze(permissions), roles: Object.freeze(roles), version: validated.version });
+  if (validated.schemaVersion === 1) {
+    return Object.freeze({ grants: Object.freeze(grants), permissions: Object.freeze(permissions), roles: Object.freeze(roles), version: validated.version });
+  }
+  const superAdministratorGrants = validated.superAdministratorGrants.map((grant) => ({
+    grantId: grant.grantId, validFrom: grant.validFrom.toISOString(),
+    ...(grant.validTo === undefined ? {} : { validTo: grant.validTo.toISOString() }),
+    workforcePersonId: grant.workforcePersonId,
+  })).sort((left, right) => compareCodeUnits(left.grantId, right.grantId));
+  return Object.freeze({
+    grants: Object.freeze(grants), permissions: Object.freeze(permissions), roles: Object.freeze(roles),
+    schemaVersion: 2, superAdministratorGrants: Object.freeze(superAdministratorGrants), version: validated.version,
+  });
 };
 
 export const authorizationPolicyDigest = (snapshot: AuthorizationPolicySnapshot): string =>
@@ -107,7 +122,7 @@ class PrismaAuthorizationPolicyStore implements AuthorizationPolicyStore {
       const row = (await this.runtime.execute<CurrentRow>(
         "select c.version,c.content_digest,v.contract_version from authorization_core.current_policy c join authorization_core.policy_versions v on v.version=c.version and v.content_digest=c.content_digest join authorization_core.policy_publications p on p.publication_id=c.publication_id and p.policy_version=c.version where c.singleton=true",
       )).rows[0];
-      if (!row || row.contract_version !== SUPPORTED_CONTRACT_VERSION || !DIGEST.test(row.content_digest)) {
+      if (!row || !READABLE_CONTRACT_VERSIONS.has(row.contract_version ?? "") || !DIGEST.test(row.content_digest)) {
         return fail("authorization_persistence_unavailable");
       }
       return policyVersion(row.version);
@@ -122,11 +137,13 @@ class PrismaAuthorizationPolicyStore implements AuthorizationPolicyStore {
       const row = (await this.runtime.execute<PolicyRow>(
         "select v.version,v.contract_version,v.content_digest,v.snapshot from authorization_core.policy_versions v where v.version=$1 and exists(select 1 from authorization_core.policy_publications p where p.policy_version=v.version)", [version],
       )).rows[0];
-      if (!row || row.version !== version || row.contract_version !== SUPPORTED_CONTRACT_VERSION ||
+      if (!row || row.version !== version || !READABLE_CONTRACT_VERSIONS.has(row.contract_version ?? "") ||
         !DIGEST.test(row.content_digest) || !record(row.snapshot)) {
         return fail("authorization_persistence_unavailable");
       }
       const normalized = canonicalizeAuthorizationPolicy(row.snapshot as unknown as AuthorizationPolicySnapshot);
+      const normalizedContractVersion = normalized.schemaVersion === 2 ? "authorization-policy.v2" : "authorization-policy.v1";
+      if (row.contract_version !== normalizedContractVersion) return fail("authorization_persistence_unavailable");
       if (digest(normalized) !== row.content_digest) return fail("authorization_persistence_unavailable");
       return normalized;
     } catch (error) {
@@ -146,12 +163,13 @@ class PrismaAuthorizationPolicyPublisher implements AuthorizationPolicyPublisher
     try {
       publicationId = uuid(command.publicationId, "authorization_policy_invalid");
       publishedAt = iso(command.publishedAt);
-      contractVersion = command.contractVersion === SUPPORTED_CONTRACT_VERSION
+      contractVersion = command.contractVersion === PUBLISH_CONTRACT_VERSION
         ? command.contractVersion : fail("authorization_policy_invalid");
       expectedPreviousVersion = command.expectedPreviousVersion === undefined || command.expectedPreviousVersion === null
         ? command.expectedPreviousVersion
         : policyVersion(command.expectedPreviousVersion);
       snapshot = canonicalizeAuthorizationPolicy(command.snapshot);
+      if (snapshot.schemaVersion !== 2) return Promise.reject(new AuthorizationPersistenceError("authorization_policy_invalid"));
     } catch (error) {
       return Promise.reject(error instanceof AuthorizationPersistenceError ? error : new AuthorizationPersistenceError("authorization_policy_invalid"));
     }

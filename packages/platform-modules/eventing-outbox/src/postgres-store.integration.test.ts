@@ -52,6 +52,23 @@ suite("PostgreSQL Eventing store", () => {
     expect((await runtime.execute("select * from platform_eventing_test_effects where message_id=$1",[input.jobId])).rowCount).toBe(1);
   });
 
+  it("atomically isolates a delivery-failed Job with its durable callback", async () => {
+    const store = createPostgresEventingStore(runtime); const core = createEventingCore(store); const committed = job(); await core.submitJob(committed);
+    await core.isolateJobForDeliveryFailure({ jobId: committed.jobId, attempt: 2, category: "attempts_exhausted" }, async ({ jobId }) => {
+      await runtime.execute("insert into platform_eventing_test_effects (message_id) values ($1)", [jobId]);
+    });
+    await expect(store.findJob(committed.jobId)).resolves.toMatchObject({ status: "isolated" });
+    expect((await runtime.execute("select * from platform_eventing_test_effects where message_id=$1", [committed.jobId])).rowCount).toBe(1);
+
+    const rolledBack = job(); await core.submitJob(rolledBack);
+    await expect(core.isolateJobForDeliveryFailure({ jobId: rolledBack.jobId, attempt: 1, category: "terminal_failure" }, async ({ jobId }) => {
+      await runtime.execute("insert into platform_eventing_test_effects (message_id) values ($1)", [jobId]);
+      throw new Error("synthetic callback rollback");
+    })).rejects.toThrow("synthetic callback rollback");
+    await expect(store.findJob(rolledBack.jobId)).resolves.toMatchObject({ status: "queued" });
+    expect((await runtime.execute("select * from platform_eventing_test_effects where message_id=$1", [rolledBack.jobId])).rowCount).toBe(0);
+  });
+
   it("replays only an authorized and audited isolated row",async()=>{const store=createPostgresEventingStore(runtime);const input=event();await createEventingCore(store).appendEvent(input);await runtime.execute("update platform_eventing.outbox_messages set status='isolated',attempt_count=3,isolated_at=$2,last_error_code='synthetic_terminal' where message_id=$1",[input.id,new Date("2026-07-27T00:01:00.000Z")]);const sequence:string[]=[];const operations=createEventingOperations(store,{authorize:()=>{sequence.push("authorize");return Promise.resolve({allowed:true,decisionId:"synthetic-decision"});},record:()=>{sequence.push("audit");return Promise.resolve();}},()=>new Date("2026-07-27T01:00:00.000Z"));await operations.replayOutbox(input.id,"synthetic replay reason");sequence.push((await store.getOutbox(input.id))?.status??"missing");expect(sequence).toEqual(["authorize","audit","pending"]);await expect(store.getOutbox(input.id)).resolves.toMatchObject({status:"pending",attemptCount:0,availableAt:new Date("2026-07-27T01:00:00.000Z")});expect(await store.getOutbox(input.id)).not.toHaveProperty("isolatedAt");expect(await store.getOutbox(input.id)).not.toHaveProperty("lastErrorCode");});
 
   it("fails closed before PostgreSQL replay when authorization or audit fails",async()=>{const store=createPostgresEventingStore(runtime);const denied=event();const auditFailed=event();for(const input of [denied,auditFailed]){await createEventingCore(store).appendEvent(input);await runtime.execute("update platform_eventing.outbox_messages set status='isolated',attempt_count=3,isolated_at=$2,last_error_code='synthetic_terminal' where message_id=$1",[input.id,new Date("2026-07-27T02:01:00.000Z")]);}const deniedAudit:unknown[]=[];await expect(createEventingOperations(store,{authorize:()=>Promise.resolve({allowed:false,decisionId:"synthetic-denial"}),record:(entry)=>{deniedAudit.push(entry);return Promise.resolve();}}).replayOutbox(denied.id,"synthetic replay reason")).rejects.toMatchObject({code:"eventing_operation_denied"});expect(deniedAudit).toHaveLength(0);await expect(createEventingOperations(store,{authorize:()=>Promise.resolve({allowed:true,decisionId:"synthetic-decision"}),record:()=>Promise.reject(new Error("synthetic audit unavailable"))}).replayOutbox(auditFailed.id,"synthetic replay reason")).rejects.toThrow("synthetic audit unavailable");await expect(store.getOutbox(denied.id)).resolves.toMatchObject({status:"isolated",attemptCount:3,lastErrorCode:"synthetic_terminal"});await expect(store.getOutbox(auditFailed.id)).resolves.toMatchObject({status:"isolated",attemptCount:3,lastErrorCode:"synthetic_terminal"});});

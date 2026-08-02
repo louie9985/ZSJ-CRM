@@ -24,12 +24,18 @@ const session: BrowserSessionView = Object.freeze({
 });
 
 class FakeSessionService implements PcBffSessionService {
+  reauthenticationCalls = 0;
   logoutCalls = 0;
   refreshFailure: BrowserSessionFailure | undefined;
   refreshCalls = 0;
 
   beginLogin(): Promise<Readonly<LoginRedirect>> {
     return Promise.resolve({ authorizationUrl: "https://identity.example.test/authorize" });
+  }
+
+  beginReauthentication(): Promise<Readonly<LoginRedirect>> {
+    this.reauthenticationCalls += 1;
+    return Promise.resolve({ authorizationUrl: "https://identity.example.test/authorize?prompt=login" });
   }
 
   completeLogin(): Promise<Readonly<CompletedLogin>> {
@@ -119,6 +125,24 @@ describe("createPcAuthenticationHttpAdapter", () => {
     expect(response.status).toBe(204);
     expect(response.headers["Set-Cookie"]).toContain(refreshedCredential);
     expect(fixture.service.refreshCalls).toBe(1);
+  });
+
+  it("requires a session-bound CSRF check before starting reauthentication", async () => {
+    const fixture = adapter();
+    const response = await fixture.adapter.beginReauthentication?.(mutationContext(), "/account");
+
+    expect(response).toMatchObject({
+      headers: { Location: "https://identity.example.test/authorize?prompt=login" },
+      status: 302,
+    });
+    expect(fixture.service.reauthenticationCalls).toBe(1);
+
+    const rejected = await fixture.adapter.beginReauthentication?.(
+      mutationContext({ csrfToken: "wrong" }),
+      "/account",
+    );
+    expect(rejected).toMatchObject({ body: { code: "authentication_csrf_rejected" }, status: 403 });
+    expect(fixture.service.reauthenticationCalls).toBe(1);
   });
 
   it("rejects an untrusted origin before invoking refresh", async () => {

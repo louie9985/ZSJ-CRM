@@ -8,7 +8,7 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { BrowserSessionFailure } from "./errors.js";
-import type { LoginTransaction, OidcClientPort, OidcTokenResult } from "./oidc.js";
+import type { BeginLoginOptions, LoginTransaction, OidcClientPort, OidcTokenResult } from "./oidc.js";
 import { createSessionIndex, type KeyEncryptionKey, type SessionTokenSet } from "./session-security.js";
 import {
   createPcBffSessionService,
@@ -112,9 +112,11 @@ class MemoryStore implements BrowserSessionStore {
 }
 
 class FakeOidc implements OidcClientPort {
+  beginOptions: Readonly<BeginLoginOptions> | undefined;
   refreshCalls = 0;
 
-  beginLogin(): Promise<{ authorizationUrl: string; transaction: LoginTransaction }> {
+  beginLogin(_returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<{ authorizationUrl: string; transaction: LoginTransaction }> {
+    this.beginOptions = options;
     return Promise.resolve({ authorizationUrl: "https://identity.example.test/authorize", transaction });
   }
 
@@ -145,13 +147,14 @@ class MemoryAudit implements AuthenticationAuditPort {
 
 class FakeTokenVerifier implements TokenVerifier {
   failure: AuthenticationFailure | undefined;
+  subject = "synthetic-subject";
 
   verify(): Promise<Readonly<AuthenticatedPrincipal>> {
     if (this.failure) return Promise.reject(this.failure);
     return Promise.resolve(Object.freeze({
       authenticationSubject: Object.freeze({
         issuer: "https://identity.example.test/realms/test",
-        subject: "synthetic-subject",
+        subject: this.subject,
       }),
       clientId: "ai-crm-pc-bff",
       expiresAt: "2026-07-24T13:00:00.000Z",
@@ -166,6 +169,7 @@ let audit: MemoryAudit;
 let encryptionKey: KeyEncryptionKey;
 let tokenVerifier: FakeTokenVerifier;
 let options: PcBffSessionServiceOptions;
+let nowMs: number;
 
 beforeEach(() => {
   store = new MemoryStore();
@@ -173,15 +177,17 @@ beforeEach(() => {
   audit = new MemoryAudit();
   encryptionKey = { id: "session-key-1", value: randomBytes(32) };
   tokenVerifier = new FakeTokenVerifier();
+  nowMs = 2_000;
   options = {
     audit,
-    clock: () => 2_000,
+    clock: () => nowMs,
     decryptionKeys: [encryptionKey],
     encryptionKey,
     indexingKey: randomBytes(32),
     loginTransactionTtlSeconds: 180,
     oidc,
     refreshLeaseTtlMs: 10_000,
+    reauthenticationMarkerTtlSeconds: 300,
     sessionAbsoluteTtlSeconds: 28_800,
     sessionIdleTtlSeconds: 1_800,
     store,
@@ -428,11 +434,69 @@ describe("createPcBffSessionService", () => {
 
     await expect(service.resolvePrincipal(completed.credential)).resolves.toMatchObject({
       authenticationSubject: { subject: "synthetic-subject" },
+      reauthenticated: false,
     });
     tokenVerifier.failure = new AuthenticationFailure("token_invalid");
     await expect(service.resolvePrincipal(completed.credential)).rejects.toMatchObject({
       code: "authentication_session_invalid",
     });
     expect(store.sessions.size).toBe(0);
+  });
+
+  it("binds prompt=login reauthentication to the current session and subject", async () => {
+    const service = createPcBffSessionService(options);
+    await service.beginLogin("/tasks");
+    const completed = await service.completeLogin(
+      `https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`,
+    );
+
+    await service.beginReauthentication?.(completed.credential, "/account");
+    expect(oidc.beginOptions).toEqual({ promptLogin: true });
+    const storedReauthentication = store.transactions.get(createSessionIndex(state, options.indexingKey))?.reauthentication;
+    expect(storedReauthentication?.sessionReference).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(storedReauthentication).toMatchObject({
+      subjectId: "synthetic-subject",
+      subjectIssuer: "https://identity.example.test/realms/test",
+    });
+
+    const reauthenticated = await service.completeLogin(
+      `https://workbench.example.test/auth/pc/callback?code=reauthenticated&state=${state}`,
+      undefined,
+      completed.credential,
+    );
+    expect(reauthenticated.credential).not.toBe(completed.credential);
+    await expect(service.resolvePrincipal(completed.credential)).rejects.toMatchObject({
+      code: "authentication_session_invalid",
+    });
+    await expect(service.resolvePrincipal(reauthenticated.credential)).resolves.toMatchObject({
+      reauthenticated: true,
+    });
+    nowMs += 300_001;
+    await expect(service.resolvePrincipal(reauthenticated.credential)).resolves.toMatchObject({
+      reauthenticated: false,
+    });
+    expect(audit.events.map(({ action }) => action)).toContain("reauthentication_completed");
+  });
+
+  it("rejects a reauthentication callback without the bound session or with another subject", async () => {
+    const service = createPcBffSessionService(options);
+    await service.beginLogin("/tasks");
+    const completed = await service.completeLogin(
+      `https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`,
+    );
+    await service.beginReauthentication?.(completed.credential, "/account");
+
+    await expect(service.completeLogin(
+      `https://workbench.example.test/auth/pc/callback?code=reauthenticated&state=${state}`,
+    )).rejects.toMatchObject({ code: "authentication_callback_invalid" });
+
+    await service.beginReauthentication?.(completed.credential, "/account");
+    tokenVerifier.subject = "different-subject";
+    await expect(service.completeLogin(
+      `https://workbench.example.test/auth/pc/callback?code=reauthenticated&state=${state}`,
+      undefined,
+      completed.credential,
+    )).rejects.toMatchObject({ code: "authentication_callback_invalid" });
+    expect(store.sessions.size).toBe(1);
   });
 });

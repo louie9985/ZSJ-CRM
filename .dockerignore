@@ -16,5 +16,6 @@ deploy/compose/.runtime
 **/coverage
 **/dist
 **/node_modules
+**/target
 **/*.tsbuildinfo
 deploy/compose/.runtime

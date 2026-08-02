@@ -1,0 +1,262 @@
+openapi: 3.1.0
+info: { title: AI-CRM Workforce Administration BFF API, version: 0.1.0 }
+paths:
+  /workforce-administration:
+    get:
+      operationId: getWorkforceAdministrationSnapshot
+      description: Returns only accounts, organization directory facts and server-computed actions visible to the current administrator.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:read, resource: platform.workforce-access.console, action: read }
+      x-ai-crm-csrf: { mode: not-required, reason: read-only }
+      x-ai-crm-idempotency: { mode: none, reason: read-only }
+      responses:
+        "200": { description: Authorized management snapshot., content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAdministrationSnapshot" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /workforce-administration/commands:
+    post:
+      operationId: executeWorkforceAdministrationCommand
+      description: Executes one reviewed account, department, position or fixed CRM administrator command. Password values are forbidden; credential operations return a Keycloak-hosted ceremony URL.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:manage, resource: platform.workforce-access.console, action: manage }
+      x-ai-crm-csrf: { mode: required, header: X-CSRF-Token }
+      x-ai-crm-idempotency: { mode: required, keyHeader: Idempotency-Key, durableReplay: original-result, conflictStatus: 409 }
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAdministrationCommand" } } }
+      responses:
+        "200": { description: Durable command result or replay., content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAdministrationCommandResult" } } } }
+        "400": { description: Invalid command shape. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "Revision, identifier, hierarchy, reference or idempotency conflict." }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /workforce-administration/accounts:
+    get:
+      operationId: listWorkforceAccounts
+      description: Returns one stable page of accounts visible to the current administrator. Filters are combined with AND; phone input is normalized server-side. ZSJ system accounts never appear in this collection.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:read, resource: platform.workforce-access.console, action: read }
+      x-ai-crm-csrf: { mode: not-required, reason: read-only }
+      x-ai-crm-idempotency: { mode: none, reason: read-only }
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000000, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: username, in: query, required: false, description: Case-insensitive substring match., schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: legalName, in: query, required: false, description: Substring match., schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: phone, in: query, required: false, description: Substring match after removing spaces and hyphens., schema: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" } }
+        - { name: departmentId, in: query, required: false, schema: { $ref: "#/components/schemas/StableId" } }
+        - { name: positionId, in: query, required: false, schema: { $ref: "#/components/schemas/StableId" } }
+        - { name: status, in: query, required: false, schema: { $ref: "#/components/schemas/WorkforceAccountStatus" } }
+      responses:
+        "200": { description: Authorized account page., content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAccountPage" } } } }
+        "400": { description: Invalid pagination or filter value. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  responses:
+    Unauthorized: { description: No valid BFF session. }
+    Forbidden: { description: The current principal is not permitted to perform this operation. }
+    Unavailable: { description: "A required local or Keycloak dependency is unavailable; access remains fail-closed." }
+  schemas:
+    StableId: { type: string, format: uuid }
+    WorkforceAccountStatus: { enum: [provisioning,credential_pending,active,disabled,failed] }
+    AllowedAction: { enum: [deactivate,edit,grant_crm_administrator,reactivate,release_phone,reset_password,retry_identity_sync,revoke_crm_administrator,transfer] }
+    IdentitySyncOperation:
+      description: Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.
+      type: object
+      additionalProperties: false
+      required: [action,operationId,requestedAt,status]
+      properties:
+        action: { enum: [disable,revoke_sessions,synchronize_login_identifiers] }
+        completedAt: { type: string, format: date-time }
+        errorCode: { enum: [eventing_handler_timeout,identity_sync_failed,keycloak_administration_unavailable,keycloak_entity_conflict] }
+        operationId: { $ref: "#/components/schemas/StableId" }
+        requestedAt: { type: string, format: date-time }
+        retryOfOperationId: { $ref: "#/components/schemas/StableId" }
+        status: { enum: [pending,succeeded,failed,superseded] }
+    WorkforceAccount:
+      type: object
+      additionalProperties: false
+      required: [accountId,allowedActions,crmAdministrator,legalName,releasablePhones,revision,status,username]
+      properties:
+        accountId: { $ref: "#/components/schemas/StableId" }
+        allowedActions: { type: array, uniqueItems: true, items: { $ref: "#/components/schemas/AllowedAction" } }
+        crmAdministrator: { type: boolean }
+        departmentId: { $ref: "#/components/schemas/StableId" }
+        departmentName: { type: string, minLength: 1, maxLength: 64 }
+        legalName: { type: string, minLength: 1, maxLength: 64 }
+        latestIdentitySync: { $ref: "#/components/schemas/IdentitySyncOperation" }
+        phone: { type: string, pattern: "^\\+?[0-9]{6,20}$" }
+        positionId: { $ref: "#/components/schemas/StableId" }
+        positionName: { type: string, minLength: 1, maxLength: 64 }
+        releasablePhones:
+          description: Historical phone login identifiers that remain occupied and may be explicitly released. The current phone is never included.
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, pattern: "^\\+?[0-9]{6,20}$" }
+        revision: { type: integer, minimum: 0 }
+        status: { $ref: "#/components/schemas/WorkforceAccountStatus" }
+        username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" }
+    DirectoryEntry:
+      type: object
+      additionalProperties: false
+      required: [allowedActions,name,revision,status]
+      properties:
+        allowedActions: { type: array, uniqueItems: true, items: { enum: [deactivate,edit,reactivate] } }
+        departmentId: { $ref: "#/components/schemas/StableId" }
+        name: { type: string, minLength: 1, maxLength: 64 }
+        parentDepartmentId: { $ref: "#/components/schemas/StableId" }
+        positionId: { $ref: "#/components/schemas/StableId" }
+        revision: { type: integer, minimum: 0 }
+        status: { enum: [active,disabled] }
+    WorkforceAdministrationSnapshot:
+      type: object
+      additionalProperties: false
+      required: [accounts,departments,positions]
+      properties:
+        accounts: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/WorkforceAccount" } }
+        departments: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/DirectoryEntry" } }
+        positions: { type: array, maxItems: 10000, items: { $ref: "#/components/schemas/DirectoryEntry" } }
+        systemAccount: { $ref: "#/components/schemas/WorkforceAccount" }
+    WorkforceAccountPage:
+      type: object
+      additionalProperties: false
+      required: [items,page,pageSize,total]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/WorkforceAccount" } }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+    WorkforceAdministrationCommand:
+      description: Discriminated command. Each kind has an exact server-side shape; password, token and arbitrary attributes are rejected.
+      oneOf:
+        - { $ref: "#/components/schemas/CreateAccountCommand" }
+        - { $ref: "#/components/schemas/UpdateAccountCommand" }
+        - { $ref: "#/components/schemas/UpdateSystemAccountCommand" }
+        - { $ref: "#/components/schemas/DeactivateAccountCommand" }
+        - { $ref: "#/components/schemas/ReactivateAccountCommand" }
+        - { $ref: "#/components/schemas/ResetPasswordCommand" }
+        - { $ref: "#/components/schemas/CompleteCredentialCeremonyCommand" }
+        - { $ref: "#/components/schemas/ReleasePhoneCommand" }
+        - { $ref: "#/components/schemas/RetryIdentitySyncCommand" }
+        - { $ref: "#/components/schemas/SetCrmAdministratorCommand" }
+        - { $ref: "#/components/schemas/CreateDepartmentCommand" }
+        - { $ref: "#/components/schemas/UpdateDepartmentCommand" }
+        - { $ref: "#/components/schemas/DeactivateDepartmentCommand" }
+        - { $ref: "#/components/schemas/ReactivateDepartmentCommand" }
+        - { $ref: "#/components/schemas/CreatePositionCommand" }
+        - { $ref: "#/components/schemas/UpdatePositionCommand" }
+        - { $ref: "#/components/schemas/DeactivatePositionCommand" }
+        - { $ref: "#/components/schemas/ReactivatePositionCommand" }
+      discriminator: { propertyName: kind }
+    CreateAccountCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,legalName,positionId,username]
+      properties: { kind: { const: create_account }, departmentId: { $ref: "#/components/schemas/StableId" }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+    UpdateAccountCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,departmentId,expectedRevision,legalName,positionId,username]
+      properties: { kind: { const: update_account }, accountId: { $ref: "#/components/schemas/StableId" }, departmentId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+    UpdateSystemAccountCommand:
+      description: Updates only the current ZSJ super administrator's login identifiers after BFF-enforced prompt=login reauthentication. Organization and personal-profile fields are forbidden.
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,expectedRevision,username]
+      properties: { kind: { const: update_system_account }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+    DeactivateAccountCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,expectedRevision]
+      properties: { kind: { const: deactivate_account }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+    ReactivateAccountCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,departmentId,expectedRevision,positionId]
+      properties: { kind: { const: reactivate_account }, accountId: { $ref: "#/components/schemas/StableId" }, departmentId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, positionId: { $ref: "#/components/schemas/StableId" } }
+    ResetPasswordCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,expectedRevision]
+      properties: { kind: { const: reset_password }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+    CompleteCredentialCeremonyCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,ceremonyOperationId,expectedRevision]
+      properties: { kind: { const: complete_credential_ceremony }, accountId: { $ref: "#/components/schemas/StableId" }, ceremonyOperationId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+    ReleasePhoneCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,expectedRevision,phone]
+      properties: { kind: { const: release_phone }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, phone: { type: string, pattern: "^\\+?[0-9]{6,20}$", description: Must exactly match a value currently returned in releasablePhones; the current phone is forbidden. } }
+    RetryIdentitySyncCommand:
+      description: Creates a new synchronization Operation linked to one currently failed operation. The server resolves the action and current identifiers; clients cannot replay an old payload.
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,expectedRevision,failedOperationId]
+      properties: { kind: { const: retry_identity_sync }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, failedOperationId: { $ref: "#/components/schemas/StableId" } }
+    SetCrmAdministratorCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,accountId,enabled,expectedRevision]
+      properties: { kind: { const: set_crm_administrator }, accountId: { $ref: "#/components/schemas/StableId" }, enabled: { type: boolean }, expectedRevision: { type: integer, minimum: 0 } }
+    CreateDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,name]
+      properties: { kind: { const: create_department }, departmentId: { $ref: "#/components/schemas/StableId" }, name: { type: string, minLength: 1, maxLength: 64 }, parentDepartmentId: { $ref: "#/components/schemas/StableId" } }
+    UpdateDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,expectedRevision,name]
+      properties:
+        kind: { const: update_department }
+        departmentId: { $ref: "#/components/schemas/StableId" }
+        expectedRevision: { type: integer, minimum: 0 }
+        name: { type: string, minLength: 1, maxLength: 64 }
+        parentDepartmentId: { anyOf: [{ $ref: "#/components/schemas/StableId" }, { type: "null" }] }
+    DeactivateDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,expectedRevision]
+      properties: { kind: { const: deactivate_department }, departmentId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+    ReactivateDepartmentCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,expectedRevision]
+      properties: { kind: { const: reactivate_department }, departmentId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+    CreatePositionCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,departmentId,name,positionId]
+      properties: { kind: { const: create_position }, departmentId: { $ref: "#/components/schemas/StableId" }, name: { type: string, minLength: 1, maxLength: 64 }, positionId: { $ref: "#/components/schemas/StableId" } }
+    UpdatePositionCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,expectedRevision,name,positionId]
+      properties: { kind: { const: update_position }, expectedRevision: { type: integer, minimum: 0 }, name: { type: string, minLength: 1, maxLength: 64 }, positionId: { $ref: "#/components/schemas/StableId" } }
+    DeactivatePositionCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,expectedRevision,positionId]
+      properties: { kind: { const: deactivate_position }, expectedRevision: { type: integer, minimum: 0 }, positionId: { $ref: "#/components/schemas/StableId" } }
+    ReactivatePositionCommand:
+      type: object
+      additionalProperties: false
+      required: [kind,expectedRevision,positionId]
+      properties: { kind: { const: reactivate_position }, expectedRevision: { type: integer, minimum: 0 }, positionId: { $ref: "#/components/schemas/StableId" } }
+    WorkforceAdministrationCommandResult:
+      type: object
+      additionalProperties: false
+      required: [replayed]
+      properties:
+        credentialRedirectUrl: { type: string, pattern: "^/(?!/)[A-Za-z0-9_./?=&%-]+$", maxLength: 1024 }
+        replayed: { type: boolean }

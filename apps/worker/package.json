@@ -27,6 +27,7 @@
     "@ai-crm/platform-file-center": "workspace:*",
     "@ai-crm/platform-notifications": "workspace:*",
     "@ai-crm/platform-task-center": "workspace:*",
+    "@ai-crm/platform-workforce-access": "workspace:*",
     "@nestjs/common": "11.1.28",
     "@nestjs/core": "11.1.28",
     "amqplib": "2.0.1",

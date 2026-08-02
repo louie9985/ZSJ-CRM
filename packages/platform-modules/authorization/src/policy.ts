@@ -7,10 +7,12 @@ import type {
   PermissionRequest,
   RoleDefinition,
   ScopeConstraint,
+  SuperAdministratorGrant,
 } from "./types.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const IDENTIFIER = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/u;
+const APPLICATION_ID = /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/u;
 const ACTION = /^[a-z][a-z0-9-]*$/u;
 const POLICY_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,254}$/u;
@@ -34,6 +36,10 @@ const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boo
 const string = (value: unknown, pattern: RegExp, maximum: number): string =>
   typeof value === "string" && value.length <= maximum && pattern.test(value) ? value : invalid();
 const uuid = (value: unknown): string => string(value, UUID, 36).toLowerCase();
+const displayName = (value: unknown): string => {
+  if (typeof value !== "string" || value.length < 1 || value.length > 128 || value.trim() !== value) invalid();
+  return value as string;
+};
 
 const timestamp = (value: unknown): Date => {
   const raw = string(value, TIMESTAMP, 24);
@@ -103,47 +109,71 @@ export interface ValidatedPolicy {
   readonly grants: readonly ValidatedGrant[];
   readonly permissions: ReadonlyMap<string, Readonly<PermissionDeclaration>>;
   readonly roles: ReadonlyMap<string, Readonly<RoleDefinition>>;
+  readonly schemaVersion: 1 | 2;
+  readonly superAdministratorGrants: readonly ValidatedSuperAdministratorGrant[];
   readonly version: string;
 }
 
+export interface ValidatedSuperAdministratorGrant extends Omit<SuperAdministratorGrant, "validFrom" | "validTo"> {
+  readonly validFrom: Date;
+  readonly validTo?: Date;
+}
+
 export const validatePolicySnapshot = (value: unknown, expectedVersion: string): ValidatedPolicy => {
-  if (!isRecord(value) || !exactKeys(value, ["grants", "permissions", "roles", "version"])) invalid();
-  const snapshotRecord = value as Record<string, unknown>;
+  const snapshotRecord = isRecord(value) ? value : invalid();
+  const schemaVersion = snapshotRecord["schemaVersion"] === 2 ? 2 : 1;
+  if (schemaVersion === 1 && !exactKeys(snapshotRecord, ["grants", "permissions", "roles", "version"])) invalid();
+  if (schemaVersion === 2 && !exactKeys(snapshotRecord, ["grants", "permissions", "roles", "schemaVersion", "superAdministratorGrants", "version"])) invalid();
   const rawPermissions = snapshotRecord["permissions"];
   const rawRoles = snapshotRecord["roles"];
   const rawGrants = snapshotRecord["grants"];
+  const rawSuperAdministratorGrants = schemaVersion === 2 ? snapshotRecord["superAdministratorGrants"] : [];
   if (!Array.isArray(rawPermissions) || rawPermissions.length > 10_000 ||
     !Array.isArray(rawRoles) || rawRoles.length > 10_000 ||
-    !Array.isArray(rawGrants) || rawGrants.length > 100_000) invalid();
+    !Array.isArray(rawGrants) || rawGrants.length > 100_000 ||
+    !Array.isArray(rawSuperAdministratorGrants) || rawSuperAdministratorGrants.length > 100) invalid();
   const permissionEntries = rawPermissions as unknown[];
   const roleEntries = rawRoles as unknown[];
   const grantEntries = rawGrants as unknown[];
+  const superAdministratorGrantEntries = rawSuperAdministratorGrants as unknown[];
   const version = string(snapshotRecord["version"], POLICY_VERSION, 128);
   if (version !== expectedVersion) invalid();
 
   const permissions = new Map<string, Readonly<PermissionDeclaration>>();
   const pairs = new Set<string>();
   for (const entry of permissionEntries) {
-    if (!isRecord(entry) || !exactKeys(entry, ["action", "code", "resource", "scopeDimensions"])) invalid();
+    const permissionKeys = schemaVersion === 2
+      ? ["action", "applicationId", "code", "resource", "scopeDimensions"]
+      : ["action", "code", "resource", "scopeDimensions"];
+    if (!isRecord(entry) || !exactKeys(entry, permissionKeys)) invalid();
     const permissionRecord = entry as Record<string, unknown>;
     const resource = string(permissionRecord["resource"], IDENTIFIER, 128);
     const action = string(permissionRecord["action"], ACTION, 64);
     const code = string(permissionRecord["code"], /^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+:[a-z][a-z0-9-]*$/u, 193);
     if (code !== `${resource}:${action}` || permissions.has(code) || pairs.has(`${resource}\0${action}`)) invalid();
     const scopeDimensions = uniqueStrings(permissionRecord["scopeDimensions"], IDENTIFIER, 32, 128);
-    const permission = Object.freeze({ action, code, resource, scopeDimensions });
+    const applicationId = schemaVersion === 2 ? string(permissionRecord["applicationId"], APPLICATION_ID, 128) : undefined;
+    const permission = Object.freeze({ action, ...(applicationId === undefined ? {} : { applicationId }), code, resource, scopeDimensions });
     permissions.set(code, permission);
     pairs.add(`${resource}\0${action}`);
   }
 
   const roles = new Map<string, Readonly<RoleDefinition>>();
+  const roleKeys = new Set<string>();
   for (const entry of roleEntries) {
-    if (!isRecord(entry) || !exactKeys(entry, ["permissions", "roleId"]) ||
+    const roleKeysExpected = schemaVersion === 2
+      ? ["displayName", "permissions", "roleId", "roleKey"]
+      : ["permissions", "roleId"];
+    if (!isRecord(entry) || !exactKeys(entry, roleKeysExpected) ||
       !Array.isArray(entry["permissions"]) || entry["permissions"].length === 0 ||
       entry["permissions"].length > 1_000) invalid();
     const roleRecord = entry as Record<string, unknown>;
     const roleId = uuid(roleRecord["roleId"]);
     if (roles.has(roleId)) invalid();
+    const roleKey = schemaVersion === 2 ? string(roleRecord["roleKey"], IDENTIFIER, 128) : undefined;
+    const normalizedDisplayName = schemaVersion === 2 ? displayName(roleRecord["displayName"]) : undefined;
+    if (roleKey !== undefined && roleKeys.has(roleKey)) invalid();
+    if (roleKey !== undefined) roleKeys.add(roleKey);
     const seen = new Set<string>();
     const rawBindings = roleRecord["permissions"] as unknown[];
     const bindings = rawBindings.map((binding: unknown) => {
@@ -156,7 +186,11 @@ export const validatePolicySnapshot = (value: unknown, expectedVersion: string):
       seen.add(permissionCode);
       return Object.freeze({ permissionCode, scope: normalizeScope(bindingRecord["scope"], permission.scopeDimensions) });
     });
-    roles.set(roleId, Object.freeze({ permissions: Object.freeze(bindings), roleId }));
+    roles.set(roleId, Object.freeze({
+      ...(normalizedDisplayName === undefined ? {} : { displayName: normalizedDisplayName }),
+      permissions: Object.freeze(bindings), roleId,
+      ...(roleKey === undefined ? {} : { roleKey }),
+    }));
   }
 
   const grantIds = new Set<string>();
@@ -181,7 +215,24 @@ export const validatePolicySnapshot = (value: unknown, expectedVersion: string):
     return Object.freeze({ grantId, roleId, subject: normalizedSubject, validFrom,
       ...(validTo === undefined ? {} : { validTo }) });
   });
-  return Object.freeze({ grants: Object.freeze(grants), permissions, roles, version });
+  const superAdministratorGrants = superAdministratorGrantEntries.map((entry: unknown): Readonly<ValidatedSuperAdministratorGrant> => {
+    if (!isRecord(entry) || ![3, 4].includes(Object.keys(entry).length) ||
+      !["grantId", "validFrom", "workforcePersonId"].every((key) => key in entry) ||
+      Object.keys(entry).some((key) => !["grantId", "validFrom", "validTo", "workforcePersonId"].includes(key))) invalid();
+    const grantRecord = entry as Record<string, unknown>;
+    const grantId = uuid(grantRecord["grantId"]);
+    if (grantIds.has(grantId)) invalid();
+    grantIds.add(grantId);
+    const workforcePersonId = uuid(grantRecord["workforcePersonId"]);
+    const validFrom = timestamp(grantRecord["validFrom"]);
+    const validTo = grantRecord["validTo"] === undefined ? undefined : timestamp(grantRecord["validTo"]);
+    if (validTo !== undefined && validTo <= validFrom) invalid();
+    return Object.freeze({ grantId, validFrom, ...(validTo === undefined ? {} : { validTo }), workforcePersonId });
+  });
+  return Object.freeze({
+    grants: Object.freeze(grants), permissions, roles, schemaVersion,
+    superAdministratorGrants: Object.freeze(superAdministratorGrants), version,
+  });
 };
 
 export const validateSubjectContext = (value: unknown): Readonly<AuthorizationSubjectContext> | undefined => {

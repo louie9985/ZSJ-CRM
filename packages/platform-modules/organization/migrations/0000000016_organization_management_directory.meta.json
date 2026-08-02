@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "organization",
+  "purpose": "Add managed person names, department and position display directories, immutable name history, optimistic revisions, lifecycle flags, and hierarchy-cycle protection.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Creates additive tables, indexes, function, and trigger. Runtime department moves take a transaction-scoped advisory lock dedicated to the management hierarchy.",
+  "dataImpact": "Additive only; existing effective-dated organization facts are not rewritten.",
+  "backfill": "Not required. Existing facts remain valid and management profiles are populated by reviewed bootstrap or management commands.",
+  "destructive": false,
+  "recovery": "Leave the additive tables in place and forward-fix. Do not delete name history after population.",
+  "forwardFix": "Append a reviewed organization-owned migration for later directory changes."
+}

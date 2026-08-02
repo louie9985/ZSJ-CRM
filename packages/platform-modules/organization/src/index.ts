@@ -24,7 +24,12 @@ export type {
   Position,
   SubjectAssociation,
   WorkforceContext,
+  WorkforcePersonContext,
   WorkforcePerson,
 } from "./types.js";
 
 export const packageId = "@ai-crm/platform-organization" as const;
+export { InMemoryOrganizationDirectoryStore } from "./directory-memory-store.js";
+export { createPostgresOrganizationDirectoryStore, createPrismaOrganizationDirectoryStore, type OrganizationDirectoryPersistenceRuntime } from "./directory-postgres-store.js";
+export { OrganizationDirectoryService } from "./directory-service.js";
+export type { CreateDepartmentCommand, CreateDirectoryPositionCommand, DepartmentDirectoryEntry, DepartmentTreeNode, OrganizationDirectoryAuthorizer, OrganizationDirectoryServiceApi, PositionDirectoryEntry, SetDepartmentActiveCommand, SetPositionActiveCommand, UpdateDepartmentCommand, UpdateDirectoryPositionCommand, UpsertWorkforcePersonProfileCommand, WorkforcePersonProfile } from "./directory-types.js";

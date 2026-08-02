@@ -8,6 +8,7 @@ import { loadProductionApiConfiguration } from "./production-config.js";
 const secretPath = (name: string) => resolve(import.meta.dirname, "__synthetic-secrets__", name);
 const secretPaths = {
   client: secretPath("client"),
+  adminClient: secretPath("admin-client"),
   cosId: secretPath("cos-id"),
   cosKey: secretPath("cos-key"),
   database: secretPath("database"),
@@ -16,6 +17,7 @@ const secretPaths = {
   redis: secretPath("redis"),
 } as const;
 const secrets: Readonly<Record<string, string>> = {
+  [secretPaths.adminClient]: "a".repeat(43),
   [secretPaths.client]: "c".repeat(43),
   [secretPaths.cosId]: "synthetic-cos-id",
   [secretPaths.cosKey]: "synthetic-cos-key",
@@ -47,6 +49,13 @@ const env: NodeJS.ProcessEnv = {
   AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES: "1048576",
   AI_CRM_FILE_UPLOAD_SESSION_TTL_MS: "300000",
   AI_CRM_KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/ai-crm-dev",
+  AI_CRM_KEYCLOAK_ADMIN_BASE_URL: "http://127.0.0.1:8080",
+  AI_CRM_KEYCLOAK_ADMIN_CLIENT_ID: "ai-crm-workforce-provisioner",
+  AI_CRM_KEYCLOAK_ADMIN_CLIENT_SECRET_FILE: secretPaths.adminClient,
+  AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS: "5000",
+  AI_CRM_KEYCLOAK_CREDENTIAL_RETURN_URI: "http://127.0.0.1:8088/workforce-administration/credential-callback",
+  AI_CRM_KEYCLOAK_PUBLIC_REALM_BASE_PATH: "/realms/ai-crm-dev",
+  AI_CRM_KEYCLOAK_REALM: "ai-crm-dev",
   AI_CRM_KEYCLOAK_JWKS_URI: "http://127.0.0.1:8080/realms/ai-crm-dev/protocol/openid-connect/certs",
   AI_CRM_MIGRATIONS_ROOT: resolve(import.meta.dirname, "../../.."),
   AI_CRM_OIDC_API_AUDIENCE: "ai-crm-api",
@@ -76,7 +85,7 @@ describe("production API configuration", () => {
     expect(result.databaseHealthProbe).toEqual({ intervalMs: 10_000, timeoutMs: 2_000 });
     expect(result.database.connectionString).toBe(secrets[secretPaths.database]);
     expect(result.fileCenter).toMatchObject({ maximumUploadBytes: 1_048_576, cos: { bucket: "synthetic-test-1250000000", secretId: "synthetic-cos-id" } });
-    expect(result.migrations).toHaveLength(11);
+    expect(result.migrations).toHaveLength(12);
     expect(result.migrations.some((path) => path.endsWith(join("packages", "platform-modules", "authorization", "migrations"))))
       .toBe(true);
     expect(result.oidcVerifier.jwksTimeoutMs).toBe(5_000);

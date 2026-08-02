@@ -13,6 +13,7 @@ import {
   type AuthorizationPolicyStore,
 } from "@ai-crm/platform-authorization";
 import { createOidcTokenVerifier, type TokenVerifier } from "@ai-crm/platform-auth-context";
+import { createEventingCore, createPrismaEventingStore, type EventingCore } from "@ai-crm/platform-eventing-outbox";
 import {
   createPostgresFormSchemaCapabilityProbe,
   createPrismaFormSchemaQueryService,
@@ -25,9 +26,15 @@ import {
 } from "@ai-crm/platform-notifications";
 import {
   createPrismaOrganizationService,
-  type OrganizationCommandAuthorizer,
+  createPrismaOrganizationDirectoryStore,
+  OrganizationDirectoryService,
   type OrganizationPersistenceRuntime,
 } from "@ai-crm/platform-organization";
+import {
+  createPrismaWorkforceAccessStore,
+  WorkforceAccessService,
+  type WorkforceAccessServiceApi,
+} from "@ai-crm/platform-workforce-access";
 import {
   createFileCenterService,
   createPrismaFileCenterStore,
@@ -71,6 +78,12 @@ import {
   type ProductionApiConfiguration,
 } from "./production-config.js";
 import type { ApiRuntimeConfiguration } from "./runtime-config.js";
+import { createWorkbenchBootstrapFacade } from "./workbench/facade.js";
+import { createAuthorizationGrantPort } from "./workforce-administration/authorization-grants.js";
+import { createDurableAdministrationOperationPort } from "./workforce-administration/durable-operation.js";
+import { createDurableIdentityAdministrationPort } from "./workforce-administration/durable-identity.js";
+import { createWorkforceAdministrationFacade, deriveAdministrationOperationId } from "./workforce-administration/facade.js";
+import { createKeycloakAdministrationPorts } from "./workforce-administration/keycloak-administration.js";
 
 export interface ApiPlatformBindingFactory {
   readonly create: (configuration: Readonly<ApiRuntimeConfiguration>, signal?: AbortSignal) => ApiPlatformBindings | Promise<ApiPlatformBindings>;
@@ -89,17 +102,45 @@ function rejected<T>(): Promise<T> {
   return Promise.reject(new Error("api_synthetic_capability_unavailable"));
 }
 
-const failClosedOrganizationAuthorizer: OrganizationCommandAuthorizer = Object.freeze({
-  authorize: () => Promise.reject(new Error("organization_write_authorization_unavailable")),
-});
-
-function organizationRuntime(database: DatabaseRuntime): OrganizationPersistenceRuntime {
+function organizationRuntime(
+  database: DatabaseRuntime,
+  audit: Pick<ApiPlatformBindings["audit"], "record">,
+  eventing: Pick<EventingCore, "appendEvent">,
+): OrganizationPersistenceRuntime {
   return Object.freeze({
     execute<Row = Record<string, unknown>>(sql: string, values?: readonly unknown[]) {
       return database.execute<Row>(sql, values);
     },
-    recordAuditIntent: () => Promise.reject(new Error("organization_write_audit_unavailable")),
-    recordEventIntent: () => Promise.reject(new Error("organization_write_event_unavailable")),
+    async recordAuditIntent(intent: Parameters<OrganizationPersistenceRuntime["recordAuditIntent"]>[0]) {
+      await audit.record({
+        action: intent.action,
+        actor: {
+          actorId: intent.actorId,
+          actorType: intent.actorType === "system" ? "system" : "authenticated_subject",
+          ...(intent.actorType === "authenticated_subject" ? { workforcePersonId: intent.actorId } : {}),
+        },
+        reason: { code: intent.reason },
+        resource: { resourceId: intent.entityId, resourceType: `platform.organization.${intent.entityType}` },
+        result: intent.result,
+        trace: { operationId: intent.operationId, traceId: intent.traceId },
+      });
+    },
+    async recordEventIntent(intent: Parameters<OrganizationPersistenceRuntime["recordEventIntent"]>[0]) {
+      const spanId = createHash("sha256").update(`organization-change:${intent.operationId}`).digest("hex").slice(0, 16);
+      await eventing.appendEvent({
+        correlationid: intent.operationId,
+        data: intent,
+        datacontenttype: "application/json",
+        dataschema: "urn:ai-crm:events:organization-change:v1",
+        id: intent.operationId,
+        source: "urn:ai-crm:organization",
+        specversion: "1.0",
+        subject: intent.entityId,
+        time: intent.effectiveAt,
+        traceparent: `00-${intent.traceId}-${spanId === "0000000000000000" ? "0000000000000001" : spanId}-01`,
+        type: "organization.change.v1",
+      });
+    },
     withTransaction<T>(work: () => Promise<T>) {
       return database.withTransaction(work);
     },
@@ -215,6 +256,7 @@ function createUnavailableBindings(): ApiPlatformBindings {
       closeSubjectAssociation: () => rejected(), createAssignment: () => rejected(), createEmployment: () => rejected(),
       createOrganizationUnit: () => rejected(), createOrganizationUnitPlacement: () => rejected(), createPosition: () => rejected(),
       createSubjectAssociation: () => rejected(), createWorkforcePerson: () => rejected(), resolveWorkforceContext: () => rejected(),
+      resolveWorkforcePersonContext: () => rejected(),
     },
     queries: {
       applicationRegistry: { loadRegistry: () => rejected(), resolveDeepLink: () => rejected() },
@@ -441,6 +483,7 @@ export async function createProductionApiPlatformBindings(
     { authorize: () => Promise.reject(new Error("audit_read_authorization_unavailable")) },
     { fieldPolicies: {} },
   );
+  const eventing = createEventingCore(createPrismaEventingStore(activeDatabase));
   const fileStorage: StorageAdapter & { readonly checkHealth: () => Promise<boolean> } = dependencies.createFileStorage?.(configuration.fileCenter.cos) ?? Object.freeze({
     checkHealth: () => Promise.resolve(false),
     createDownloadGrant: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
@@ -561,9 +604,30 @@ export async function createProductionApiPlatformBindings(
     resolver: { resolve: () => Promise.reject(new Error("notification_recipient_resolver_unavailable")) },
     store: notificationStore,
   });
+  const organizationHolder: { value?: ReturnType<typeof createPrismaOrganizationService> } = {};
+  const workforceManagementAuthorizer = Object.freeze({
+    async authorize(request: { readonly actor: { readonly actorId: string; readonly actorType: "authenticated_subject" | "system" } }): Promise<void> {
+      if (request.actor.actorType !== "authenticated_subject") throw new Error("authorization_denied");
+      const context = await organizationHolder.value?.resolveWorkforcePersonContext(request.actor.actorId, new Date().toISOString());
+      if (context === undefined) throw new Error("organization_write_authorization_unavailable");
+      await authorization.requireAllowed({
+        activeAssignmentIds: context.assignments.map(({ assignmentId }) => assignmentId),
+        workforcePersonId: context.workforcePersonId,
+      }, { action: "manage", resource: "platform.workforce-access.console" });
+    },
+  });
   const organization = createPrismaOrganizationService(
-    organizationRuntime(activeDatabase),
-    failClosedOrganizationAuthorizer,
+    organizationRuntime(activeDatabase, audit, eventing),
+    workforceManagementAuthorizer,
+  );
+  organizationHolder.value = organization;
+  const organizationDirectory = new OrganizationDirectoryService(
+    createPrismaOrganizationDirectoryStore(activeDatabase),
+    workforceManagementAuthorizer,
+  );
+  const workforceAccounts: WorkforceAccessServiceApi = new WorkforceAccessService(
+    createPrismaWorkforceAccessStore(activeDatabase),
+    workforceManagementAuthorizer,
   );
   const state = {
     applicationRegistryCapabilityReady: false,
@@ -733,6 +797,110 @@ export async function createProductionApiPlatformBindings(
     store: createRedisBrowserSessionStore(activeSessions.executor),
     tokenVerifier,
   });
+  const findAccountByKeycloakUserId = async (keycloakUserId: string) => {
+    let cursor: string | undefined;
+    for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+      const page = await workforceAccounts.listAccounts({ ...(cursor === undefined ? {} : { cursor }), limit: 200 });
+      const match = page.items.find((account) => account.keycloakUserId === keycloakUserId);
+      if (match !== undefined) return match;
+      cursor = page.nextCursor;
+      if (cursor === undefined) break;
+    }
+    throw new Error("workforce_account_not_found");
+  };
+  const resolveAdministrationPrincipal = async (input: Readonly<{ credential: string; traceId: string }>) => {
+    const authenticated = await sessionService.resolvePrincipal(input.credential);
+    const workforce = await organization.resolveWorkforceContext(authenticated.authenticationSubject, new Date().toISOString());
+    const account = await findAccountByKeycloakUserId(authenticated.authenticationSubject.subject);
+    if (account.status !== "active" || account.workforcePersonId !== workforce.workforcePersonId) throw new Error("employment_not_active");
+    return Object.freeze({
+      actor: Object.freeze({ actorId: workforce.workforcePersonId, actorType: "authenticated_subject" as const }),
+      identitySubjectId: authenticated.authenticationSubject.subject,
+      reauthenticated: authenticated.reauthenticated === true,
+      subject: Object.freeze({
+        activeAssignmentIds: Object.freeze(workforce.assignments.map(({ assignmentId }) => assignmentId)),
+        workforcePersonId: workforce.workforcePersonId,
+      }),
+      workforce,
+    });
+  };
+  const grantPort = createAuthorizationGrantPort({
+    clock: () => new Date(),
+    publisher: authorizationPersistence.publisher,
+    resolveActiveAssignmentIds: async (workforcePersonId, at) =>
+      (await organization.resolveWorkforcePersonContext(workforcePersonId, at)).assignments.map(({ assignmentId }) => assignmentId),
+    store: authorizationPersistence.store,
+  });
+  const keycloakAdministration = createKeycloakAdministrationPorts({
+    adminBaseUrl: configuration.workforceAdministration.keycloakAdminBaseUrl,
+    clientId: configuration.workforceAdministration.keycloakClientId,
+    clientSecret: configuration.workforceAdministration.keycloakClientSecret,
+    publicRealmBasePath: configuration.workforceAdministration.keycloakPublicRealmBasePath,
+    realm: configuration.workforceAdministration.keycloakRealm,
+    returnUri: configuration.workforceAdministration.returnUri,
+    timeoutMs: configuration.workforceAdministration.keycloakTimeoutMs,
+  });
+  const workforceAdministration = createWorkforceAdministrationFacade({
+    accounts: {
+      beginIdentitySync: (command) => workforceAccounts.beginIdentitySync(command),
+      createAccount: (command) => workforceAccounts.createAccount(command),
+      getAccount: (accountId) => workforceAccounts.getAccount(accountId),
+      getIdentitySyncOperation: (operationId) => workforceAccounts.getIdentitySyncOperation(operationId),
+      linkKeycloakUser: (command) => workforceAccounts.linkKeycloakUser(command),
+      listAccounts: (input) => workforceAccounts.listAccounts(input),
+      listIdentifierHistory: (accountId) => workforceAccounts.listIdentifierHistory(accountId),
+      releasePhone: (command) => workforceAccounts.releasePhone(command),
+      setStatus: (command) => workforceAccounts.setStatus(command),
+      updateLoginIdentifiers: (command) => workforceAccounts.updateLoginIdentifiers(command),
+    },
+    audit: {
+      async record(event) {
+        await audit.record({
+          action: `workforce_administration.${event.action}`,
+          actor: { actorId: event.actorId, actorType: "authenticated_subject", workforcePersonId: event.actorId },
+          reason: { code: "workforce_administration" },
+          resource: { resourceId: event.targetId, resourceType: "platform.workforce-access.account" },
+          result: event.result,
+          trace: { operationId: event.operationId, traceId: event.traceId },
+        });
+      },
+    },
+    authorization: { requireAllowed: (subject, permission) => authorization.requireAllowed(subject, permission) },
+    clock: () => new Date(),
+    credentialCeremonies: keycloakAdministration.credentialCeremonies,
+    crmAdministratorDepartmentId: "5a100000-0000-4000-8000-000000000002",
+    grants: grantPort,
+    identity: createDurableIdentityAdministrationPort({ direct: keycloakAdministration.identity, eventing }),
+    operations: createDurableAdministrationOperationPort(activeDatabase),
+    organization,
+    organizationDirectory,
+    principals: { resolve: resolveAdministrationPrincipal },
+    recovery: {
+      async restore(input) {
+        const departments = await organizationDirectory.listDepartmentTree({ includeInactive: false });
+        const flatten = (nodes: typeof departments): readonly (typeof departments)[number][] => nodes.flatMap((node) => [node, ...flatten(node.children)]);
+        if (!flatten(departments).some(({ organizationUnitId }) => organizationUnitId === input.departmentId) ||
+          !(await organizationDirectory.listPositions(input.departmentId)).some(({ positionId }) => positionId === input.positionId)) {
+          throw new Error("organization_path_invalid");
+        }
+        const employmentId = deriveAdministrationOperationId(input.operationId, "employment");
+        await organization.createEmployment({ actor: input.actor, effectiveFrom: input.effectiveFrom, employmentId, operationId: deriveAdministrationOperationId(input.operationId, "create-employment"), reason: "workforce_administration:reactivate_account", traceId: input.traceId, workforcePersonId: input.workforcePersonId });
+        await organization.createAssignment({ actor: input.actor, assignmentId: deriveAdministrationOperationId(input.operationId, "assignment"), effectiveFrom: input.effectiveFrom, employmentId, operationId: deriveAdministrationOperationId(input.operationId, "create-assignment"), organizationUnitId: input.departmentId, positionId: input.positionId, reason: "workforce_administration:reactivate_account", traceId: input.traceId, workforcePersonId: input.workforcePersonId });
+      },
+    },
+    transactions: { run: (work) => activeDatabase.withTransaction(work) },
+  });
+  const workbench = createWorkbenchBootstrapFacade({
+    accountKinds: grantPort,
+    directory: organizationDirectory,
+    principals: {
+      async resolve(input) {
+        const resolved = await resolveAdministrationPrincipal(input);
+        return Object.freeze({ actorId: resolved.actor.actorId, workforce: resolved.workforce });
+      },
+    },
+    registry: applicationRegistryQueries,
+  });
   const unavailable = createUnavailableBindings();
 
   return Object.freeze({
@@ -775,6 +943,8 @@ export async function createProductionApiPlatformBindings(
       },
     },
     organization,
+    workbench,
+    workforceAdministration,
     queries: {
       ...unavailable.queries,
       applicationRegistry: applicationRegistryQueries,
@@ -796,7 +966,7 @@ export async function createProductionApiPlatformBindings(
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.notificationQueryReady, name: "notification-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.fileCenterProviderReady, name: "file-center-provider", required: true },
     ],
-    sessions: { resolvePrincipal: sessionService.resolvePrincipal, sessionForMutation: sessionService.sessionForMutation },
+    sessions: { logout: sessionService.logout, resolvePrincipal: sessionService.resolvePrincipal, sessionForMutation: sessionService.sessionForMutation },
   });
   } catch (error) {
     try {

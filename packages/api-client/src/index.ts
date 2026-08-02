@@ -22,6 +22,11 @@ export const internalOperations = [
     "path": "/auth/pc/callback"
   },
   {
+    "id": "beginPcReauthentication",
+    "method": "POST",
+    "path": "/auth/pc/reauthentication"
+  },
+  {
     "id": "getPcSession",
     "method": "GET",
     "path": "/auth/pc/session"
@@ -115,5 +120,25 @@ export const internalOperations = [
     "id": "reconcileTask",
     "method": "POST",
     "path": "/tasks/{sourceType}/{sourceTaskId}/reconcile"
+  },
+  {
+    "id": "getWorkbenchBootstrap",
+    "method": "GET",
+    "path": "/workbench/bootstrap"
+  },
+  {
+    "id": "getWorkforceAdministrationSnapshot",
+    "method": "GET",
+    "path": "/workforce-administration"
+  },
+  {
+    "id": "executeWorkforceAdministrationCommand",
+    "method": "POST",
+    "path": "/workforce-administration/commands"
+  },
+  {
+    "id": "listWorkforceAccounts",
+    "method": "GET",
+    "path": "/workforce-administration/accounts"
   }
 ] as const;

@@ -70,6 +70,10 @@ export interface EventingCore {
   submitJob(envelope: unknown): Promise<{ readonly jobId: string; readonly status: JobStatus }>;
   cancelJob(jobId: string, reason: string): Promise<{ readonly jobId: string; readonly status: JobStatus }>;
   consume(input: { readonly attempt: number; readonly consumer: string; readonly envelope: unknown; readonly timeoutMs?: number }, handler: MessageHandler): Promise<ConsumptionResult>;
+  isolateJobForDeliveryFailure(
+    input: JobDeliveryIsolation,
+    durableCallback?: (input: JobDeliveryIsolation) => Promise<void>,
+  ): Promise<{ readonly jobId: string; readonly status: JobStatus }>;
 }
 
 export type JobStatus = "queued" | "processing" | "cancelled" | "completed" | "isolated";
@@ -77,6 +81,12 @@ export type ConsumptionResult =
   | { readonly status: "completed" | "duplicate" }
   | { readonly status: "skipped"; readonly reason: "job_cancelled" | "authoritative_state_rejected" }
   | { readonly status: "isolated"; readonly reason: "payload_conflict" | "unsupported_message" };
+
+export interface JobDeliveryIsolation {
+  readonly jobId: string;
+  readonly attempt: number;
+  readonly category: "terminal_failure" | "attempts_exhausted" | "delivery_budget_exceeded";
+}
 
 export interface OutboxPublication {
   readonly attempt: number;

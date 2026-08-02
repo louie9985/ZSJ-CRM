@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "workforce-access",
+  "purpose": "Add the business-neutral workforce account directory, permanent username history, releasable phone history, optimistic revisions, and durable idempotent operations.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Creates a new schema and tables; takes no locks on populated application tables beyond validating the workforce-person foreign key definition.",
+  "dataImpact": "Additive only; no existing data is rewritten or deleted.",
+  "backfill": "Not required. Initial administrator accounts are created by the reviewed local bootstrap command after migration.",
+  "destructive": false,
+  "recovery": "Leave the additive schema in place and forward-fix. Do not drop account identity history after it contains records.",
+  "forwardFix": "Append a reviewed workforce-access-owned migration for later changes."
+}

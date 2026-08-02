@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { EventingError } from "./errors.js";
 import { outboxRecord, type EventingStore, type IsolationRecord, type JobRecord } from "./store.js";
-import type { ConsumptionResult, EventingCore, EventingObservation, EventingObserver, JobEnvelope, MessageHandler, ValidatedMessage } from "./types.js";
+import type { ConsumptionResult, EventingCore, EventingObservation, EventingObserver, JobDeliveryIsolation, JobEnvelope, MessageHandler, ValidatedMessage } from "./types.js";
 import { validateConsumerName, validateEventEnvelope, validateJobEnvelope, validateMessageEnvelope, validateReason, validateUuid } from "./validation.js";
 
 const matches = (handler: MessageHandler, message: ValidatedMessage): boolean => handler.kind === message.messageKind && handler.messageType === message.messageType && handler.messageVersion === message.messageVersion;
@@ -41,6 +41,24 @@ export function createEventingCore(store: EventingStore, options: { readonly clo
     async cancelJob(jobIdInput: string, reasonInput: string) {
       const started=performance.now();const jobId = validateUuid(jobIdInput); const reason = validateReason(reasonInput);const row=await store.cancelJob(jobId,reason);
       if (!row) throw new EventingError("eventing_not_found");record(options.observer,{operation:"cancel_job",outcome:"completed",durationMs:duration(started)});return { jobId, status: row.status };
+    },
+    async isolateJobForDeliveryFailure(input: JobDeliveryIsolation, durableCallback?: (input: JobDeliveryIsolation) => Promise<void>) {
+      const jobId = validateUuid(input.jobId);
+      if (!Number.isInteger(input.attempt) || input.attempt < 1 || input.attempt > 1000 ||
+        !(["terminal_failure", "attempts_exhausted", "delivery_budget_exceeded"] as const).includes(input.category)) {
+        throw new EventingError("eventing_invalid_input");
+      }
+      const stableInput = Object.freeze({ jobId, attempt: input.attempt, category: input.category });
+      return store.transaction(async () => {
+        const current = await store.findJob(jobId);
+        if (!current) throw new EventingError("eventing_not_found", true);
+        if (current.status === "queued" || current.status === "processing") {
+          if (!await store.isolateJob(jobId)) throw new EventingError("eventing_conflict", true);
+          await durableCallback?.(stableInput);
+          return { jobId, status: "isolated" as const };
+        }
+        return { jobId, status: current.status };
+      });
     },
     async consume(request: { readonly attempt: number; readonly consumer: string; readonly envelope: unknown; readonly timeoutMs?: number }, handler: MessageHandler) {
       const consumer = validateConsumerName(request.consumer);

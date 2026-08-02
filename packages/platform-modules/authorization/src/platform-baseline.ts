@@ -34,7 +34,7 @@ export function createPlatformBaselineAuthorizationPolicy(
     return canonicalizeAuthorizationPolicy({ grants: [], permissions: [], roles: [], version: input.version });
   }
   const permissions = declarations.map(({ action, code, resource, scopeDimensions }) => ({
-    action, code, resource, scopeDimensions: [...scopeDimensions],
+    action, applicationId: "platform", code, resource, scopeDimensions: [...scopeDimensions],
   }));
   return canonicalizeAuthorizationPolicy({
     grants: [{
@@ -45,12 +45,16 @@ export function createPlatformBaselineAuthorizationPolicy(
     }],
     permissions,
     roles: [{
+      displayName: "Platform baseline administrator",
       permissions: permissions.map(({ code }) => ({
         permissionCode: code,
         scope: { terms: [{ kind: "all" }], version: 1 },
       })),
       roleId: input.roleId,
+      roleKey: "platform.baseline-administrator",
     }],
+    schemaVersion: 2,
+    superAdministratorGrants: [],
     version: input.version,
   });
 }

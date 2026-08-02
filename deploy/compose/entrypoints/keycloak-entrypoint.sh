@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-for secret in postgres_keycloak_password keycloak_bootstrap_password pc_oidc_client_secret; do
+for secret in postgres_keycloak_password keycloak_bootstrap_password pc_oidc_client_secret workforce_admin_client_secret workforce_worker_client_secret; do
   if [ ! -r "/run/secrets/$secret" ] || [ ! -s "/run/secrets/$secret" ]; then
     echo "Keycloak required Secret file is unavailable." >&2
     exit 1
@@ -24,6 +24,8 @@ fi
 mkdir -p "$(dirname "$import_file")"
 
 client_secret="$(cat /run/secrets/pc_oidc_client_secret)"
+workforce_admin_client_secret="$(cat /run/secrets/workforce_admin_client_secret)"
+workforce_worker_client_secret="$(cat /run/secrets/workforce_worker_client_secret)"
 if [ "${#client_secret}" -ne 43 ]; then
   echo "Keycloak Client Secret has an invalid format." >&2
   exit 1
@@ -43,8 +45,24 @@ case "$template_content" in
     exit 1
     ;;
 esac
+case "$template_content" in
+  *__AI_CRM_WORKFORCE_ADMIN_CLIENT_SECRET__*) ;;
+  *)
+    echo "Keycloak Realm template does not contain the workforce administration Client Secret marker." >&2
+    exit 1
+    ;;
+esac
+case "$template_content" in
+  *__AI_CRM_WORKFORCE_WORKER_CLIENT_SECRET__*) ;;
+  *)
+    echo "Keycloak Realm template does not contain the workforce Worker Client Secret marker." >&2
+    exit 1
+    ;;
+esac
 
 import_content="${template_content//__AI_CRM_PC_CLIENT_SECRET__/$client_secret}"
+import_content="${import_content//__AI_CRM_WORKFORCE_ADMIN_CLIENT_SECRET__/$workforce_admin_client_secret}"
+import_content="${import_content//__AI_CRM_WORKFORCE_WORKER_CLIENT_SECRET__/$workforce_worker_client_secret}"
 printf '%s\n' "$import_content" > "$import_file"
 
 # Realm import bootstraps an absent local/test Realm only. Existing Client Secrets are rotated through the Admin API.

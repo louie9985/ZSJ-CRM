@@ -6,6 +6,7 @@ node_modules/
 *.tsbuildinfo
 dist/
 build/
+target/
 coverage/
 packages/database/src/generated/prisma/
 playwright-report/

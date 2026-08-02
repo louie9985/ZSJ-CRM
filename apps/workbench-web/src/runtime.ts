@@ -1,6 +1,13 @@
 import type { WorkbenchPort } from "./workbench-port";
 import { createSameSiteCollectionPollingPort } from "./same-site-collection-port";
 import { createSameSiteSyntheticFormEvidencePort } from "./same-site-synthetic-form-evidence-port";
+import { createSameSiteWorkforceAdministrationPort } from "./same-site-workforce-administration-port";
+import { createSameSiteWorkbenchPort } from "./same-site-workbench-port";
+
+const connectedPort: WorkbenchPort = {
+  ...createSameSiteWorkbenchPort(),
+  workforceAdministration: createSameSiteWorkforceAdministrationPort(),
+};
 
 const unavailableProductionPort: WorkbenchPort = {
   bootstrap: () => Promise.resolve({ kind: "maintenance" }),
@@ -15,6 +22,26 @@ const lazyDevelopmentPort: WorkbenchPort = {
   logout: async () => {
     const { developmentFixturePort } = await import("./development-fixture");
     return developmentFixturePort.logout();
+  },
+  workforceAdministration: {
+    execute: async (command) => {
+      const { developmentFixturePort } = await import("./development-fixture");
+      const fixture = developmentFixturePort.workforceAdministration;
+      if (fixture === undefined) throw new Error("workforce_fixture_missing");
+      return fixture.execute(command);
+    },
+    listAccounts: async (query) => {
+      const { developmentFixturePort } = await import("./development-fixture");
+      const fixture = developmentFixturePort.workforceAdministration;
+      if (fixture === undefined) throw new Error("workforce_fixture_missing");
+      return fixture.listAccounts(query);
+    },
+    load: async () => {
+      const { developmentFixturePort } = await import("./development-fixture");
+      const fixture = developmentFixturePort.workforceAdministration;
+      if (fixture === undefined) throw new Error("workforce_fixture_missing");
+      return fixture.load();
+    },
   },
 };
 
@@ -38,11 +65,12 @@ function e2ePort(): WorkbenchPort {
 }
 
 // A generated-client adapter replaces this fail-closed port after the relevant contracts pass G2.
-export function selectRuntimeWorkbenchPort(environment: { readonly development: boolean; readonly e2e: boolean }): WorkbenchPort {
-  return environment.e2e ? e2ePort() : environment.development ? lazyDevelopmentPort : unavailableProductionPort;
+export function selectRuntimeWorkbenchPort(environment: { readonly connected?: boolean; readonly development: boolean; readonly e2e: boolean }): WorkbenchPort {
+  return environment.e2e ? e2ePort() : environment.development ? lazyDevelopmentPort : environment.connected === true ? connectedPort : unavailableProductionPort;
 }
 
 export const runtimeWorkbenchPort = selectRuntimeWorkbenchPort({
+  connected: true,
   development: import.meta.env.DEV,
   e2e: import.meta.env.VITE_AI_CRM_E2E === "true",
 });

@@ -31,6 +31,11 @@ import {
   createFormSchemaHttpAdapter,
   type FormSchemaHttpAdapter,
 } from "./platform-http/form-schema-http.js";
+import { createWorkbenchHttpAdapter, type WorkbenchBootstrapFacade } from "./platform-http/workbench-http.js";
+import {
+  createWorkforceAdministrationHttpAdapter,
+  type WorkforceAdministrationFacade,
+} from "./platform-http/workforce-administration-http.js";
 
 export interface DatabaseMigrationCompatibility {
   readonly assertCompatible: (signal: AbortSignal) => void | Promise<void>;
@@ -72,7 +77,9 @@ export interface ApiPlatformBindings {
   readonly organization: OrganizationServiceApi;
   readonly queries: ApiQueryBindings;
   readonly readiness: () => readonly HealthDependency[];
-  readonly sessions: Pick<PcBffSessionService, "resolvePrincipal" | "sessionForMutation">;
+  readonly sessions: Pick<PcBffSessionService, "resolvePrincipal" | "sessionForMutation"> & Partial<Pick<PcBffSessionService, "logout">>;
+  readonly workbench?: WorkbenchBootstrapFacade;
+  readonly workforceAdministration?: WorkforceAdministrationFacade;
 }
 
 export interface ApiPlatformHttpComposition {
@@ -111,7 +118,7 @@ export interface BrowserMutationInput {
 
 export interface ApiPlatformComposition {
   readonly bindings: ApiPlatformBindings;
-  readonly lifecycle: Pick<ApiComposition, "authentication" | "authenticationCallbackUrl" | "dependencies" | "onStart" | "onStop" | "platformHttp">;
+  readonly lifecycle: Pick<ApiComposition, "authentication" | "authenticationCallbackUrl" | "dependencies" | "onStart" | "onStop" | "platformHttp" | "workbenchHttp" | "workforceAdministrationHttp">;
   readonly authorize: (input: ProtectedOperationInput) => Promise<Readonly<AuthorizedOperationContext>>;
 }
 
@@ -184,6 +191,11 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
   requireFunction(bindings.readiness, "readiness");
   requireFunction(bindings.sessions.resolvePrincipal, "session_resolve_principal");
   requireFunction(bindings.sessions.sessionForMutation, "session_for_mutation");
+  if (bindings.workbench !== undefined) requireMethod(bindings.workbench, "load", "workbench_load");
+  if (bindings.workforceAdministration !== undefined) {
+    requireMethod(bindings.workforceAdministration, "execute", "workforce_administration_execute");
+    requireMethod(bindings.workforceAdministration, "load", "workforce_administration_load");
+  }
 
   const authorize = async (input: ProtectedOperationInput): Promise<Readonly<AuthorizedOperationContext>> => {
     const traceId = input.traceId ?? createTraceContext().traceId;
@@ -265,6 +277,10 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
     validateFormMutation: validateMutation,
     validateTaskMutation: validateMutation,
   });
+  const workbenchHttp = bindings.workbench === undefined ? undefined : createWorkbenchHttpAdapter(bindings.workbench);
+  const workforceAdministrationHttp = bindings.workforceAdministration === undefined
+    ? undefined
+    : createWorkforceAdministrationHttpAdapter(bindings.workforceAdministration);
 
   return Object.freeze({
     authorize,
@@ -274,6 +290,13 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
       authenticationCallbackUrl: bindings.authenticationCallbackUrl,
       dependencies: bindings.readiness,
       platformHttp,
+      ...(workbenchHttp === undefined ? {} : { workbenchHttp }),
+      ...(workforceAdministrationHttp === undefined ? {} : { workforceAdministrationHttp }),
+      ...(bindings.sessions.logout === undefined ? {} : {
+        revokeBrowserSession: async (credential: string, traceId: string) => {
+          await bindings.sessions.logout?.(credential, undefined, traceId);
+        },
+      }),
       onStart: async (signal: AbortSignal) => {
         assertStartupActive(signal);
         await bindings.databaseCompatibility.assertCompatible(signal);

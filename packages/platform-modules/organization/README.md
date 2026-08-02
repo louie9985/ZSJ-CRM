@@ -1,6 +1,6 @@
 # Organization
 
-Owns workforce people, employments, organization units, positions, and effective-dated assignments. Business-specific territories, customer ownership, and performance rules do not belong here.
+Owns workforce people, their real-name profiles, employments, named organization units, named positions, and effective-dated assignments. Business-specific territories, customer ownership, and performance rules do not belong here.
 
 An authenticated Keycloak or federated identity does not automatically imply an active organization membership or position. Keycloak owns provider federation, while this module owns the effective association from a Keycloak `issuer + sub` to one workforce person. A missing or conflicting association, or an inactive employment, fails closed.
 

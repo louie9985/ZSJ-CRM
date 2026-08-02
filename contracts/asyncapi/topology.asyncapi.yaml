@@ -158,6 +158,86 @@ channels:
       blockedBy: reviewed-dlq-replay-authorization-contract
       auditRequired: true
       authoritativeStateRecheckRequired: true
+  workforceKeycloakSyncExchange:
+    address: workforce-access.keycloak-sync.v1
+    title: Workforce Access Keycloak synchronization ingress
+    description: Accepts only the reviewed private v1 Job envelope from the Workforce Access Outbox publisher.
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.platform.jobs.v1, type: direct, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  workforceKeycloakSyncRetryExchange:
+    address: workforce-access.keycloak-sync.v1.retry
+    title: Workforce Access Keycloak synchronization fixed-delay retry ingress
+    description: Routes only the reviewed 5 and 30 second retry layers; arbitrary delay and direct main-queue publication are forbidden.
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.platform.retry.v1, type: direct, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
+  workforceKeycloakSyncQueue:
+    address: ai-crm.platform.workforce-access.keycloak-sync.v1
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.platform.workforce-access.keycloak-sync.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-consumer: platform.workforce-access.keycloak-sync.v1
+    x-ai-crm-bindings: [{ exchange: ai-crm.platform.jobs.v1, routingKey: workforce-access.keycloak-sync.v1 }]
+    x-ai-crm-queue-arguments: { x-dead-letter-exchange: ai-crm.platform.dead-letter.v1, x-dead-letter-routing-key: workforce-access.keycloak-sync.v1.dead }
+  workforceKeycloakSyncRetry5Queue:
+    address: ai-crm.platform.workforce-access.keycloak-sync.retry.5s.v1
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.platform.workforce-access.keycloak-sync.retry.5s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings: [{ exchange: ai-crm.platform.retry.v1, routingKey: workforce-access.keycloak-sync.v1.retry.5s }]
+    x-ai-crm-queue-arguments: { x-message-ttl: 5000, x-dead-letter-exchange: ai-crm.platform.jobs.v1, x-dead-letter-routing-key: workforce-access.keycloak-sync.v1 }
+    x-ai-crm-consumer-forbidden: true
+  workforceKeycloakSyncRetry30Queue:
+    address: ai-crm.platform.workforce-access.keycloak-sync.retry.30s.v1
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.platform.workforce-access.keycloak-sync.retry.30s.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings: [{ exchange: ai-crm.platform.retry.v1, routingKey: workforce-access.keycloak-sync.v1.retry.30s }]
+    x-ai-crm-queue-arguments: { x-message-ttl: 30000, x-dead-letter-exchange: ai-crm.platform.jobs.v1, x-dead-letter-routing-key: workforce-access.keycloak-sync.v1 }
+    x-ai-crm-consumer-forbidden: true
+  workforceKeycloakSyncDeadLetterQueue:
+    address: ai-crm.platform.workforce-access.keycloak-sync.dead.v1
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: ai-crm.platform.workforce-access.keycloak-sync.dead.v1, durable: true, exclusive: false, autoDelete: false }
+        bindingVersion: 0.3.0
+    x-ai-crm-bindings: [{ exchange: ai-crm.platform.dead-letter.v1, routingKey: workforce-access.keycloak-sync.v1.dead }]
+    x-ai-crm-replay: { automatic: false, enabled: false, blockedBy: reviewed-dlq-replay-authorization-contract, auditRequired: true, authoritativeStateRecheckRequired: true }
+  workforceKeycloakSyncDeadLetterExchange:
+    address: workforce-access.keycloak-sync.v1.dead
+    title: Workforce Access Keycloak synchronization terminal isolation
+    description: Terminal and exhausted deliveries remain isolated until an authorized, audited replay performs a fresh authoritative-state check.
+    messages:
+      workforceKeycloakSyncV1: { $ref: '#/components/messages/workforceKeycloakSyncV1' }
+    bindings:
+      amqp:
+        is: routingKey
+        exchange: { name: ai-crm.platform.dead-letter.v1, type: direct, durable: true, autoDelete: false }
+        bindingVersion: 0.3.0
 operations:
   publishTaskProjectionLifecycle:
     action: send
@@ -239,6 +319,54 @@ operations:
         - code: eventing_handler_timeout
           retryableFlagRequired: true
       unknownErrorDisposition: terminal
+      policyVersion: 1
+  publishWorkforceKeycloakSync:
+    action: send
+    channel: { $ref: '#/channels/workforceKeycloakSyncExchange' }
+    messages: [{ $ref: '#/channels/workforceKeycloakSyncExchange/messages/workforceKeycloakSyncV1' }]
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+    x-ai-crm-publisher-confirm: required
+  publishWorkforceKeycloakSyncRetry:
+    action: send
+    channel: { $ref: '#/channels/workforceKeycloakSyncRetryExchange' }
+    messages: [{ $ref: '#/channels/workforceKeycloakSyncRetryExchange/messages/workforceKeycloakSyncV1' }]
+    bindings:
+      amqp: { mandatory: true, deliveryMode: 2, bindingVersion: 0.3.0 }
+    x-ai-crm-publisher-confirm: required-before-original-ack
+    x-ai-crm-routing-keys:
+      - workforce-access.keycloak-sync.v1.retry.5s
+      - workforce-access.keycloak-sync.v1.retry.30s
+  consumeWorkforceKeycloakSync:
+    action: receive
+    channel: { $ref: '#/channels/workforceKeycloakSyncQueue' }
+    messages: [{ $ref: '#/channels/workforceKeycloakSyncQueue/messages/workforceKeycloakSyncV1' }]
+    bindings:
+      amqp: { ack: true, bindingVersion: 0.3.0 }
+    x-ai-crm-ack-mode: manual-after-inbox-transaction
+    x-ai-crm-delivery-semantics: at-least-once
+    x-ai-crm-authoritative-state-recheck: account-status-keycloak-link-and-current-identifiers
+    x-ai-crm-failure-handling:
+      immediateRequeue: false
+      retryPublishConfirmBeforeAck: true
+      retryBudgetSource: envelope.policy
+      retryRoute:
+        exchange: ai-crm.platform.retry.v1
+        layers:
+          - { attempt: 2, delaySeconds: 5, routingKey: workforce-access.keycloak-sync.v1.retry.5s }
+          - { attempt: 3, delaySeconds: 30, routingKey: workforce-access.keycloak-sync.v1.retry.30s }
+      terminalRoute: workforce-access.keycloak-sync.v1.dead
+      exhaustedRoute: workforce-access.keycloak-sync.v1.dead
+    x-ai-crm-runtime-policy:
+      id: workforceKeycloakSyncPolicyV1
+      owner: platform.workforce-access
+      handler: workforce-access.keycloak-sync.v1
+      maxAttempts: 3
+      backoffSeconds: [5, 30]
+      timeoutMs: 10000
+      prefetch: 2
+      concurrency: 1
+      unknownErrorDisposition: retryable-until-isolated
       policyVersion: 1
 components:
   messages:
@@ -334,6 +462,15 @@ components:
       payload:
         $ref: ../jobs/job-envelope.v1.schema.json
       x-ai-crm-policy-source: payload.policy
+    workforceKeycloakSyncV1:
+      name: workforceKeycloakSyncV1
+      title: Workforce Keycloak synchronization job v1
+      contentType: application/json
+      headers: { $ref: '#/components/schemas/rabbitMessageHeadersV1' }
+      payload:
+        $ref: ../jobs/workforce-keycloak-sync.v1.schema.json
+      x-ai-crm-policy-source: fixed-reviewed-envelope-policy
+      x-ai-crm-authoritative-state-recheck: required-before-every-side-effect
   schemas:
     rabbitMessageHeadersV1:
       type: object

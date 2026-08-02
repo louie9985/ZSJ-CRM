@@ -73,6 +73,18 @@ describe("transactional core", () => {
     await expect(createEventingCore(store).cancelJob(input.jobId,"synthetic cancellation race")).resolves.toMatchObject({status:"processing"});
   });
   it("emits bounded telemetry for duplicate Inbox hits without message payloads",async()=>{const observations:unknown[]=[];const store=new InMemoryEventingStore();const core=createEventingCore(store,{observer:{record:(item)=>{observations.push(item);}}});const input=event();const handler={kind:"event" as const,messageType:input.type,messageVersion:1,handle:()=>Promise.resolve()};await core.consume({attempt:1,consumer:"platform.synthetic-projection",envelope:input,timeoutMs:1000},handler);await core.consume({attempt:2,consumer:"platform.synthetic-projection",envelope:input,timeoutMs:1000},handler);expect(observations).toContainEqual(expect.objectContaining({operation:"consume",outcome:"duplicate"}));expect(JSON.stringify(observations)).not.toContain("synthetic-only");});
+  it("isolates a queued Job and runs its durable failure callback in one transaction", async () => {
+    const store = new InMemoryEventingStore(); const core = createEventingCore(store); const input = job(); await core.submitJob(input);
+    const callback = vi.fn(() => Promise.resolve());
+    await expect(core.isolateJobForDeliveryFailure({ jobId: input.jobId, attempt: 3, category: "attempts_exhausted" }, callback)).resolves.toEqual({ jobId: input.jobId, status: "isolated" });
+    expect(store.jobs.get(input.jobId)?.status).toBe("isolated");
+    expect(callback).toHaveBeenCalledWith({ jobId: input.jobId, attempt: 3, category: "attempts_exhausted" });
+  });
+  it("rolls Job isolation back when the durable failure callback cannot commit", async () => {
+    const store = new InMemoryEventingStore(); const core = createEventingCore(store); const input = job(); await core.submitJob(input);
+    await expect(core.isolateJobForDeliveryFailure({ jobId: input.jobId, attempt: 1, category: "terminal_failure" }, () => Promise.reject(new Error("durable callback unavailable")))).rejects.toThrow("durable callback unavailable");
+    expect(store.jobs.get(input.jobId)?.status).toBe("queued");
+  });
 });
 
 describe("Outbox publisher and operations", () => {
@@ -131,4 +143,40 @@ describe("RabbitMQ boundary", () => {
   });
   it("derives retry attempts and backoff from the validated Job contract",async()=>{let delay=0;const input=job();const delivery={body:Buffer.from(JSON.stringify(input)),attempt:2,ack:()=>undefined,retry:(seconds:number)=>{delay=seconds;return Promise.resolve();},deadLetter:()=>undefined};await handleRabbitDelivery(delivery,()=>Promise.reject(new Error("retry")),{eventPolicy:{maxAttempts:1,backoffSeconds:[],timeoutMs:1000},classify:()=>"retryable"});expect(delay).toBe(5);});
   it("dead-letters an over-budget delivery before invoking the consumer",async()=>{const calls:string[]=[];await handleRabbitDelivery({body:Buffer.from(JSON.stringify(event())),attempt:3,ack:()=>calls.push("ack"),retry:()=>Promise.resolve(),deadLetter:()=>calls.push("dead-letter")},()=>{calls.push("consume");return Promise.resolve();},{eventPolicy:{maxAttempts:2,backoffSeconds:[1],timeoutMs:1000},classify:()=>"retryable"});expect(calls).toEqual(["dead-letter"]);});
+  it("persists stable Job isolation metadata before terminal dead-lettering", async () => {
+    const calls: string[] = []; const input = job();
+    await handleRabbitDelivery(
+      { body: Buffer.from(JSON.stringify(input)), attempt: 1, ack: () => calls.push("ack"), retry: () => Promise.resolve(), deadLetter: () => calls.push("dead-letter") },
+      () => Promise.reject(new Error("raw provider failure must not escape")),
+      { eventPolicy: { maxAttempts: 1, backoffSeconds: [], timeoutMs: 1000 }, classify: () => "terminal", onIsolated: (notice) => { calls.push(`isolate:${notice.category}:${String(notice.attempt)}`); expect(notice).not.toHaveProperty("error"); expect(notice).not.toHaveProperty("payload"); return Promise.resolve(); } },
+    );
+    expect(calls).toEqual(["isolate:terminal_failure:1", "dead-letter"]);
+  });
+  it("does not ACK or dead-letter when durable Job isolation fails", async () => {
+    const calls: string[] = []; const input = job();
+    await expect(handleRabbitDelivery(
+      { body: Buffer.from(JSON.stringify(input)), attempt: 4, ack: () => calls.push("ack"), retry: () => { calls.push("retry"); return Promise.resolve(); }, deadLetter: () => calls.push("dead-letter") },
+      () => { calls.push("consume"); return Promise.resolve(); },
+      { eventPolicy: { maxAttempts: 1, backoffSeconds: [], timeoutMs: 1000 }, classify: () => "terminal", onIsolated: (notice) => { expect(notice.category).toBe("delivery_budget_exceeded"); calls.push("isolate"); return Promise.reject(new Error("durable callback unavailable")); } },
+    )).rejects.toThrow("durable callback unavailable");
+    expect(calls).toEqual(["isolate"]);
+  });
+  it("isolates retryable Job failures when their attempt budget is exhausted", async () => {
+    const calls: string[] = []; const input = job();
+    await handleRabbitDelivery(
+      { body: Buffer.from(JSON.stringify(input)), attempt: 3, ack: () => calls.push("ack"), retry: () => { calls.push("retry"); return Promise.resolve(); }, deadLetter: () => calls.push("dead-letter") },
+      () => Promise.reject(new Error("retry budget exhausted")),
+      { eventPolicy: { maxAttempts: 1, backoffSeconds: [], timeoutMs: 1000 }, classify: () => "retryable", onIsolated: ({ category }) => { calls.push(category); return Promise.resolve(); } },
+    );
+    expect(calls).toEqual(["attempts_exhausted", "dead-letter"]);
+  });
+  it("exposes authoritative consumption results before ACK", async () => {
+    const calls: string[] = []; const input = job();
+    await handleRabbitDelivery(
+      { body: Buffer.from(JSON.stringify(input)), attempt: 1, ack: () => calls.push("ack"), retry: () => Promise.resolve(), deadLetter: () => calls.push("dead-letter") },
+      () => Promise.resolve({ status: "skipped", reason: "authoritative_state_rejected" }),
+      { eventPolicy: { maxAttempts: 1, backoffSeconds: [], timeoutMs: 1000 }, classify: () => "terminal", onConsumed: (notice) => { calls.push(`${notice.result.status}:${"reason" in notice.result ? notice.result.reason : "none"}`); return Promise.resolve(); } },
+    );
+    expect(calls).toEqual(["skipped:authoritative_state_rejected", "ack"]);
+  });
 });

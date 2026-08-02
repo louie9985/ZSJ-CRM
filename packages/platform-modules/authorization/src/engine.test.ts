@@ -8,6 +8,7 @@ import {
   InMemoryAuthorizationPolicyStore,
   SYNTHETIC_AUTHORIZATION_FIXTURE,
   syntheticPolicySnapshot,
+  syntheticPolicySnapshotV2,
 } from "./testing.js";
 import type {
   AuthorizationDecisionRecord,
@@ -61,6 +62,75 @@ describe("authorization engine", () => {
       workforcePersonId: SYNTHETIC_AUTHORIZATION_FIXTURE.workforcePersonId,
       selectedAssignmentId: SYNTHETIC_AUTHORIZATION_FIXTURE.assignmentBeta,
     }, scopedRequest("beta"))).resolves.toMatchObject({ allowed: false, reason: "invalid_context" });
+  });
+
+  it("lets an active v2 super-administrator grant use every declared permission without an Assignment", async () => {
+    const base = syntheticPolicySnapshotV2();
+    const snapshot: AuthorizationPolicySnapshot = {
+      ...base,
+      grants: [],
+      roles: [],
+      superAdministratorGrants: [{
+        grantId: "54000000-0000-4000-8000-000000000001",
+        validFrom: "2026-01-01T00:00:00.000Z",
+        workforcePersonId: SYNTHETIC_AUTHORIZATION_FIXTURE.workforcePersonId,
+      }],
+    };
+    const store = new InMemoryAuthorizationPolicyStore(snapshot);
+    const service = createAuthorizationService(
+      { recorder: { record: () => Promise.resolve() }, store },
+      { cacheTtlSeconds: 60, clock: () => new Date("2026-02-01T00:00:00.000Z"), traceId: () => "1234567890abcdef1234567890abcdef" },
+    );
+
+    await expect(service.check(subject(), scopedRequest("alpha")))
+      .resolves.toMatchObject({ allowed: true, reason: "allowed" });
+    await expect(service.check(subject(), { action: "read", resource: "synthetic.unknown" }))
+      .resolves.toMatchObject({ allowed: false, reason: "unknown_permission" });
+  });
+
+  it("automatically includes future declared CRM permissions in the fixed CRM administrator role", async () => {
+    const base = syntheticPolicySnapshotV2();
+    const futurePermission = { action: "read", applicationId: "crm", code: "crm.future-feature:read", resource: "crm.future-feature", scopeDimensions: [] } as const;
+    const snapshot: AuthorizationPolicySnapshot = {
+      ...base,
+      permissions: [...base.permissions, futurePermission],
+      roles: base.roles.map((role, index) => index === 0 ? { ...role, roleKey: "crm.system-administrator" } : role),
+    };
+    const service = createAuthorizationService(
+      { recorder: { record: () => Promise.resolve() }, store: new InMemoryAuthorizationPolicyStore(snapshot) },
+      { cacheTtlSeconds: 60, clock: () => new Date("2026-02-01T00:00:00.000Z"), traceId: () => "1234567890abcdef1234567890abcdef" },
+    );
+    await expect(service.check(subject(SYNTHETIC_AUTHORIZATION_FIXTURE.assignmentAlpha), { action: "read", resource: "crm.future-feature" }))
+      .resolves.toMatchObject({ allowed: true, reason: "allowed" });
+    await expect(service.check(subject(SYNTHETIC_AUTHORIZATION_FIXTURE.assignmentAlpha), { action: "read", resource: "crm.unregistered" }))
+      .resolves.toMatchObject({ allowed: false, reason: "unknown_permission" });
+  });
+
+  it("treats v2 super-administrator validity as half-open and fails closed for malformed v2 metadata", async () => {
+    const base = syntheticPolicySnapshotV2();
+    const expired = new InMemoryAuthorizationPolicyStore({
+      ...base, grants: [], roles: [], superAdministratorGrants: [{
+        grantId: "54000000-0000-4000-8000-000000000002",
+        validFrom: "2026-01-01T00:00:00.000Z", validTo: "2026-02-01T00:00:00.000Z",
+        workforcePersonId: SYNTHETIC_AUTHORIZATION_FIXTURE.workforcePersonId,
+      }],
+    });
+    const service = createAuthorizationService(
+      { recorder: { record: () => Promise.resolve() }, store: expired },
+      { cacheTtlSeconds: 60, clock: () => new Date("2026-02-01T00:00:00.000Z"), traceId: () => "1234567890abcdef1234567890abcdef" },
+    );
+    await expect(service.check(subject(), scopedRequest("alpha")))
+      .resolves.toMatchObject({ allowed: false, reason: "no_applicable_grant" });
+
+    const malformed = { ...base, permissions: base.permissions.map(({ action, code, resource, scopeDimensions }) => ({
+      action, code, resource, scopeDimensions,
+    })) };
+    const malformedService = createAuthorizationService(
+      { recorder: { record: () => Promise.resolve() }, store: new InMemoryAuthorizationPolicyStore(malformed as AuthorizationPolicySnapshot) },
+      { cacheTtlSeconds: 60, traceId: () => "1234567890abcdef1234567890abcdef" },
+    );
+    await expect(malformedService.check(subject(), SYNTHETIC_AUTHORIZATION_FIXTURE.unscopedPermission))
+      .resolves.toMatchObject({ allowed: false, reason: "policy_invalid" });
   });
 
   it("resolves a typed scope without query-language material", async () => {

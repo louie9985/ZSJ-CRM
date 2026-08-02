@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "workforce-access",
+  "purpose": "Add a durable, PII-free projection of Keycloak synchronization operations and their controlled retry lineage.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Creates one new workforce-access-owned table and validates its foreign key against the existing account directory.",
+  "dataImpact": "Additive only; existing accounts and operation receipts are not rewritten.",
+  "backfill": "Not required. Only synchronization Jobs submitted after deployment create projection rows.",
+  "destructive": false,
+  "recovery": "Leave the additive table in place and forward-fix. Existing local access state remains authoritative if identity synchronization is unavailable.",
+  "forwardFix": "Append a reviewed workforce-access-owned migration for later changes. Do not rewrite migration 0018."
+}
