@@ -2,17 +2,17 @@
 
 - 状态：`EXTERNAL_BLOCKED`
 - 日期：2026-08-02
-- 候选基线：`9698e3e` 加本轮未提交验收修复候选
+- 候选基线：`a7c3e90`
 - 范围：第一阶段 G5 必需证据汇总与剩余外部验收边界
 
 ## 已知事实
 
-- Walking Skeleton 关键因果链已通过；`mainWalkingSkeletonReady=true`，组合验收状态为 `e2e-browser-to-worker-causal-evidence-passed`。权威 G4 仍为 `PARTIAL`，因为 17-03、17-08、17-09、17-17 尚未完整闭合。
-- 当前树完整 `pnpm check` 通过 133/133 Turbo tasks；API 181 passed/5 skipped，E2E 53/53。Authorization Redis 集成通过受支持的 Secret-file override 连接运行中的 dev Redis，未跳过该集成测试。
+- Walking Skeleton 本地业务中立组合验收已通过；`mainWalkingSkeletonReady=true`，组合验收状态为 `e2e-browser-to-worker-causal-evidence-passed`，权威清单第 17 节 17/17 已完成，G4 为 `PASSED_LOCAL`。
+- 当前树完整 `pnpm check` 通过 133/133 Turbo tasks；API 193 passed/5 skipped，E2E 75/75，Workbench 34/34。Authorization Redis 集成通过受支持的 Secret-file override 连接运行中的 dev Redis，未跳过该集成测试。
 - 当前机器 Docker Engine 29.6.2 可用；修改后的容器级组合 E2E 已重跑通过。真实镜像 Registry、预发布发布/回滚和恢复演练仍未执行。
 - 项目没有可供本任务使用的共享测试、预发布或生产环境，也没有已批准的恢复 Owner、复核人、故障域外备份目标和 Secret 离线私钥托管事实。
 - `docs/02-业务规则/` 尚无已确认业务规则，`packages/domain-modules/` 只有边界说明，没有正式 CRM 模块。
-- 权威验收清单当前实际包含 201 项；最新审计为 `VERIFIED_REPO 162 / PARTIAL 28 / EXTERNAL_BLOCKED 11 / CONTRACT_BLOCKED 0 / NOT_IMPLEMENTED 0`。
+- 权威验收清单当前实际包含 201 项；第 17 节四个旧部分项闭合后的最新审计为 `VERIFIED_REPO 166 / PARTIAL 24 / EXTERNAL_BLOCKED 11 / CONTRACT_BLOCKED 0 / NOT_IMPLEMENTED 0`。
 - `.handoffs/CURRENT-G5-INDEPENDENT-REVIEW.md` 的最终复审无剩余 P0-P3；该结论只覆盖当前仓库候选，不覆盖外部发布与恢复执行。
 
 ## 允许的假设
@@ -38,8 +38,8 @@
 | `pnpm check` 完整输出 | VERIFIED_LOCAL | 当前树 133/133，Redis 集成启用；见 `tests/e2e/CURRENT-ENVIRONMENT-EVIDENCE.md` | 最终提交后由受信 CI 保存提交寻址输出 |
 | 应用和镜像版本清单 | PARTIAL | 五个应用均为仓库版本 `0.0.0`；生产 Release Manifest 格式和 Digest 门存在 | 受信 Registry 的实际 API/Worker Digest 及预发布拉取记录 |
 | 合同 Bundle/生成 Client | VERIFIED_REPO | 本轮 `contracts:check` 29/29，确定性生成门纳入 `pnpm check` | 最终提交后由受信 CI 保存结果 |
-| 数据库迁移清单 | VERIFIED_REPO | 生产迁移 `0000000001`～`0000000015`；E2E 测试迁移 `0000000016`～`0000000017` 独立存在；迁移制品门已实现 | 首个共享环境保存实际应用清单、checksum、备份点和锁影响 |
-| Walking Skeleton E2E | PARTIAL | 当前树组合 Trace/FileReference/Audit、三类授权拒绝和相同 HTTP 重放关键链已通过 | 浏览器 Workbench 注册、耐久 Task/Notification 轮询、表单 UI 到同一提交及真实日志/Sentry 抽样 |
+| 数据库迁移清单 | VERIFIED_REPO | 生产迁移 `0000000001`～`0000000015`；E2E 测试迁移 `0000000016`～`0000000018` 独立存在；迁移制品门已实现 | 首个共享环境保存实际应用清单、checksum、备份点和锁影响 |
+| Walking Skeleton E2E | VERIFIED_LOCAL | 提交 `a7c3e90` 已闭合 Workbench Registry/Deep Link、Form UI/服务端提交、稳定 FileReference、Task 完成/重放、耐久 Task/Notification 观察及 Trace/Audit 关联，第 17 节 17/17 完成 | 最终提交后由受信 CI 保存提交寻址输出；真实日志/Sentry 抽样仍是独立外部签收项 |
 | 授权拒绝和幂等故障报告 | VERIFIED_LOCAL | 主链覆盖拒绝、过期、依赖故障、重试、恢复和重复投递 | 外部环境发布后按相同候选抽样 |
 | 日志/Sentry 敏感数据抽样 | PARTIAL | 清洗、日志和 Sentry Adapter 自动化测试通过 | 真实预发布日志与托管 Sentry Release/Environment 抽样报告 |
 | 预发布部署与回滚报告 | EXTERNAL_BLOCKED | OPS-01 发布门和 Runbook 已实现 | Digest 拉取、non-root、迁移、健康、逐台发布、Worker Drain、Nginx 流量及回滚实测 |
@@ -56,4 +56,4 @@
 
 ## G5 决策
 
-G5 当前保持 `EXTERNAL_BLOCKED`，G4 保持 `PARTIAL`。本地关键因果链和仓库发布/恢复门已经闭合，但剩余浏览器组合项及外部工作不能在缺少运行依赖、受控环境和正式治理身份时被真实执行。第一阶段不能标记完成，也不能进入 CRM 业务模块开发。
+G5 当前保持 `EXTERNAL_BLOCKED`，G4 为 `PASSED_LOCAL`。本地业务中立 Walking Skeleton 和仓库发布/恢复门已经闭合，但外部发布、真实 Provider/主机遥测与恢复工作不能在缺少受控环境和正式治理身份时被真实执行。第一阶段不能标记完成，也不能进入 CRM 业务模块开发。

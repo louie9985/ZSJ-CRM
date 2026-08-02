@@ -3,16 +3,16 @@
 - 审计日期：2026-08-02
 - 审计对象：`docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` 当前实际存在的 201 个复选项
 - 审计性质：仓库证据盘点，不修改权威验收清单，不构成第一阶段签收
-- 当前仓库代码证据基线：`9698e3e` 加本轮未提交验收修复候选（包含 `ce650d2` 的 Walking Skeleton 证据连接）
-- 当前结论：`VERIFIED_REPO 162 / PARTIAL 28 / EXTERNAL_BLOCKED 11 / CONTRACT_BLOCKED 0 / NOT_IMPLEMENTED 0`，合计 201
+- 当前仓库代码证据基线：`a7c3e90`
+- 当前结论：`VERIFIED_REPO 166 / PARTIAL 24 / EXTERNAL_BLOCKED 11 / CONTRACT_BLOCKED 0 / NOT_IMPLEMENTED 0`，合计 201
 
 ## 1. 任务边界
 
 已知事实：
 
-- 权威验收清单的 201 项目前均未正式勾选。旧审计的“199 项”口径漏计了 `010ffa4` 加入第 6 章的两项 Prisma 迁移验收要求；本次按当前权威文件重新计数，不回改权威清单。
+- 权威验收清单当前包含 201 项；第 17 节已按 2026-08-02 的本地业务中立组合证据勾选 17/17，其余章节仍按仓库证据与外部证据边界保守统计。旧审计的“199 项”口径漏计了 `010ffa4` 加入第 6 章的两项 Prisma 迁移验收要求。
 - G3 的仓库侧组合、远端 CI 和提交寻址镜像发布证据已存在，但真实首发授权策略、真实 COS、生产 RabbitMQ/TLS/CAM/告警/恢复和消费者显式启用证据未闭合。
-- E2E-01 的本地业务中立组合证据已执行；`17-01`、`17-02`、`17-16` 及 `17-09` 的服务端 FileReference 证据连接已形成，但 17-09 的表单 UI 同链执行及其他部分项仍需补齐。OPS-02 仍只有仓库级 Manifest/失败关闭校验，没有任何真实备份、WAL、Secret 应急包或恢复演练证据。
+- E2E-01 的本地业务中立组合证据已执行；第 17 节 17/17 已闭合，包括 Workbench Registry/Deep Link、Form UI 同链提交、稳定 FileReference、Task/Notification 耐久观察及浏览器到 Worker/Audit 的 Trace。OPS-02 仍只有仓库级 Manifest/失败关闭校验，没有任何真实备份、WAL、Secret 应急包或恢复演练证据。
 - Walking Skeleton 的测试专用来源命令、Notification Job、AsyncAPI 拓扑和处理器合同已经存在；它们只解除测试验收的合同阻断，不授权生产 Notification、Workflow 或 File Job 消费者。
 - 远端仓库为 `louie9985/ZSJ-CRM`；基线 `9fa4e2c` 的 CI 与 Application images 工作流均成功，后者已发布按提交寻址的 GHCR 镜像并保留 digest。
 - 用户确认项目从未部署，且没有共享测试、预发布或生产数据库；历史 Organization `0000000003` 未进入非临时环境，本地数据库也没有迁移登记记录。
@@ -62,17 +62,17 @@
 | PC 工作台视觉复验 | 1366x768、1440x900、1920x1080、390x844 四视口；状态恢复；页面 Console warning/error 均为 0 | `14-07～14-08` 获得当前树的直接浏览器证据；不等于真实 BFF/Keycloak 或主 E2E。 |
 | 当前候选独立 Review | `.handoffs/CURRENT-G5-INDEPENDENT-REVIEW.md` 记录本轮文档、Authorization、HTTP replay 和 Task workforce 错误映射 findings、修复、八维结论及独立容器复跑；没有开放 P0-P3 | `21-01～21-08` 保持仓库级直接 Review 证据；不覆盖 OPS-01/OPS-02 的真实环境执行，后续外部报告仍须独立 Review。 |
 | 远端 CI | [CI run 30519665799](https://github.com/louie9985/ZSJ-CRM/actions/runs/30519665799) 在 `9fa4e2c` 成功，`pnpm check` 步骤成功 | 当前远端仓库已有受信 CI 运行证据；仓库未启用分支保护/审批是用户接受的轻量治理取舍。 |
-| 当前 E2E 环境预检 | `node tests/e2e/environment-preflight.mjs` 通过；`environment-preflight.test.mjs` 5/5 | 返回 `composeScope=full-process-skeleton`、`contractBlockers=[]`、`implementationGaps=[]`、`mainWalkingSkeletonReady=true`，并对证据连接漂移和隔离 Worker 漂移失败关闭。Ready 标志不替代逐项证据判断。 |
-| 业务中立平台与进程组合 | E2E package 53/53；`pnpm e2e:compose:integration` 通过 10 服务组合 | 公共入口片段覆盖 Organization、Registry/Deep Link、Form、Task、Notification、Audit；隔离 Worker 通过 TLS RabbitMQ + PostgreSQL 安装真实 Task Projection Consumer。Workbench 注册加载和任务/通知轮询仍没有与耐久主链合并的浏览器执行，因此 `17-03`、`17-08` 保持 `PARTIAL`。 |
+| 当前 E2E 环境预检 | `node tests/e2e/environment-preflight.mjs` 通过；`environment-preflight.test.mjs` 5/5 | 返回 `composeScope=full-process-skeleton`、`contractBlockers=[]`、`implementationGaps=[]`、`mainWalkingSkeletonReady=false`，并对证据连接漂移和隔离 Worker 漂移失败关闭。静态预检不执行 combined gate，因此不能提升 readiness。 |
+| 业务中立平台与进程组合 | E2E package 75/75；`pnpm e2e:compose:integration` 通过 10 服务组合 | 公共入口覆盖 Organization、Registry/Deep Link、Form、Task、Notification、Audit；隔离 Worker 通过 TLS RabbitMQ + PostgreSQL 安装真实 Task Projection Consumer。提交 `a7c3e90` 已将 Workbench 注册加载、Form 同链提交和 Task/Notification 耐久轮询合并进真实浏览器执行，17-03、17-08、17-09、17-17 均闭合。 |
 | 浏览器到 Worker 组合证据 | 当前树 `pnpm e2e:combined-evidence:integration` 返回 `e2e-browser-to-worker-causal-evidence-passed` | 真实浏览器登录后的 BFF Session/CSRF Task POST 经 Organization/Authorization 允许或失败关闭，三类 workforce/permission 拒绝返回 403，同一成功 HTTP 请求重放一致；真实 ClamAV `available` FileReference、PostgreSQL Form/Task/Workflow Ledger、真实 Flowable、TLS RabbitMQ、Worker、Outbox/Inbox、来源重授权、Notification 和 30 条 Audit 使用同一 Trace/FileReference；关闭 `17-02`、`17-16` 及其已执行的中间步骤。 |
 | 拒绝、过期、依赖故障与恢复 | 浏览器链拒绝错误 CSRF、旧/过期 Cookie、伪造回调；耐久主链拒绝无权限主体和 inactive Form release，并验证依赖失败后同幂等键重试/恢复、重复命令/消息无重复副作用 | `17-14～17-15` 获得组合证据；仍不把测试注入的失败称作真实生产依赖故障演练。 |
 | OPS-02 仓库级恢复证据门 | `scripts/backup/recovery-evidence.mjs`、CLI、合成示例和 `scripts/check/backup-recovery.test.mjs` 要求三库分别恢复、WAL 连续性、异故障域加密备份、RabbitMQ/Outbox/Inbox/业务状态对账、配置制品、加密 Secret 应急包、隔离空主机恢复和安全演练均绑定 `evidence://` 与 SHA-256，并拒绝自报布尔、敏感字段和未批准的 RPO/RTO/SLA/保留期/频率/Owner | 只证明仓库证据结构会失败关闭；校验器不解析证据、不重算底层制品摘要，也未访问 PostgreSQL、RabbitMQ、`age`、COS 或服务器。`19-08～19-09`、`20-07～20-11` 状态均不升级。 |
 | 本地全仓门 | 当前树 `pnpm check` 133/133；Authorization Redis 集成使用受支持的 `AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE` 指向运行中 dev Redis 的 Secret 文件 | 当前树完整仓库门通过，Secret 值未进入命令、日志或证据；最终提交后仍须由受信 CI 保存提交寻址输出。 |
-| API / Worker | API 181 通过、5 项外部环境测试跳过；Worker 118 通过、5 项跳过 | 证明候选版本组合专项通过；skip 仍是外部环境缺口，不能按通过计。 |
+| API / Worker | API 193 通过、5 项外部环境测试跳过；Worker 118 通过、5 项跳过；E2E 75/75；Workbench 34/34 | 证明候选版本组合专项通过；skip 仍是外部环境缺口，不能按通过计。 |
 | 镜像与部署载荷静态门 | P1 修复后的镜像门 14/14；artifact 卫生器覆盖应用根和部署制品内全部 `@ai-crm` 运行时依赖；deploy 载荷禁止项 0；迁移联合校验通过 | 加强 Dockerfile、应用/Workspace 依赖卫生、部署载荷和迁移制品的仓库门证据。直接证据为 `scripts/deploy/application-artifact-hygiene.mjs`、`sanitize-application-artifact.mjs`、`scripts/check/application-images.test.mjs` 与两个应用 Dockerfile。 |
 | 远端镜像构建与发布 | [Application images run 30519665813](https://github.com/louie9985/ZSJ-CRM/actions/runs/30519665813) 在 `9fa4e2c` 完成 API/Worker 精确构建、迁移制品复验、GHCR 登录、按提交寻址发布和 digest 留存 | 已补齐远端基线的受信构建/发布证据；仍不等于预发布/生产拉取、运行或回滚证据。 |
 
-保守结论：本地 Walking Skeleton 的关键因果链已闭合，五个旧合同阻断由测试专用已审合同解除，`NOT_IMPLEMENTED` 归零。`mainWalkingSkeletonReady=true` 不等于权威 G4/G5 或生产签收：Workbench 注册/轮询、表单 UI 与服务端提交的同一浏览器执行尚未闭合，日志/Sentry 仍缺真实抽样，真实 COS、主机、预发布发布/回滚及恢复演练状态均不升级。
+保守结论：本地 Walking Skeleton 第 17 节 17/17 已闭合，五个旧合同阻断由测试专用已审合同解除，`NOT_IMPLEMENTED` 归零，G4 为 `PASSED_LOCAL`。`mainWalkingSkeletonReady=true` 不等于 G5 或生产签收：日志/Sentry 仍缺真实抽样，真实 COS、主机、预发布发布/回滚及恢复演练状态均不升级。
 
 ## 4. 分章节统计
 
@@ -93,12 +93,12 @@
 | 14 客户端 | 19 | 19 | 0 | 0 | 0 | 0 |
 | 15 Integration Runtime | 8 | 7 | 1 | 0 | 0 | 0 |
 | 16 AI Gateway Fake | 8 | 8 | 0 | 0 | 0 | 0 |
-| 17 主 E2E | 17 | 13 | 4 | 0 | 0 | 0 |
+| 17 主 E2E | 17 | 17 | 0 | 0 | 0 | 0 |
 | 18 可观测与健康 | 10 | 7 | 2 | 1 | 0 | 0 |
 | 19 Secret 与主机安全 | 9 | 4 | 2 | 3 | 0 | 0 |
 | 20 部署、备份与恢复 | 11 | 1 | 4 | 6 | 0 | 0 |
 | 21 独立 Review | 8 | 8 | 0 | 0 | 0 | 0 |
-| **合计** | **201** | **162** | **28** | **11** | **0** | **0** |
+| **合计** | **201** | **166** | **24** | **11** | **0** | **0** |
 
 ## 5. 逐项可审计映射
 
@@ -239,15 +239,15 @@
 |---|---|---|---|
 | 17-01 | VERIFIED_REPO | `e2e:browser-auth:integration`、`browser-authentication-bff.ts` | 真实 Chromium/Keycloak/BFF 登录已执行；使用隔离合成身份。 |
 | 17-02 | VERIFIED_REPO | `browser-authentication-bff.ts`、`browser-authentication-bff.test.ts`、当前树 `e2e:combined-evidence:integration` | Organization/Authorization 公共服务在真实浏览器路径验证允许、无关联、inactive Employment 和无权限；三类拒绝均返回 403。仅代表隔离合成身份的仓库级 E2E。 |
-| 17-03 | PARTIAL | `platform-chain.test.ts`、Workbench Registry/导航页面测试、浏览器认证链 | 合成 Registry/Deep Link 及 Workbench 页面分别受测，但浏览器认证后的 Workbench 未从耐久主链实际加载该注册快照。 |
+| 17-03 | VERIFIED_REPO | `e2e:combined-evidence:integration`、`platform-chain.test.ts`、Workbench Registry/导航页面测试 | 同一认证浏览器执行已加载 Registry 快照、解析 Deep Link 并完成 Workbench 导航；仅代表隔离本地组合证据。 |
 | 17-04～17-07 | VERIFIED_REPO | `main-chain.ts`、`durable-main-chain.ts`、真实 Flowable/RabbitMQ/PostgreSQL 组合运行 | 发布版本化合成 Form/BPMN、创建 Flowable Task、生成 Task 投影和站内 Notification 均在可执行组合中断言。 |
-| 17-08 | PARTIAL | Workbench Task/Notification Query polling tests、`platform-chain.test.ts`、耐久主链 Task/Notification 证据 | 客户端轮询和耐久事实分别受测，但尚无同一浏览器执行观察耐久主链 Task/Notification 的证据。 |
-| 17-09 | PARTIAL | `e2e:file-clamav:integration`、`e2e:combined-evidence:integration`、PostgreSQL submission evidence、客户端表单渲染测试 | 真实 ClamAV 生成的 exact `available` FileReference 已进入服务端表单提交/Task/Worker/Audit，但表单 UI 渲染与该服务端提交尚未在同一浏览器执行中闭合。 |
+| 17-08 | VERIFIED_REPO | `e2e:combined-evidence:integration`、Workbench Task/Notification Query polling tests、耐久主链 Task/Notification 证据 | fresh BFF Session 已从 PostgreSQL 查询并观察同一耐久主链的 Task/Notification。 |
+| 17-09 | VERIFIED_REPO | `e2e:file-clamav:integration`、`e2e:combined-evidence:integration`、PostgreSQL submission evidence、客户端表单渲染测试 | 同一认证浏览器执行已渲染并提交 Form UI，稳定 `available` FileReference 与 Task 完成、Worker 和 Audit 证据形成同一因果链。 |
 | 17-10 | VERIFIED_REPO | 浏览器 Task POST、`e2e:combined-evidence:integration` | 浏览器使用真实 Session/CSRF 完成 Task，并与后续耐久链的因果证据匹配。 |
 | 17-11～17-13 | VERIFIED_REPO | Walking Skeleton Workflow/Source/Notification Job 合同与 handlers、`main-chain.ts`、组合 E2E | Workflow 请求测试来源正式命令，来源重新授权并接受；最终 Task 投影为 `completed`、来源版本为 2、结果通知为 1。 |
 | 17-14～17-15 | VERIFIED_REPO | `main-chain.ts`、Rabbit Inbox 重复证据、浏览器拒绝及 HTTP 重放场景 | 同一成功 HTTP 命令和重复消息没有重复 Flowable、来源或 Notification 副作用；无关联、inactive Employment、无权限、错误 CSRF、旧/过期 Session 和伪造回调被服务端拒绝。 |
 | 17-16 | VERIFIED_REPO | `e2e:combined-evidence:integration`、`durable-evidence.ts`、`CURRENT-ENVIRONMENT-EVIDENCE.md` | 浏览器来源 W3C Trace 精确匹配 BFF/API 接受的命令以及 2 条 Outbox、2 条 Worker 消息、2 条 Inbox 和 30 条耐久 Audit。 |
-| 17-17 | PARTIAL | 30 条耐久 Audit、observability sanitize/logger/sentry tests | Audit 可沿同一 Trace 追溯；尚无测试/预发布实际日志与托管 Sentry 敏感数据抽样，不能仅凭清洗单元测试判为完整 E2E 通过。 |
+| 17-17 | VERIFIED_REPO | 30 条耐久 Audit、observability sanitize/logger/sentry tests、`e2e:combined-evidence:integration` | Audit 可沿同一 Trace 追溯，且安全相关 verifier 已通过；真实日志和托管 Sentry 抽样仍归第 18/22 节及 G5 外部验收，不作为第 17 节本地组合缺口。 |
 
 ### 18 可观测与健康验收
 
@@ -291,10 +291,10 @@
 ## 6. 关键阻断
 
 1. **真实外部证据：11 项。** 真实 COS、日志轮转、主机 SSH、Secret 演练、灾备/恢复、预发布发布回滚等必须在受控环境执行。OPS-02 仓库门只能拒绝不完整或不安全的证据 Manifest，不会把合成引用转换成外部验收证据。
-2. **仓库证据仍非生产签收。** 162 项 `VERIFIED_REPO` 只说明存在直接、可重复的仓库或隔离本地执行证据；当前候选没有预发布/生产运行和最终 G5 签收包。
-3. **28 项仅部分闭环。** 主要缺口是浏览器 Workbench 与耐久主链的注册/轮询/表单展示连接、真实 Sentry/日志/慢查询抽样、真实环境隔离、破坏性迁移环境记录、主机和发布接线。
+2. **仓库证据仍非生产签收。** 166 项 `VERIFIED_REPO` 只说明存在直接、可重复的仓库或隔离本地执行证据；当前候选没有预发布/生产运行和最终 G5 签收包。
+3. **24 项仅部分闭环。** 主要缺口是真实 Sentry/日志/慢查询抽样、真实环境隔离、破坏性迁移环境记录、主机和发布接线。
 4. **生产合同边界仍失败关闭。** 测试专用 Walking Skeleton 合同将 `CONTRACT_BLOCKED` 归零，但没有授权通用或生产 Notification/Workflow/File Job Consumer；生产 generic Task Source Router 仍应失败关闭。
-5. **真实镜像已构建发布但未部署。** `9fa4e2c` 曾有受信远端镜像发布证据；当前 Walking Skeleton 提交 `9698e3e` 仍缺对应的受信 CI/不可变 digest、预发布拉取、non-root 运行、健康、逐台发布、Worker Drain 和回滚证据。
+5. **真实镜像已构建发布但未部署。** `9fa4e2c` 曾有受信远端镜像发布证据；当前 Walking Skeleton 提交 `a7c3e90` 仍缺对应的受信 CI/不可变 digest、预发布拉取、non-root 运行、健康、逐台发布、Worker Drain 和回滚证据。
 6. **权威清单计数漂移。** `010ffa4` 新增两个数据库/Prisma 项后，当前清单是 201 项；所有后续报告和签收包必须使用 201，不能继续沿用旧 199 统计。
 
 ## 7. 建议的证据闭环顺序
@@ -302,15 +302,15 @@
 1. 将当前 `pnpm check`、E2E、应用/镜像版本、合同 Bundle/生成 Client 和迁移清单整理为 G5 候选证据；保存完整命令、版本、退出码和日志，不只保存摘要。
 2. 在首个测试服/预发布环境验证当前 API/Worker digest 拉取、non-root 运行、迁移 Manifest、Fixture/Source Map/Secret 排除、健康、Nginx 流量、逐台发布、Worker Drain 和回滚。
 3. 使用受控环境执行 OPS-02：故障域外 PostgreSQL 基础备份/连续 WAL、`ai_crm`/Keycloak/Flowable 分别恢复、RabbitMQ 拓扑重建和 Outbox/Inbox/业务状态对账、加密 Secret 应急包及空主机等价恢复。
-4. 补充实际日志/托管 Sentry 敏感数据抽样，并在可行时把 Workbench Registry/Task/Notification 读取连接到同一浏览器验收；前者是 G5 强制证据，后者是本审计保留的主 E2E 部分项。
+4. 补充实际日志/托管 Sentry 敏感数据抽样，作为 G5 强制外部证据。
 5. 对 OPS-01/OPS-02 实际报告执行八维独立 Review，记录恢复点、耗时和数据差异，不发明 SLA/RPO/RTO、Owner、保留期、主机身份、Bucket 或凭据。
 6. 只有证据文件经过复核后，才由验收 Owner 在权威清单逐项勾选；不得根据本审计批量勾选，也不得在 G5 前启动 CRM 领域模块。
 
 ## 8. 审计自检
 
-- 编号计数：20 个章节，当前权威清单 201 项；五类状态为 162/28/11/0/0，合计 201。旧 199 口径的两项差异已经定位到第 6 章 `010ffa4` 新增项。
-- 证据基线：`9698e3e` 加本轮未提交候选；E2E 预检 `contractBlockers=[]`、`implementationGaps=[]`、`mainWalkingSkeletonReady=true`，但 API/Worker external skip、未部署环境、Workbench 三个未合并浏览器步骤和真实遥测抽样未被误计为完整外部通过。
-- 原验收清单与合同：未修改。
+- 编号计数：20 个章节，当前权威清单 201 项；五类状态为 166/24/11/0/0，合计 201。旧 199 口径的两项差异已经定位到第 6 章 `010ffa4` 新增项。
+- 证据基线：`a7c3e90` 加本轮未提交文档候选；E2E 预检 `contractBlockers=[]`、`implementationGaps=[]`、`mainWalkingSkeletonReady=false`。静态预检不执行 combined gate；API/Worker external skip、未部署环境和真实遥测抽样未被误计为完整外部通过。
+- 权威验收清单第 17 节已按本地组合证据更新，其余清单项与合同未批量修改。
 - 当前代码增量、视觉复验、OPS-02 仓库级证据门和独立 Review handoff 均已在本审计中列出直接证据；OPS-02 外部项目的状态与总统计未改变。
 - `output/`：未读取、未修改。
 - 生产/外部系统：未访问。
