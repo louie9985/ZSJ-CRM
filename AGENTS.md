@@ -17,7 +17,7 @@ Interview documents are research inputs, not finalized specifications. Do not in
 
 ## Current Stage
 
-The current scope is the common technical foundation and a business-neutral walking skeleton. Do not implement CRM domain modules such as leads, orders, settlements, products, partners, students, or dashboards until their boundaries are confirmed.
+The current scope is the common technical foundation, a business-neutral walking skeleton, and one explicitly confirmed development-only pilot domain module under ADR-0029. Do not implement CRM domain modules such as leads, orders, settlements, products, partners, students, or dashboards until their boundaries are confirmed and the ADR-0029 pilot-start checklist is complete. G5 external operations evidence remains mandatory before any pilot domain module is deployed outside the approved local development environment.
 
 Use `docs/04-工程手册/第一阶段AI并行开发实施计划.md` for first-stage work packages, dependencies, path ownership, merge gates, and AI task handoffs. Use `docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` for acceptance evidence. These execution documents remain subordinate to this file, accepted ADRs, and reviewed contracts.
 
