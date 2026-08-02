@@ -27,6 +27,8 @@ let redisPort;
 let secretDirectory;
 let syntheticUserId = "";
 let taskCompletionAccepted = false;
+let taskAuthorizationDenied = false;
+let taskCompletionReplayed = false;
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { env: environment, shell: false, stdio: "inherit", ...options });
@@ -318,6 +320,9 @@ try {
     "--moduleResolution", "NodeNext", "--strict", "--skipLibCheck"]);
   const harnessModule = resolve(harnessBuildDirectory, "browser-authentication-bff.js");
   const { startBrowserAuthenticationBff } = await import(pathToFileURL(harnessModule).href);
+  const username = `browser-auth-${randomBytes(8).toString("hex")}`;
+  const password = randomBytes(24).toString("base64url");
+  await createSyntheticUser(username, password);
   bff = await startBrowserAuthenticationBff({
     clientSecretFile: resolve(secretDirectory, "pc_oidc_client_secret"),
     encryptionKeyFile: resolve(secretDirectory, "pc_session_encryption_key"),
@@ -327,17 +332,16 @@ try {
     publicOrigin,
     redisPasswordFile: resolve(secretDirectory, "redis_password"),
     redisUrl: `redis://127.0.0.1:${String(redisPort)}`,
-    ...(process.env.AI_CRM_E2E_TASK_COMMAND_FILE === undefined ? {} : { taskCompletionCommandFile: process.env.AI_CRM_E2E_TASK_COMMAND_FILE }),
+    ...(process.env.AI_CRM_E2E_TASK_COMMAND_FILE === undefined ? {} : {
+      taskAuthorizationSubject: syntheticUserId,
+      taskCompletionCommandFile: process.env.AI_CRM_E2E_TASK_COMMAND_FILE,
+    }),
   });
   const localBff = await fetch(`http://127.0.0.1:${String(bffPort)}/health/ready`);
   if (localBff.status !== 200) throw new Error("e2e_browser_auth_local_bff_not_ready");
   await runAsync("docker", ["run", "--rm", "--add-host", "host.docker.internal:host-gateway", "busybox:1.37",
     "wget", "-T", "5", "-t", "1", "-qO-", `http://host.docker.internal:${String(bffPort)}/health/ready`], { stdio: "ignore" });
   run("docker", [...compose, "up", "-d", "--wait", "nginx"]);
-
-  const username = `browser-auth-${randomBytes(8).toString("hex")}`;
-  const password = randomBytes(24).toString("base64url");
-  await createSyntheticUser(username, password);
 
   const malformedCallback = await fetch(`${publicOrigin}/auth/pc/callback?code=forged&state=short`, { redirect: "manual" });
   if (malformedCallback.status !== 400) throw new Error("e2e_browser_auth_malformed_callback_not_rejected");
@@ -378,18 +382,37 @@ try {
       }, method: "POST"
     }).then(response => response.status)`);
     if (rejectedTask !== 403) throw new Error("e2e_browser_task_csrf_not_rejected");
-    const taskCompletion = await browser.evaluate(`fetch(${JSON.stringify(taskUrl)}, {
+    for (const scenario of ["unlinked", "inactive_employment", "permission_denied"]) {
+      bff.setTaskAuthorizationScenario(scenario);
+      const deniedStatus = await browser.evaluate(`fetch(${JSON.stringify(taskUrl)}, {
+        credentials: "include", headers: {
+          "Idempotency-Key": ${JSON.stringify(`task-complete.browser-${scenario}`)},
+          traceparent: ${JSON.stringify(browserTraceparent)},
+          "X-CSRF-Token": ${JSON.stringify(session.body.csrfToken)}
+        }, method: "POST"
+      }).then(response => response.status)`);
+      if (deniedStatus !== 403) throw new Error(`e2e_browser_task_${scenario}_not_rejected`);
+    }
+    taskAuthorizationDenied = true;
+    bff.setTaskAuthorizationScenario("allowed");
+    const successfulTaskRequest = `fetch(${JSON.stringify(taskUrl)}, {
       credentials: "include", headers: {
         "Idempotency-Key": "task-complete.browser-causal-0001",
         traceparent: ${JSON.stringify(browserTraceparent)},
         "X-CSRF-Token": ${JSON.stringify(session.body.csrfToken)}
       }, method: "POST"
-    }).then(async response => ({ body: await response.json(), status: response.status, traceId: response.headers.get("X-Trace-Id") }))`);
+    }).then(async response => ({ body: await response.json(), status: response.status, traceId: response.headers.get("X-Trace-Id") }))`;
+    const taskCompletion = await browser.evaluate(successfulTaskRequest);
     if (taskCompletion.status !== 202 || taskCompletion.body?.status !== "accepted" ||
       taskCompletion.body?.sourceCommandId !== "94000000-0000-5000-8000-000000000001" || taskCompletion.traceId !== browserTraceId) {
       throw new Error("e2e_browser_task_completion_not_accepted");
     }
+    const replayedTaskCompletion = await browser.evaluate(successfulTaskRequest);
+    if (JSON.stringify(replayedTaskCompletion) !== JSON.stringify(taskCompletion)) {
+      throw new Error("e2e_browser_task_completion_replay_mismatch");
+    }
     taskCompletionAccepted = true;
+    taskCompletionReplayed = true;
   }
   const cookies = (await browser.command("Network.getAllCookies")).cookies;
   const sessionCookie = cookies.find((cookie) => cookie.name === "__Host-ai_crm_pc_session" && cookie.domain === "localhost");
@@ -444,7 +467,9 @@ try {
     sessionRotated: true,
     status: "e2e-browser-authentication-passed",
     syntheticUser: true,
+    taskAuthorizationDenied,
     taskCompletionAccepted,
+    taskCompletionReplayed,
     tokenExposedToBrowser: false,
   })}\n`);
 } catch (error) {

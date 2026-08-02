@@ -9,6 +9,7 @@ export const browserTaskSourceType = "tests.walking-skeleton";
 const sourceCommandId = "94000000-0000-5000-8000-000000000001";
 const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
 const ACTOR_ID = /^subject:[0-9a-f]{64}$/u;
+export const browserTaskAssignmentId = "71000000-0000-4000-8000-000000000007";
 
 export interface BrowserTaskCommandEvidence extends CompleteTaskCommand {
   readonly traceId: string;
@@ -27,11 +28,11 @@ export function parseBrowserTaskCommand(value: unknown): Readonly<BrowserTaskCom
     Object.keys(value["actor"]).some((key) => !["activeAssignmentIds", "principalId"].includes(key)) ||
     typeof value["actor"]["principalId"] !== "string" || !ACTOR_ID.test(value["actor"]["principalId"]) ||
     !Array.isArray(value["actor"]["activeAssignmentIds"]) || value["actor"]["activeAssignmentIds"].length !== 1 ||
-    value["actor"]["activeAssignmentIds"][0] !== "assignment.synthetic") {
+    value["actor"]["activeAssignmentIds"][0] !== browserTaskAssignmentId) {
     throw new Error("e2e_browser_task_command_invalid");
   }
   return Object.freeze({
-    actor: Object.freeze({ activeAssignmentIds: Object.freeze(["assignment.synthetic"]), principalId: value["actor"]["principalId"] }),
+    actor: Object.freeze({ activeAssignmentIds: Object.freeze([browserTaskAssignmentId]), principalId: value["actor"]["principalId"] }),
     idempotencyKey: browserTaskIdempotencyKey,
     sourceTaskId: browserTaskSourceTaskId,
     sourceType: browserTaskSourceType,

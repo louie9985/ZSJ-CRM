@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   connectRedisSessionStore,
@@ -13,6 +13,16 @@ import {
   type RedisSessionConnection,
 } from "@ai-crm/api";
 import { createOidcTokenVerifier } from "@ai-crm/platform-auth-context";
+import {
+  createAuthorizationService,
+  type AuthorizationCache,
+  type AuthorizationDecision,
+  type AuthorizationPolicySnapshot,
+  type AuthorizationPolicyStore,
+  type PermissionRequest,
+} from "@ai-crm/platform-authorization";
+import { createMemoryOrganizationService, type OrganizationServiceApi } from "@ai-crm/platform-organization";
+import type { AuthenticationSubject, WorkforceContext } from "@ai-crm/platform-organization";
 
 import { recordBrowserTaskCommand } from "./browser-task-command.js";
 
@@ -26,12 +36,16 @@ export interface BrowserAuthenticationBffOptions {
   readonly redisPasswordFile: string;
   readonly redisUrl: string;
   readonly taskCompletionCommandFile?: string;
+  readonly taskAuthorizationSubject?: string;
 }
 
 export interface RunningBrowserAuthenticationBff {
   advanceClock(milliseconds: number): void;
   close(): Promise<void>;
+  setTaskAuthorizationScenario(scenario: BrowserTaskAuthorizationScenario): void;
 }
+
+export type BrowserTaskAuthorizationScenario = "allowed" | "inactive_employment" | "permission_denied" | "unlinked";
 
 type BrowserPlatformHttp = NonNullable<ApiComposition["platformHttp"]>;
 type BrowserTaskCommand = Parameters<NonNullable<BrowserPlatformHttp["tasks"]>["complete"]>[0];
@@ -59,6 +73,105 @@ async function secret(path: string): Promise<string> {
 
 function key(id: string, value: string): Readonly<{ readonly id: string; readonly value: Uint8Array }> {
   return Object.freeze({ id, value: new Uint8Array(Buffer.from(value, "base64url")) });
+}
+
+const fixtureIds = Object.freeze({
+  allowed: Object.freeze({
+    assignment: "71000000-0000-4000-8000-000000000007", association: "71000000-0000-4000-8000-000000000003",
+    employment: "71000000-0000-4000-8000-000000000002", person: "71000000-0000-4000-8000-000000000001",
+    placement: "71000000-0000-4000-8000-000000000005", position: "71000000-0000-4000-8000-000000000006",
+    unit: "71000000-0000-4000-8000-000000000004",
+  }),
+  inactive: Object.freeze({
+    assignment: "72000000-0000-4000-8000-000000000007", association: "72000000-0000-4000-8000-000000000003",
+    employment: "72000000-0000-4000-8000-000000000002", person: "72000000-0000-4000-8000-000000000001",
+    placement: "72000000-0000-4000-8000-000000000005", position: "72000000-0000-4000-8000-000000000006",
+    unit: "72000000-0000-4000-8000-000000000004",
+  }),
+  denied: Object.freeze({
+    assignment: "73000000-0000-4000-8000-000000000007", association: "73000000-0000-4000-8000-000000000003",
+    employment: "73000000-0000-4000-8000-000000000002", person: "73000000-0000-4000-8000-000000000001",
+    placement: "73000000-0000-4000-8000-000000000005", position: "73000000-0000-4000-8000-000000000006",
+    unit: "73000000-0000-4000-8000-000000000004",
+  }),
+});
+
+type FixtureIds = (typeof fixtureIds)[keyof typeof fixtureIds];
+
+async function organizationFixture(
+  subject: Readonly<{ readonly issuer: string; readonly subject: string }>,
+  ids: FixtureIds,
+  inactive: boolean,
+): Promise<OrganizationServiceApi> {
+  const organization = createMemoryOrganizationService({ authorize: () => Promise.resolve() });
+  const metadata = () => ({
+    actor: { actorId: "system.e2e-browser-auth", actorType: "system" as const },
+    operationId: randomUUID(),
+    reason: "business-neutral browser authorization fixture",
+    traceId: "71000000000000000000000000000001",
+  });
+  const effectiveFrom = "2026-01-01T00:00:00.000Z";
+  const effectiveTo = inactive ? "2026-01-02T00:00:00.000Z" : undefined;
+  const assignmentEffectiveTo = effectiveTo ?? "2099-01-01T00:00:00.000Z";
+  await organization.createWorkforcePerson({ ...metadata(), recordedAt: effectiveFrom, workforcePersonId: ids.person });
+  await organization.createEmployment({ ...metadata(), effectiveFrom, ...(effectiveTo === undefined ? {} : { effectiveTo }), employmentId: ids.employment, workforcePersonId: ids.person });
+  await organization.createOrganizationUnit({ ...metadata(), effectiveFrom, organizationUnitId: ids.unit, placementId: ids.placement });
+  await organization.createPosition({ ...metadata(), effectiveFrom, organizationUnitId: ids.unit, positionId: ids.position });
+  await organization.createAssignment({ ...metadata(), assignmentId: ids.assignment, effectiveFrom, effectiveTo: assignmentEffectiveTo, employmentId: ids.employment, organizationUnitId: ids.unit, positionId: ids.position, workforcePersonId: ids.person });
+  await organization.createSubjectAssociation({ ...metadata(), ...subject, associationId: ids.association, effectiveFrom, workforcePersonId: ids.person });
+  return organization;
+}
+
+function authorizationFixture(ids: FixtureIds, grant: boolean) {
+  const permission = Object.freeze({ action: "complete", code: "platform.task-center.task-projection:complete", resource: "platform.task-center.task-projection", scopeDimensions: Object.freeze([]) });
+  const roleId = "74000000-0000-4000-8000-000000000001";
+  const snapshot: AuthorizationPolicySnapshot = Object.freeze({
+    grants: grant ? Object.freeze([{ grantId: "74000000-0000-4000-8000-000000000002", roleId, subject: { assignmentId: ids.assignment, kind: "assignment" as const }, validFrom: "2026-01-01T00:00:00.000Z" }]) : Object.freeze([]),
+    permissions: Object.freeze([permission]),
+    roles: Object.freeze([{ permissions: Object.freeze([{ permissionCode: permission.code, scope: Object.freeze({ terms: Object.freeze([{ kind: "all" as const }]), version: 1 as const }) }]), roleId }]),
+    version: grant ? "e2e-browser-task-allowed-v1" : "e2e-browser-task-denied-v1",
+  });
+  const store: AuthorizationPolicyStore = { currentVersion: () => Promise.resolve(snapshot.version), load: (version) => Promise.resolve(version === snapshot.version ? snapshot : undefined) };
+  const cache: AuthorizationCache = { get: () => Promise.resolve(undefined), invalidatePolicyVersion: () => Promise.resolve(), set: () => Promise.resolve() };
+  let traceId = "71000000000000000000000000000002";
+  return Object.freeze({
+    service: createAuthorizationService({ cache, recorder: { record: () => Promise.resolve() }, store }, { cacheTtlSeconds: 1, clock: () => new Date(), decisionId: randomUUID, traceId: () => traceId }),
+    setTraceId(value: string): void { traceId = value; },
+  });
+}
+
+type BrowserTaskAuthorizationFixture = Readonly<{
+  readonly authorization: ReturnType<typeof authorizationFixture>;
+  readonly organization: OrganizationServiceApi;
+}>;
+export type BrowserTaskAuthorizationFixtures = Readonly<Record<BrowserTaskAuthorizationScenario, BrowserTaskAuthorizationFixture>>;
+
+export async function createBrowserTaskAuthorizationFixtures(subject: AuthenticationSubject): Promise<BrowserTaskAuthorizationFixtures> {
+  return Object.freeze({
+    allowed: Object.freeze({ authorization: authorizationFixture(fixtureIds.allowed, true), organization: await organizationFixture(subject, fixtureIds.allowed, false) }),
+    inactive_employment: Object.freeze({ authorization: authorizationFixture(fixtureIds.inactive, true), organization: await organizationFixture(subject, fixtureIds.inactive, true) }),
+    permission_denied: Object.freeze({ authorization: authorizationFixture(fixtureIds.denied, false), organization: await organizationFixture(subject, fixtureIds.denied, false) }),
+    unlinked: Object.freeze({ authorization: authorizationFixture(fixtureIds.allowed, true), organization: createMemoryOrganizationService({ authorize: () => Promise.resolve() }) }),
+  });
+}
+
+export async function authorizeBrowserTaskFixture(
+  fixtures: BrowserTaskAuthorizationFixtures,
+  scenario: BrowserTaskAuthorizationScenario,
+  subject: AuthenticationSubject,
+  input: Readonly<{ readonly at: string; readonly permission: PermissionRequest; readonly traceId: string }>,
+): Promise<Readonly<{ readonly decision: AuthorizationDecision; readonly workforce: WorkforceContext }>> {
+  const fixture = fixtures[scenario];
+  const workforce = await fixture.organization.resolveWorkforceContext(subject, input.at);
+  const activeAssignmentIds = workforce.assignments.map(({ assignmentId }) => assignmentId);
+  if (activeAssignmentIds.length !== 1) throw new Error("e2e_browser_task_workforce_context_invalid");
+  fixture.authorization.setTraceId(input.traceId);
+  const decision = await fixture.authorization.service.requireAllowed({
+    activeAssignmentIds,
+    selectedAssignmentId: activeAssignmentIds[0] ?? "",
+    workforcePersonId: workforce.workforcePersonId,
+  }, input.permission);
+  return Object.freeze({ decision, workforce });
 }
 
 export async function startBrowserAuthenticationBff(
@@ -116,6 +229,11 @@ export async function startBrowserAuthenticationBff(
       cookieMaxAgeSeconds: 120,
       service,
     });
+    const taskSubject = Object.freeze({ issuer: options.issuer, subject: options.taskAuthorizationSubject ?? "" });
+    const taskFixtures = options.taskCompletionCommandFile === undefined || options.taskAuthorizationSubject === undefined
+      ? undefined
+      : await createBrowserTaskAuthorizationFixtures(taskSubject);
+    let taskAuthorizationScenario: BrowserTaskAuthorizationScenario = "allowed";
     const traceByActor = new Map<string, string>();
     const platformHttp: ApiComposition["platformHttp"] = options.taskCompletionCommandFile === undefined ? undefined : Object.freeze({
       applicationRegistry: {} as BrowserPlatformHttp["applicationRegistry"],
@@ -125,19 +243,21 @@ export async function startBrowserAuthenticationBff(
         }
         const principal = await service.resolvePrincipal(input.credential);
         const subject = principal.authenticationSubject;
+        if (taskFixtures === undefined || subject.issuer !== taskSubject.issuer || subject.subject !== taskSubject.subject) {
+          throw new Error("e2e_browser_task_authorization_denied");
+        }
+        const { decision, workforce } = await authorizeBrowserTaskFixture(taskFixtures, taskAuthorizationScenario, subject, {
+          at: input.at,
+          permission: input.permission,
+          traceId: input.traceId,
+        });
         const actorId = `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
         if (traceByActor.has(actorId)) throw new Error("e2e_browser_task_request_concurrent");
         traceByActor.set(actorId, input.traceId);
         return Object.freeze({
-          decision: Object.freeze({ allowed: true, decisionId: "decision.e2e-browser-task-complete", evaluatedAt: input.at, policyVersion: "e2e-browser-task-v1", reason: "allowed" }),
+          decision,
           principal,
-          workforce: Object.freeze({
-            assignments: Object.freeze([{ assignmentId: "assignment.synthetic", employmentId: "employment.synthetic", organizationUnitId: "unit.synthetic", positionId: "position.synthetic" }]),
-            employmentIds: Object.freeze(["employment.synthetic"]),
-            resolvedAt: input.at,
-            subject,
-            workforcePersonId: "person.synthetic",
-          }),
+          workforce,
         });
       },
       fileCenter: {} as BrowserPlatformHttp["fileCenter"],
@@ -181,6 +301,9 @@ export async function startBrowserAuthenticationBff(
       },
       async close(): Promise<void> {
         await closeBrowserAuthenticationBffResources(application, connection);
+      },
+      setTaskAuthorizationScenario(scenario: BrowserTaskAuthorizationScenario): void {
+        taskAuthorizationScenario = scenario;
       },
     });
   } catch (error) {

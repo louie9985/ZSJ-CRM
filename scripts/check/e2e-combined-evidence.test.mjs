@@ -22,7 +22,9 @@ const browserEvidence = Object.freeze({
   browserTraceId: traceId,
   browserTraceparent: traceparent,
   status: "e2e-browser-authentication-passed",
+  taskAuthorizationDenied: true,
   taskCompletionAccepted: true,
+  taskCompletionReplayed: true,
 });
 const fileEvidence = Object.freeze({ cleanFileReference: fileReference });
 const taskCommandFile = "D:\\e2e\\browser-task-command.json";
@@ -51,6 +53,14 @@ describe("combined external-evidence E2E runner", () => {
     assert.throws(
       () => externalEvidenceEnvironment({ ...browserEvidence, browserTraceparent: `00-${"a".repeat(32)}-00f067aa0ba902b7-01` }, fileEvidence, taskCommandFile),
       /traceparent is invalid/u,
+    );
+    assert.throws(
+      () => externalEvidenceEnvironment({ ...browserEvidence, taskAuthorizationDenied: false }, fileEvidence, taskCommandFile),
+      /authorization denials/u,
+    );
+    assert.throws(
+      () => externalEvidenceEnvironment({ ...browserEvidence, taskCompletionReplayed: false }, fileEvidence, taskCommandFile),
+      /HTTP replay/u,
     );
   });
 

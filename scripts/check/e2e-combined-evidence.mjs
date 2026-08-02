@@ -28,7 +28,9 @@ export function externalEvidenceEnvironment(browserEvidence, fileEvidence, taskC
     "browser traceparent is invalid or does not match its trace id",
   );
   assert.ok(fileEvidence.cleanFileReference && typeof fileEvidence.cleanFileReference === "object", "clean FileReference is missing");
+  assert.equal(browserEvidence.taskAuthorizationDenied, true, "browser Task workforce/authorization denials were not observed");
   assert.equal(browserEvidence.taskCompletionAccepted, true, "browser Task completion was not accepted");
+  assert.equal(browserEvidence.taskCompletionReplayed, true, "browser Task HTTP replay was not accepted idempotently");
   assert.equal(typeof taskCommandFile, "string", "browser Task command file is missing");
 
   return Object.freeze({

@@ -281,6 +281,44 @@ describe("API composition root", () => {
     }
   });
 
+  it.each(["subject_not_associated", "employment_not_active", "assignment_not_active"])(
+    "maps Task workforce denial %s to forbidden",
+    async (code) => {
+      const authorize = vi.fn().mockRejectedValue(Object.assign(new Error(code), { code }));
+      const complete = vi.fn();
+      const app = createApiApplication({
+        logger,
+        platformHttp: {
+          applicationRegistry: { loadRegistry: vi.fn(), resolveDeepLink: vi.fn() },
+          authorize,
+          fileCenter: { authorizeDownload: vi.fn(), confirmUpload: vi.fn(), createUpload: vi.fn() },
+          forms: { handle: vi.fn() },
+          tasks: { complete },
+          validateTaskMutation: vi.fn(),
+        },
+      });
+      await app.start(0, "127.0.0.1");
+      try {
+        const address = await app.instance()?.getUrl();
+        if (address === undefined) throw new Error("api_not_started");
+        const response = await fetch(`${address}/tasks/tests.walking-skeleton/source-task.synthetic/complete`, {
+          headers: {
+            cookie: `__Host-ai_crm_pc_session=${"a".repeat(43)}`,
+            "idempotency-key": "task-complete.synthetic-workforce-denial",
+            origin: "https://workbench.invalid",
+            "x-csrf-token": "c".repeat(43),
+          },
+          method: "POST",
+        });
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toEqual({ code });
+        expect(complete).not.toHaveBeenCalled();
+      } finally {
+        await app.stop();
+      }
+    },
+  );
+
   it("serializes concurrent starts", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });

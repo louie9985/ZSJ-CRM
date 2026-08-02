@@ -29,7 +29,7 @@ By default the stable FileReference and Trace remain synthetic fixtures. The cha
 
 ## Browser authentication slice
 
-Run `pnpm e2e:browser-auth:integration` to build the E2E Workbench, start disposable PostgreSQL, Redis, Keycloak, and Nginx services, and drive an installed headless Chromium browser through the real PC BFF Authorization Code + PKCE login path. The runner creates and deletes one synthetic Keycloak user at runtime and checks callback validation, the browser Token boundary, CSRF, session fixation, refresh rotation, old-Cookie rejection, and session expiry.
+Run `pnpm e2e:browser-auth:integration` to build the E2E Workbench, start disposable PostgreSQL, Redis, Keycloak, and Nginx services, and drive an installed headless Chromium browser through the real PC BFF Authorization Code + PKCE login path. The runner creates and deletes one synthetic Keycloak user at runtime and checks callback validation, the browser Token boundary, CSRF, session fixation, refresh rotation, old-Cookie rejection, and session expiry. When the combined Task command file is enabled, it resolves the synthetic subject through Organization and Authorization services, rejects unlinked/inactive/ungranted contexts, and replays the identical successful Task POST through the same browser Session.
 
 The runner binds only loopback dependency/edge ports and a short-lived host BFF port used by the isolated Nginx container. It removes its Compose project, Volumes, browser profile, build output, temporary Secrets, and synthetic user. In combined mode it also calls the Task completion endpoint with the live browser session and records the accepted command evidence. This proves `17-01` independently and supplies the browser leg for the causal 17-16 run.
 

@@ -6,13 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   browserTaskIdempotencyKey,
+  browserTaskAssignmentId,
   browserTaskSourceTaskId,
   browserTaskSourceType,
   readBrowserTaskCommand,
   recordBrowserTaskCommand,
 } from "./browser-task-command.js";
 
-const actor = Object.freeze({ activeAssignmentIds: Object.freeze(["assignment.synthetic"]), principalId: `subject:${"a".repeat(64)}` });
+const actor = Object.freeze({ activeAssignmentIds: Object.freeze([browserTaskAssignmentId]), principalId: `subject:${"a".repeat(64)}` });
 const command = Object.freeze({ actor, idempotencyKey: browserTaskIdempotencyKey, sourceTaskId: browserTaskSourceTaskId, sourceType: browserTaskSourceType });
 const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
 

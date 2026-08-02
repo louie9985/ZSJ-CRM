@@ -358,8 +358,12 @@ const TASK_IDEMPOTENCY = TASK_REF;
 
 function taskResponseError(error: unknown): PlatformHttpResponse {
   const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? "") : "";
+  const workforceDenied = code === "subject_not_associated"
+    || code === "employment_not_active"
+    || code === "assignment_not_active";
   const denied = code === "AUTHORIZATION_DENIED"
     || code === "TASK_OPERATION_DENIED"
+    || workforceDenied
     || (typeof error === "object" && error !== null && Reflect.get(error, "name") === "AuthorizationDeniedError");
   const status = code === "authentication_csrf_rejected" ? 403
     : denied ? 403

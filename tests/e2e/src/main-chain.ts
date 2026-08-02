@@ -45,7 +45,6 @@ import { auditOperationId, stableUuid, type MainChainEvidence } from "./durable-
 
 const at = "2026-07-30T00:00:00.000Z";
 const actor = Object.freeze({ activeAssignmentIds: Object.freeze(["assignment.synthetic"]), principalId: "principal.synthetic" });
-const notificationActor: NotificationActor = actor;
 const actorContextReference = "actor-context.synthetic";
 const definitionKey = "syntheticHumanTaskV1";
 const sourceTaskId = "source-task.main-chain-synthetic";
@@ -251,6 +250,14 @@ function lifecycleEventId(eventKey: string): string {
 export async function runMainChainIntegration(factory = createMainChainIntegrationFactory()): Promise<void> {
   const fileReference = await factory.resolveFileReference();
   const completionCommand = await factory.resolveCompletionCommand();
+  if (completionCommand.actor.activeAssignmentIds === undefined || completionCommand.actor.activeAssignmentIds.length !== 1) {
+    throw new Error("e2e_main_chain_completion_actor_invalid");
+  }
+  const chainActor = Object.freeze({
+    activeAssignmentIds: Object.freeze([...completionCommand.actor.activeAssignmentIds]),
+    principalId: completionCommand.actor.principalId,
+  });
+  const chainNotificationActor: NotificationActor = chainActor;
   const { traceId, traceparent } = await factory.resolveTraceContext();
   const config = configuration();
   const password = (await readFile(config.flowablePasswordFile, "utf8")).trim();
@@ -260,7 +267,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   const workflowAudit: WorkflowAuditRecord[] = [];
   const lifecycle: WorkflowLifecycleEvent[] = [];
   const recordEvidence = factory.evidence?.audit.record.bind(factory.evidence.audit);
-  const auditActor = Object.freeze({ actorId: actor.principalId, actorType: "authenticated_subject" as const });
+  const auditActor = Object.freeze({ actorId: chainActor.principalId, actorType: "authenticated_subject" as const });
   const facade = createWorkflowFacade(
     engine, factory.createWorkflowLedger(),
     { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("decision.workflow.main-chain") }) },
@@ -279,8 +286,8 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     { publish: (event) => { lifecycle.push(event); return Promise.resolve(); } },
     { traceparent: () => traceparent, variablePolicy: { definitions: { [definitionKey]: {} } } },
   );
-  const definition = await facade.deployDefinition({ actor, assetName: "synthetic-human-task.v1.bpmn20.xml", assetVersion: "1.0.0", bpmnXml: await readFile(bpmnPath, "utf8"), definitionKey, idempotencyKey: "main-chain-definition.synthetic-v1" });
-  const instance = await facade.startProcess({ actor, definitionKey, definitionVersion: definition.version, idempotencyKey: "main-chain-process.synthetic-0001", variables: {} });
+  const definition = await facade.deployDefinition({ actor: chainActor, assetName: "synthetic-human-task.v1.bpmn20.xml", assetVersion: "1.0.0", bpmnXml: await readFile(bpmnPath, "utf8"), definitionKey, idempotencyKey: "main-chain-definition.synthetic-v1" });
+  const instance = await facade.startProcess({ actor: chainActor, definitionKey, definitionVersion: definition.version, idempotencyKey: "main-chain-process.synthetic-0001", variables: {} });
   const tasks = await facade.listTasks(instance.processInstanceId);
   const workflowTask = tasks.length === 1 ? tasks[0] : undefined;
   if (workflowTask === undefined || workflowTask.status !== "active") throw new Error("e2e_main_chain_flowable_task_invalid");
@@ -303,7 +310,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     formAudit,
     { clock: () => new Date(at), id: () => { formEventSequence += 1; return stableUuid(`form-event:${String(formEventSequence)}`); } },
   );
-  const formActor = Object.freeze({ actorId: actor.principalId, actorType: "authenticated_subject" as const });
+  const formActor = Object.freeze({ actorId: chainActor.principalId, actorType: "authenticated_subject" as const });
   const formMeta = (name: string) => Object.freeze({ actor: formActor, operationId: stableUuid(`form:${name}`), reason: "synthetic durable evidence", traceId });
   await form.saveDraft({
     ...formMeta("draft"), definitionId: formDefinitionId, expectedRevision: 0, ownerModule: "tests.walking-skeleton",
@@ -330,7 +337,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
   const replayedSubmission = await factory.evidence?.saveSubmission({ contentDigest: validation.reference.contentDigest, definitionId: validation.reference.definitionId, fileReference, releaseVersion: validation.reference.releaseVersion, submissionReference, traceId, traceparent });
   if (factory.durable && (savedSubmission?.replayed !== false || replayedSubmission?.replayed !== true)) throw new Error("e2e_main_chain_submission_replay_invalid");
 
-  const openTaskEvent: TaskLifecycleEvent = Object.freeze({ assigneeReference: actor.activeAssignmentIds[0] ?? "assignment.synthetic", deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" }, eventId: stableUuid("task-projection:open"), occurredAt: at, sourceTaskId, sourceType: walkingSkeletonSourceType, sourceVersion: 1, status: "open" });
+  const openTaskEvent: TaskLifecycleEvent = Object.freeze({ assigneeReference: chainActor.activeAssignmentIds[0] ?? "assignment.synthetic", deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" }, eventId: stableUuid("task-projection:open"), occurredAt: at, sourceTaskId, sourceType: walkingSkeletonSourceType, sourceVersion: 1, status: "open" });
   let dependencyFailuresRemaining = 1;
   let workflowCompletionCalls = 0;
   const taskAudit: TaskAudit = { record: async (record) => {
@@ -345,7 +352,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     router: { complete: async () => {
       if (dependencyFailuresRemaining > 0) { dependencyFailuresRemaining -= 1; throw new Error("synthetic_flowable_dependency_unavailable"); }
       workflowCompletionCalls += 1;
-      await facade.completeTask({ actor, definitionKey, idempotencyKey: "main-chain-workflow-complete.synthetic-0001", taskId: workflowTask.taskId });
+      await facade.completeTask({ actor: chainActor, definitionKey, idempotencyKey: "main-chain-workflow-complete.synthetic-0001", taskId: workflowTask.taskId });
       return { sourceCommandId: stableUuid("task-command:workflow-complete"), status: "accepted" };
     } },
     sourceReader: { get: () => Promise.resolve(openTaskEvent) },
@@ -377,18 +384,18 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
       await recordEvidence?.({ action: `source.${record.operation}`, actor: auditActor, occurredAt: at, reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() }, resource: { resourceId: record.referenceId, resourceType: "source_task" }, result: record.phase, trace: { authorizationDecisionId: stableUuid("decision.source.main-chain"), operationId: auditOperationId(`${record.operation}:${record.referenceId}`, record.phase), traceId } });
     } },
     authorization: { authorize: () => { sourceAuthorizations += 1; return Promise.resolve({ allowed: true, decisionId: stableUuid("decision.source.main-chain") }); } },
-    clock: () => new Date(at), resolver: { resolve: () => Promise.resolve(actor) },
+    clock: () => new Date(at), resolver: { resolve: () => Promise.resolve(chainActor) },
   });
-  await source.register({ actorContextReference, assigneeReference: actor.activeAssignmentIds[0] ?? "", sourceTaskId, sourceVersion: 1, status: "open", workflowTaskId: workflowTask.taskId });
+  await source.register({ actorContextReference, assigneeReference: chainActor.activeAssignmentIds[0] ?? "", sourceTaskId, sourceVersion: 1, status: "open", workflowTaskId: workflowTask.taskId });
   const notificationStore = factory.createNotificationStore();
   const notifications = createNotificationCenter({
     audit: { record: async (record) => {
       await recordEvidence?.({ action: `notification.${record.operation}`, actor: { actorId: record.actor.principalId, actorType: "authenticated_subject" }, occurredAt: at, reason: { code: (record.errorCode ?? "synthetic_e2e").toLowerCase() }, resource: { resourceId: record.referenceId, resourceType: "notification_reference" }, result: record.phase, trace: { authorizationDecisionId: record.decisionId, operationId: auditOperationId(`${record.operation}:${record.referenceId}`, record.phase), traceId } });
     } }, authorization: { authorize: () => Promise.resolve({ allowed: true, decisionId: stableUuid("decision.notification.main-chain") }) }, now: () => new Date(at),
     preference: { evaluate: () => Promise.resolve({ decision: "deliver", reason: "synthetic-default", version: "synthetic-v1" }) },
-    resolver: { resolve: () => Promise.resolve([{ principalId: actor.principalId, recipientReference: "person.synthetic", resolutionReference: "assignment.synthetic", resolutionVersion: "organization-synthetic-v1" }]) }, store: notificationStore,
+    resolver: { resolve: () => Promise.resolve([{ principalId: chainActor.principalId, recipientReference: "person.synthetic", resolutionReference: chainActor.activeAssignmentIds[0] ?? "assignment.synthetic", resolutionVersion: "organization-synthetic-v1" }]) }, store: notificationStore,
   });
-  await notifications.publishTemplate({ actor: notificationActor, bodyTemplate: "Open {{subject}}.", notificationType: "platform.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "platform.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
+  await notifications.publishTemplate({ actor: chainNotificationActor, bodyTemplate: "Open {{subject}}.", notificationType: "platform.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "platform.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
 
   const controller = new AbortController();
   let publisherAdapter: Awaited<ReturnType<typeof createAmqplibPublisherAdapter>> | undefined;
@@ -400,7 +407,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     const consumer = await createAmqplibConsumerAdapter(await rabbitConnection("consumer"), [walkingSkeletonSourceRabbitTopology, walkingSkeletonNotificationRabbitTopology], { concurrency: walkingSkeletonJobPolicy.concurrency, prefetch: walkingSkeletonJobPolicy.prefetch });
     const bindings: readonly RabbitInboxBinding[] = Object.freeze([
       Object.freeze({ bindingId: walkingSkeletonSourceBindingId, classify, consumer: walkingSkeletonSourceConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonSourceCommandMessageHandler(source), workerTraceMessages, traceparent) }),
-      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(notificationActor) }), workerTraceMessages, traceparent) }),
+      Object.freeze({ bindingId: walkingSkeletonNotificationBindingId, classify, consumer: walkingSkeletonNotificationConsumerId, eventPolicy: walkingSkeletonJobPolicy, handler: requireWorkerTrace(createWalkingSkeletonNotificationMessageHandler(notifications, { resolve: () => Promise.resolve(chainNotificationActor) }), workerTraceMessages, traceparent) }),
     ]);
     worker = createRabbitInboxHandler(core, consumer, bindings);
     publisherAdapter = await createAmqplibPublisherAdapter(await rabbitConnection("publisher"));
@@ -418,7 +425,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     await core.submitJob(notificationEnvelope);
     const published = await publisher.publishBatch();
     if (published.published !== 2) throw new Error("e2e_main_chain_publish_failed");
-    await waitUntil(async () => (await source.getState(sourceTaskId)).status === "completed" && await notifications.unreadCount(notificationActor) === 1);
+    await waitUntil(async () => (await source.getState(sourceTaskId)).status === "completed" && await notifications.unreadCount(chainNotificationActor) === 1);
     await transport.publish(duplicate(sourceEnvelope));
     await transport.publish(duplicate(notificationEnvelope));
     await waitUntil(() => observations.filter((item) => item.operation === "consume" && item.outcome === "duplicate").length >= 2);
@@ -432,7 +439,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     if (runFailure !== undefined) {
       throw runFailure instanceof Error ? runFailure : new Error("e2e_main_chain_worker_failed", { cause: runFailure });
     }
-    if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || finalTaskApply.status !== "applied" || finalTaskProjection?.status !== "completed" || finalTaskProjection.sourceVersion !== 2 || finalTaskProjection.assigneeReference !== openTaskEvent.assigneeReference || sourceAuthorizations !== 1 || await notifications.unreadCount(notificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
+    if (completedTask.status !== "completed" || completedInstance.status !== "completed" || finalSource.sourceVersion !== 2 || finalTaskApply.status !== "applied" || finalTaskProjection?.status !== "completed" || finalTaskProjection.sourceVersion !== 2 || finalTaskProjection.assigneeReference !== openTaskEvent.assigneeReference || sourceAuthorizations !== 1 || await notifications.unreadCount(chainNotificationActor) !== 1 || workflowAudit.filter((record) => record.operation === "task_complete" && record.phase === "succeeded").length !== 1) throw new Error("e2e_main_chain_result_invalid");
     if (factory.durable && (durableEvidence === undefined || durableEvidence.submissionCount !== 1 || durableEvidence.outboxTraceCount !== 2 || durableEvidence.inboxCount !== 2 || durableEvidence.auditCount !== 30 || durableEvidence.auditFactCount !== 2 || workerTraceMessages.size !== 2)) throw new Error("e2e_main_chain_durable_evidence_invalid");
     process.stdout.write(`${JSON.stringify({ auditRecords: durableEvidence?.auditCount ?? 0, browserTaskApiEvidence: factory.browserTaskApiEvidence, durable: factory.durable, externalEvidence: factory.externalEvidence, fileReference, flowableInstanceStatus: completedInstance.status, flowableTaskStatus: completedTask.status, formReleaseVersion: validation.reference.releaseVersion, inboxDuplicates: 2, ...(factory.browserTaskApiEvidence ? { mainWalkingSkeletonReady: true } : { mainWalkingSkeletonReady: false }), notifications: 1, outboxTraceRecords: durableEvidence?.outboxTraceCount ?? 0, stableFileReference: true, submissionRecords: durableEvidence?.submissionCount ?? 0, sourceAuthorizations, sourceVersion: finalSource.sourceVersion, status: factory.durable ? "e2e-main-chain-durable-evidence-passed" : "e2e-main-chain-slice-passed", taskCompletionRetries: 1, traceId, traceparent, workerTraceMessages: workerTraceMessages.size })}\n`);
   } finally {
