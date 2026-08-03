@@ -16,26 +16,28 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
                     className="auth-alert"
                     type="error"
                     showIcon
-                    message="用户名、手机号或密码不正确，或账号暂时不可用"
+                    message="用户名/手机号或密码错误，请重新输入"
                 />
             ) : null}
             <form action={kcContext.url.loginAction} method="post">
-                <Form.Item label={msgStr("username")} required>
-                    <Input
-                        id="username"
-                        name="username"
-                        defaultValue={attemptedUsername}
-                        autoComplete="username"
-                        autoFocus
-                        size="large"
-                    />
-                </Form.Item>
-                <Form.Item label={msgStr("password")} required>
-                    <Input.Password id="password" name="password" autoComplete="current-password" size="large" />
-                </Form.Item>
-                <Button id="kc-login" type="primary" htmlType="submit" size="large" block>
-                    {msgStr("doLogIn")}
-                </Button>
+                <Form component={false} layout="vertical">
+                    <Form.Item label={msgStr("username")} required>
+                        <Input
+                            id="username"
+                            name="username"
+                            defaultValue={attemptedUsername}
+                            autoComplete="username"
+                            autoFocus
+                            size="large"
+                        />
+                    </Form.Item>
+                    <Form.Item label={msgStr("password")} required>
+                        <Input.Password id="password" name="password" autoComplete="current-password" size="large" />
+                    </Form.Item>
+                    <Button id="kc-login" type="primary" htmlType="submit" size="large" block>
+                        {msgStr("doLogIn")}
+                    </Button>
+                </Form>
             </form>
         </AuthShell>
     );

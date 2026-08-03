@@ -16,15 +16,17 @@ export default function UpdatePassword(
                 <Alert className="auth-alert" type="error" showIcon message={kcContext.message.summary} />
             ) : null}
             <form action={kcContext.url.loginAction} method="post">
-                <Form.Item label={msgStr("passwordNew")} required>
-                    <Input.Password name="password-new" autoComplete="new-password" autoFocus size="large" />
-                </Form.Item>
-                <Form.Item label={msgStr("passwordConfirm")} required>
-                    <Input.Password name="password-confirm" autoComplete="new-password" size="large" />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" size="large" block>
-                    {msgStr("doSubmit")}
-                </Button>
+                <Form component={false} layout="vertical">
+                    <Form.Item label={msgStr("passwordNew")} required>
+                        <Input.Password name="password-new" autoComplete="new-password" autoFocus size="large" />
+                    </Form.Item>
+                    <Form.Item label={msgStr("passwordConfirm")} required>
+                        <Input.Password name="password-confirm" autoComplete="new-password" size="large" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" size="large" block>
+                        {msgStr("doSubmit")}
+                    </Button>
+                </Form>
             </form>
         </AuthShell>
     );

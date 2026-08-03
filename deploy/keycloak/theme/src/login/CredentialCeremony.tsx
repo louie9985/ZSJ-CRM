@@ -24,30 +24,32 @@ export default function CredentialCeremony(
                 />
             ) : null}
             <form action={kcContext.url.loginAction} method="post">
-                <Form.Item label={msgStr("passwordNew")} required>
-                    <Input.Password
-                        name="password"
-                        autoComplete="new-password"
-                        autoFocus
-                        minLength={8}
-                        maxLength={64}
-                        required
-                        size="large"
-                    />
-                </Form.Item>
-                <Form.Item label={msgStr("passwordConfirm")} required>
-                    <Input.Password
-                        name="passwordConfirm"
-                        autoComplete="new-password"
-                        minLength={8}
-                        maxLength={64}
-                        required
-                        size="large"
-                    />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" size="large" block>
-                    {msgStr("doSubmit")}
-                </Button>
+                <Form component={false} layout="vertical">
+                    <Form.Item label={msgStr("passwordNew")} required>
+                        <Input.Password
+                            name="password"
+                            autoComplete="new-password"
+                            autoFocus
+                            minLength={8}
+                            maxLength={64}
+                            required
+                            size="large"
+                        />
+                    </Form.Item>
+                    <Form.Item label={msgStr("passwordConfirm")} required>
+                        <Input.Password
+                            name="passwordConfirm"
+                            autoComplete="new-password"
+                            minLength={8}
+                            maxLength={64}
+                            required
+                            size="large"
+                        />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" size="large" block>
+                        {msgStr("doSubmit")}
+                    </Button>
+                </Form>
             </form>
         </AuthShell>
     );
