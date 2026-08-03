@@ -8,7 +8,7 @@ describe("same-site workforce administration port", () => {
       .mockResolvedValueOnce(Response.json({ redirectUrl: "https://identity.example.test/authorize?prompt=login" }));
     const navigate = vi.fn();
     await createSameSiteWorkforceAdministrationPort(fetchPort, navigate).beginSystemAccountReauthentication?.();
-    expect(fetchPort).toHaveBeenNthCalledWith(2, "/auth/pc/reauthentication?returnTo=%2Fworkforce-administration", expect.objectContaining({
+    expect(fetchPort).toHaveBeenNthCalledWith(2, "/auth/pc/reauthentication?returnTo=%2Fcrm%2Fworkforce-administration", expect.objectContaining({
       headers: { Accept: "application/json", "X-CSRF-Token": "c".repeat(32) }, method: "POST",
     }));
     expect(navigate).toHaveBeenCalledWith("https://identity.example.test/authorize?prompt=login");

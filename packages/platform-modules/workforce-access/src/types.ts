@@ -42,6 +42,12 @@ export interface WorkforceAccount {
   readonly workforcePersonId?: string;
 }
 
+export interface WorkforceAccessSubjectAccount {
+  readonly keycloakUserId: string;
+  readonly status: WorkforceAccountStatus;
+  readonly workforcePersonId?: string;
+}
+
 export interface BeginIdentitySyncCommand extends WorkforceAccessCommandMetadata {
   readonly accountId: string;
   readonly action: IdentitySyncAction;
@@ -130,6 +136,7 @@ export interface WorkforceAccessServiceApi {
   createAccount(command: CreateWorkforceAccountCommand): Promise<WorkforceAccount>;
   getAccount(accountId: string): Promise<WorkforceAccount>;
   getIdentitySyncOperation(operationId: string): Promise<IdentitySyncOperation>;
+  getSubjectAccountByKeycloakUserId(keycloakUserId: string): Promise<WorkforceAccessSubjectAccount>;
   linkKeycloakUser(command: LinkKeycloakUserCommand): Promise<WorkforceAccount>;
   listAccounts(input: { readonly cursor?: string; readonly limit?: number; readonly status?: WorkforceAccountStatus }): Promise<WorkforceAccountPage>;
   listIdentifierHistory(accountId: string): Promise<readonly LoginIdentifierHistory[]>;

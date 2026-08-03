@@ -130,6 +130,10 @@ async function createSyntheticUser(username, password) {
     body: JSON.stringify({
       ...(process.env.AI_CRM_E2E_SYNTHETIC_USER_ID === undefined ? {} : { id: process.env.AI_CRM_E2E_SYNTHETIC_USER_ID }),
       ...client,
+      attributes: {
+        ...(client.attributes ?? {}),
+        "post.logout.redirect.uris": `${publicOrigin}/auth/pc/login`,
+      },
       redirectUris: [...new Set([...(Array.isArray(client.redirectUris) ? client.redirectUris : []), `${publicOrigin}/auth/pc/callback`])],
       webOrigins: [...new Set([...(Array.isArray(client.webOrigins) ? client.webOrigins : []), publicOrigin])],
     }),
@@ -339,7 +343,7 @@ async function browserLogin(cdp, username, password) {
     document.querySelector("#kc-login").click();
   })()`);
   await waitFor(async () => cdp.evaluate(
-    `location.origin === ${JSON.stringify(publicOrigin)} && location.pathname === "/settings" && document.readyState === "complete"`,
+    `location.origin === ${JSON.stringify(publicOrigin)} && location.pathname === "/crm/settings" && document.readyState === "complete"`,
   ), "e2e_browser_auth_return_path_failed");
 }
 
@@ -527,7 +531,7 @@ try {
   deepLinkResolved = true;
   const resolvedPath = deepLink.body.path.replace(":resource_reference", encodeURIComponent(resourceReference));
   await browser.evaluate(`history.pushState({}, "", ${JSON.stringify(resolvedPath)}); window.dispatchEvent(new PopStateEvent("popstate"))`);
-  deepLinkNavigated = await browser.evaluate(`location.pathname === ${JSON.stringify(`/tasks/${resourceReference}`)}`);
+  deepLinkNavigated = await browser.evaluate(`location.pathname === ${JSON.stringify(`/crm/tasks/${resourceReference}`)}`);
   if (!deepLinkNavigated) throw new Error("e2e_browser_deep_link_not_navigated");
   if (process.env.AI_CRM_E2E_FILE_REFERENCE_JSON !== undefined) {
     const expectedFileReference = JSON.parse(process.env.AI_CRM_E2E_FILE_REFERENCE_JSON);
@@ -768,6 +772,40 @@ try {
   );
   if (expiredStatus !== 401) throw new Error("e2e_browser_auth_expired_session_not_rejected");
 
+  await browser.command("Page.navigate", { url: `${publicOrigin}/auth/pc/login?returnTo=%2Fsettings` });
+  await waitFor(async () => browser.evaluate(
+    `location.origin === ${JSON.stringify(publicOrigin)} && location.pathname === "/crm/settings" && document.readyState === "complete"`,
+  ), "e2e_browser_auth_sso_restore_failed");
+  const logoutSession = await browser.evaluate(`fetch("/auth/pc/session", { credentials: "include" }).then(async response => ({
+    body: await response.json(), status: response.status
+  }))`);
+  if (logoutSession.status !== 200 || typeof logoutSession.body?.csrfToken !== "string") throw new Error("e2e_browser_auth_logout_session_missing");
+  const logoutCookies = (await browser.command("Network.getAllCookies")).cookies;
+  const logoutCookie = logoutCookies.find((cookie) => cookie.name === "__Host-ai_crm_pc_session" && cookie.domain === "localhost");
+  if (!logoutCookie) throw new Error("e2e_browser_auth_logout_cookie_missing");
+  const logoutResult = await browser.evaluate(`fetch("/auth/pc/logout", {
+    credentials: "include",
+    headers: { Accept: "application/json", "X-CSRF-Token": ${JSON.stringify(logoutSession.body.csrfToken)} },
+    method: "POST"
+  }).then(async response => ({ body: await response.json(), status: response.status }))`);
+  if (logoutResult.status !== 200 || typeof logoutResult.body?.redirectUrl !== "string") throw new Error("e2e_browser_auth_logout_failed");
+  const logoutUrl = new URL(logoutResult.body.redirectUrl);
+  if (logoutUrl.href !== `${publicOrigin}/auth/pc/login`) {
+    throw new Error("e2e_browser_auth_logout_return_invalid");
+  }
+  await browser.command("Page.navigate", { url: logoutUrl.href });
+  await waitFor(async () => browser.evaluate(
+    `location.port === "${String(keycloakPort)}" && Boolean(document.querySelector("#username"))`,
+  ), "e2e_browser_auth_logout_login_page_missing");
+  const revokedLogoutSession = await fetch(`${publicOrigin}/auth/pc/session`, {
+    headers: { cookie: `__Host-ai_crm_pc_session=${logoutCookie.value}` },
+  });
+  if (revokedLogoutSession.status !== 401) throw new Error("e2e_browser_auth_logout_session_not_revoked");
+  const cookiesAfterLogout = (await browser.command("Network.getAllCookies")).cookies;
+  if (cookiesAfterLogout.some((cookie) => cookie.name === "__Host-ai_crm_pc_session" && cookie.domain === "localhost")) {
+    throw new Error("e2e_browser_auth_logout_cookie_not_cleared");
+  }
+
   if (process.env.AI_CRM_E2E_KEYCLOAK_DUMP_OUTPUT !== undefined) await dumpKeycloakDatabase(process.env.AI_CRM_E2E_KEYCLOAK_DUMP_OUTPUT);
 
   process.stdout.write(`${JSON.stringify({
@@ -785,6 +823,9 @@ try {
     formRendered,
     formServerValidated,
     httpOnlyCookie: true,
+    logoutCookieCleared: true,
+    logoutReturnedToLogin: true,
+    logoutSessionRevoked: true,
     phoneLoginVerified,
     project,
     sessionFixationRejected: true,

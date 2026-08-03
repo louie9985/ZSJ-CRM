@@ -4,8 +4,10 @@ import { internalMobileOperations, operationById, type InternalMobileOperation }
 
 vi.mock("@tarojs/taro", () => ({ default: {} }));
 
-function createApi(overrides: Partial<TaroAdapterApi> = {}): TaroAdapterApi {
-  return {
+type TaroAdapterApiOverrides = { [Key in keyof TaroAdapterApi]?: TaroAdapterApi[Key] | undefined };
+
+function createApi(overrides: TaroAdapterApiOverrides = {}): TaroAdapterApi {
+  const api: TaroAdapterApi = {
     getCurrentInstance: () => ({ router: { params: { page: "2" } } }),
     navigateTo: vi.fn().mockResolvedValue(undefined),
     redirectTo: vi.fn().mockResolvedValue(undefined),
@@ -14,8 +16,15 @@ function createApi(overrides: Partial<TaroAdapterApi> = {}): TaroAdapterApi {
     offNetworkStatusChange: vi.fn(),
     chooseImage: vi.fn().mockResolvedValue({ tempFilePaths: ["temporary://picked-image"] }),
     request: vi.fn().mockResolvedValue({ data: { ok: true }, statusCode: 200 }),
-    ...overrides,
   };
+  for (const [key, value] of Object.entries(overrides) as Array<[keyof TaroAdapterApi, TaroAdapterApi[keyof TaroAdapterApi] | undefined]>) {
+    if (value === undefined) {
+      Reflect.deleteProperty(api, key);
+    } else {
+      Object.assign(api, { [key]: value });
+    }
+  }
+  return api;
 }
 
 describe("Taro H5 adapters", () => {
@@ -39,12 +48,29 @@ describe("Taro H5 adapters", () => {
     const api = createApi();
     const listener = vi.fn();
     const unsubscribe = createTaroH5Adapters(api).connectivity.subscribe(listener);
-    const receive = vi.mocked(api.onNetworkStatusChange).mock.calls[0]?.[0];
+    const onNetworkStatusChange = api.onNetworkStatusChange;
+    if (onNetworkStatusChange === undefined) {
+      throw new Error("expected_network_status_listener_api");
+    }
+    const receive = vi.mocked(onNetworkStatusChange).mock.calls[0]?.[0];
     expect(receive).toBeDefined();
     receive?.({ isConnected: false });
     expect(listener).toHaveBeenCalledWith(false);
     unsubscribe();
-    expect(api.offNetworkStatusChange).toHaveBeenCalledWith(receive);
+    const offNetworkStatusChange = api.offNetworkStatusChange;
+    if (offNetworkStatusChange === undefined) {
+      throw new Error("expected_network_status_unlistener_api");
+    }
+    expect(offNetworkStatusChange).toHaveBeenCalledWith(receive);
+  });
+
+  it("keeps startup usable when the runtime does not expose network change events", () => {
+    const api = createApi({ onNetworkStatusChange: undefined, offNetworkStatusChange: undefined });
+    const listener = vi.fn();
+    const unsubscribe = createTaroH5Adapters(api).connectivity.subscribe(listener);
+    expect(unsubscribe).toEqual(expect.any(Function));
+    expect(() => { unsubscribe(); }).not.toThrow();
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it("reads the initial network state before relying on change events", async () => {

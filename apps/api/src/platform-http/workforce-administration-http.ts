@@ -3,7 +3,7 @@ export type WorkforceAccountStatus = "active" | "credential_pending" | "disabled
 export type WorkforceAdministrationCommand =
   | { readonly departmentId: string; readonly kind: "create_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "update_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly phone?: string; readonly username: string }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly legalName: string; readonly phone?: string; readonly username: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" | "reset_password" }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
@@ -208,9 +208,9 @@ function command(value: unknown): WorkforceAdministrationCommand {
       return Object.freeze({ accountId: uuid(parsed["accountId"]), departmentId: uuid(parsed["departmentId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, legalName: text(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), positionId: uuid(parsed["positionId"]), username: username(parsed["username"]) });
     }
     case "update_system_account": {
-      const parsed = exact(candidate, ["accountId", "expectedRevision", "kind", "username"], ["phone"]);
+      const parsed = exact(candidate, ["accountId", "expectedRevision", "kind", "legalName", "username"], ["phone"]);
       const parsedPhone = optionalPhone(parsed);
-      return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), username: username(parsed["username"]) });
+      return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, legalName: text(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), username: username(parsed["username"]) });
     }
     case "deactivate_account": case "reset_password": {
       const parsed = exact(candidate, ["accountId", "expectedRevision", "kind"]);

@@ -50,4 +50,10 @@ describe("workbench HTTP adapter", () => {
     const adapter = createWorkbenchHttpAdapter({ load });
     await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, status: 403 });
   });
+
+  it("maps a stale workforce account session to forbidden instead of maintenance", async () => {
+    const load = vi.fn().mockRejectedValue(Object.assign(new Error("private"), { code: "workforce_account_not_found" }));
+    const adapter = createWorkbenchHttpAdapter({ load });
+    await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, status: 403 });
+  });
 });

@@ -1,6 +1,6 @@
 import { WorkforceAccessError } from "./errors.js";
 import type { WorkforceAccessCommit, WorkforceAccessStore } from "./store.js";
-import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
+import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccessSubjectAccount, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
 
 export class InMemoryWorkforceAccessStore implements WorkforceAccessStore {
   readonly #accounts = new Map<string, WorkforceAccount>();
@@ -39,6 +39,14 @@ export class InMemoryWorkforceAccessStore implements WorkforceAccessStore {
     if (account === undefined) return Promise.resolve(undefined);
     const latestIdentitySync = this.#latest(accountId);
     return Promise.resolve({ ...account, ...(latestIdentitySync === undefined ? {} : { latestIdentitySync }) });
+  }
+  findSubjectAccountByKeycloakUserId(keycloakUserId: string): Promise<WorkforceAccessSubjectAccount | undefined> {
+    const account = [...this.#accounts.values()].find((candidate) => candidate.keycloakUserId === keycloakUserId);
+    return Promise.resolve(account === undefined ? undefined : {
+      keycloakUserId,
+      status: account.status,
+      ...(account.workforcePersonId === undefined ? {} : { workforcePersonId: account.workforcePersonId }),
+    });
   }
   findIdentifier(kind: "phone" | "username", normalizedValue: string): Promise<LoginIdentifierHistory | undefined> {
     return Promise.resolve([...this.#identifiers.values()].find((item) => item.kind === kind && item.normalizedValue === normalizedValue && !item.releasedAt));

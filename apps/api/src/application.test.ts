@@ -68,7 +68,10 @@ describe("API composition root", () => {
       beginReauthentication: vi.fn().mockResolvedValue({ headers: { Location: "https://identity.invalid/login?prompt=login" }, status: 302 }),
       completeLogin: vi.fn(),
       currentSession: vi.fn(),
-      logout: vi.fn(),
+      logout: vi.fn().mockResolvedValue({
+        headers: { Location: "https://identity.invalid/logout", "Set-Cookie": "__Host-ai_crm_pc_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax" },
+        status: 302,
+      }),
       refresh: vi.fn(),
     };
     const app = createApiApplication({
@@ -118,6 +121,22 @@ describe("API composition root", () => {
       csrfToken: "x".repeat(43),
       origin: "https://workbench.example.test",
     }), "/account");
+    const logout = await fetch(`${url}/auth/pc/logout`, {
+      headers: {
+        accept: "application/json",
+        cookie: `__Host-ai_crm_pc_session=${"c".repeat(43)}`,
+        origin: "https://workbench.example.test",
+        "x-csrf-token": "x".repeat(43),
+      },
+      method: "POST",
+    });
+    const logoutBody: unknown = await logout.json();
+    expect({ body: logoutBody, location: logout.headers.get("location"), status: logout.status }).toEqual({
+      body: { redirectUrl: "https://identity.invalid/logout" },
+      location: null,
+      status: 200,
+    });
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     await app.stop();
   });
 
@@ -614,7 +633,7 @@ describe("API composition root", () => {
     await app.stop();
   });
 
-  it("revokes the current BFF session and clears its cookie after a system-account identifier update", async () => {
+  it("revokes the current BFF session and clears its cookie after a system-account profile update", async () => {
     const execute = vi.fn().mockResolvedValue({ body: { replayed: false }, headers: { "Cache-Control": "no-store" }, status: 200 });
     const revokeBrowserSession = vi.fn().mockResolvedValue(undefined);
     const validateFormMutation = vi.fn().mockResolvedValue(undefined);
@@ -630,7 +649,7 @@ describe("API composition root", () => {
     if (address === undefined) throw new Error("api_not_started");
     const credential = "a".repeat(43);
     const response = await fetch(`${address}/workforce-administration/commands`, {
-      body: JSON.stringify({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", username: "system.admin.two" }),
+      body: JSON.stringify({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", legalName: "ZSJ系统管理员", username: "system.admin.two" }),
       headers: {
         "content-type": "application/json",
         cookie: `__Host-ai_crm_pc_session=${credential}`,

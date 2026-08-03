@@ -181,14 +181,14 @@ class PrismaAuthorizationPolicyPublisher implements AuthorizationPolicyPublisher
       try {
         await this.runtime.execute("select pg_advisory_xact_lock(hashtextextended('authorization.policy.publication',0))");
         const prior = (await this.runtime.execute<PublicationRow>(
-          "select fingerprint,result from authorization_core.policy_publications where publication_id=$1 for update", [publicationId],
+          "select fingerprint,result from authorization_core.policy_publications where publication_id=$1", [publicationId],
         )).rows[0];
         if (prior) {
           if (prior.fingerprint !== fingerprint) return fail("authorization_policy_conflict");
           return publicationResult(prior.result, true);
         }
         const existing = (await this.runtime.execute<PolicyRow>(
-          "select version,contract_version,content_digest,snapshot from authorization_core.policy_versions where version=$1 for update", [snapshot.version],
+          "select version,contract_version,content_digest,snapshot from authorization_core.policy_versions where version=$1", [snapshot.version],
         )).rows[0];
         if (existing && (existing.contract_version !== contractVersion || existing.content_digest !== contentDigest || canonicalJson(existing.snapshot) !== canonicalJson(snapshot))) {
           return fail("authorization_policy_conflict");

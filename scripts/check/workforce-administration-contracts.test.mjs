@@ -26,8 +26,8 @@ test("Workforce Administration commands are a closed discriminated union", () =>
   ]);
   assert.equal(variants.every((variant) => variant.properties.password === undefined && variant.properties.token === undefined), true);
   const systemUpdate = variants.find((variant) => variant.properties.kind.const === "update_system_account");
-  assert.deepEqual(Object.keys(systemUpdate.properties).sort(), ["accountId", "expectedRevision", "kind", "phone", "username"]);
-  assert.deepEqual(systemUpdate.required.sort(), ["accountId", "expectedRevision", "kind", "username"]);
+  assert.deepEqual(Object.keys(systemUpdate.properties).sort(), ["accountId", "expectedRevision", "kind", "legalName", "phone", "username"]);
+  assert.deepEqual(systemUpdate.required.sort(), ["accountId", "expectedRevision", "kind", "legalName", "username"]);
   const retry = variants.find((variant) => variant.properties.kind.const === "retry_identity_sync");
   assert.deepEqual(Object.keys(retry.properties).sort(), ["accountId", "expectedRevision", "failedOperationId", "kind"]);
   assert.deepEqual(retry.required.sort(), ["accountId", "expectedRevision", "failedOperationId", "kind"]);

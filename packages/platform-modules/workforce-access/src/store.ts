@@ -1,4 +1,4 @@
-import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccessOperation, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
+import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccessOperation, WorkforceAccessSubjectAccount, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
 
 export type WorkforceAccessMutation =
   | { readonly account: WorkforceAccount; readonly identifiers: readonly LoginIdentifierHistory[]; readonly kind: "create" }
@@ -17,6 +17,7 @@ export interface WorkforceAccessStore {
   createIdentitySyncOperation(operation: IdentitySyncOperation): Promise<{ readonly replayed: boolean }>;
   commit(command: WorkforceAccessCommit): Promise<{ readonly replayed: boolean }>;
   findAccount(accountId: string): Promise<WorkforceAccount | undefined>;
+  findSubjectAccountByKeycloakUserId(keycloakUserId: string): Promise<WorkforceAccessSubjectAccount | undefined>;
   findIdentifier(kind: "phone" | "username", normalizedValue: string): Promise<LoginIdentifierHistory | undefined>;
   findIdentitySyncOperation(operationId: string): Promise<IdentitySyncOperation | undefined>;
   findLatestIdentitySyncOperation(accountId: string): Promise<IdentitySyncOperation | undefined>;

@@ -6,15 +6,18 @@ import { createSameSiteWorkbenchPort } from "./same-site-workbench-port";
 
 const connectedPort: WorkbenchPort = {
   ...createSameSiteWorkbenchPort(),
+  ...createSameSiteCollectionPollingPort(),
   workforceAdministration: createSameSiteWorkforceAdministrationPort(),
 };
 
 const unavailableProductionPort: WorkbenchPort = {
+  beginLogin: () => undefined,
   bootstrap: () => Promise.resolve({ kind: "maintenance" }),
   logout: () => Promise.resolve({ kind: "session-expired" }),
 };
 
 const lazyDevelopmentPort: WorkbenchPort = {
+  beginLogin: () => undefined,
   bootstrap: async () => {
     const { developmentFixturePort } = await import("./development-fixture");
     return developmentFixturePort.bootstrap();
@@ -64,9 +67,10 @@ function e2ePort(): WorkbenchPort {
   };
 }
 
-// A generated-client adapter replaces this fail-closed port after the relevant contracts pass G2.
 export function selectRuntimeWorkbenchPort(environment: { readonly connected?: boolean; readonly development: boolean; readonly e2e: boolean }): WorkbenchPort {
-  return environment.e2e ? e2ePort() : environment.development ? lazyDevelopmentPort : environment.connected === true ? connectedPort : unavailableProductionPort;
+  if (environment.e2e) return e2ePort();
+  if (environment.connected !== undefined) return environment.connected ? connectedPort : unavailableProductionPort;
+  return environment.development ? connectedPort : unavailableProductionPort;
 }
 
 export const runtimeWorkbenchPort = selectRuntimeWorkbenchPort({

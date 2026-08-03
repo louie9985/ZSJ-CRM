@@ -26,7 +26,7 @@ describe("Workbench collection polling", () => {
       tasks: { ...collection("任务", false), items: [{ id: "source-1", status: "已完成", summary: "来源 tests.synthetic · 版本 2", tab: "history" as const, title: "source-1" }] },
     };
     const pollCollections = vi.fn(() => Promise.resolve(polled));
-    const port: WorkbenchPort = { bootstrap: vi.fn(), logout: vi.fn(), pollCollections };
+    const port: WorkbenchPort = { beginLogin: vi.fn(), bootstrap: vi.fn(), logout: vi.fn(), pollCollections };
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }): React.JSX.Element => (
       <QueryClientProvider client={client}>{children as unknown as Parameters<typeof QueryClientProvider>[0]["children"]}</QueryClientProvider>

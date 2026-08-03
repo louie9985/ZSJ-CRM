@@ -63,6 +63,7 @@ const env: NodeJS.ProcessEnv = {
   AI_CRM_PC_LOGIN_TRANSACTION_TTL_SECONDS: "180",
   AI_CRM_PC_OIDC_CLIENT_ID: "ai-crm-pc-bff",
   AI_CRM_PC_OIDC_CLIENT_SECRET_FILE: secretPaths.client,
+  AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/login",
   AI_CRM_PC_OIDC_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/callback",
   AI_CRM_PC_OIDC_TIMEOUT_SECONDS: "5",
   AI_CRM_PC_REFRESH_LEASE_TTL_MS: "10000",
@@ -84,11 +85,57 @@ describe("production API configuration", () => {
     expect(result.database).toMatchObject({ applicationName: "ai_crm_api", maxConnections: 10 });
     expect(result.databaseHealthProbe).toEqual({ intervalMs: 10_000, timeoutMs: 2_000 });
     expect(result.database.connectionString).toBe(secrets[secretPaths.database]);
-    expect(result.fileCenter).toMatchObject({ maximumUploadBytes: 1_048_576, cos: { bucket: "synthetic-test-1250000000", secretId: "synthetic-cos-id" } });
+    expect(result.fileCenter).toMatchObject({ maximumUploadBytes: 1_048_576, storage: { bucket: "synthetic-test-1250000000", kind: "cos", secretId: "synthetic-cos-id" } });
     expect(result.migrations).toHaveLength(12);
     expect(result.migrations.some((path) => path.endsWith(join("packages", "platform-modules", "authorization", "migrations"))))
       .toBe(true);
     expect(result.oidcVerifier.jwksTimeoutMs).toBe(5_000);
+  });
+
+  it("loads explicit local file storage without requiring COS credentials", async () => {
+    const localEnv = {
+      ...env,
+      AI_CRM_COS_BUCKET: undefined,
+      AI_CRM_COS_REGION: undefined,
+      AI_CRM_COS_SECRET_ID_FILE: undefined,
+      AI_CRM_COS_SECRET_KEY_FILE: undefined,
+    };
+    const root = resolve(import.meta.dirname, "__local-file-storage__");
+    const result = await loadProductionApiConfiguration({
+      env: {
+        ...localEnv,
+        AI_CRM_FILE_STORAGE_PROVIDER: "local",
+        AI_CRM_LOCAL_FILE_STORAGE_ROOT: root,
+        AI_CRM_PC_ALLOWED_ORIGIN: "http://127.0.0.1:3000",
+        AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "http://127.0.0.1:3000/auth/pc/login",
+        AI_CRM_PC_OIDC_REDIRECT_URI: "http://127.0.0.1:3000/auth/pc/callback",
+      },
+      secretFilePolicy,
+    });
+
+    expect(result.fileCenter.storage).toEqual({ kind: "local", rootDirectory: root });
+  });
+
+  it("does not allow local file storage outside the local development workbench origin", async () => {
+    const localEnv = {
+      ...env,
+      AI_CRM_COS_BUCKET: undefined,
+      AI_CRM_COS_REGION: undefined,
+      AI_CRM_COS_SECRET_ID_FILE: undefined,
+      AI_CRM_COS_SECRET_KEY_FILE: undefined,
+    };
+
+    await expect(loadProductionApiConfiguration({
+      env: {
+        ...localEnv,
+        AI_CRM_FILE_STORAGE_PROVIDER: "local",
+        AI_CRM_LOCAL_FILE_STORAGE_ROOT: resolve(import.meta.dirname, "__local-file-storage__"),
+        AI_CRM_PC_ALLOWED_ORIGIN: "https://workbench.example.test",
+        AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "https://workbench.example.test/auth/pc/login",
+        AI_CRM_PC_OIDC_REDIRECT_URI: "https://workbench.example.test/auth/pc/callback",
+      },
+      secretFilePolicy,
+    })).rejects.toThrow("api_local_file_storage_dev_only");
   });
 
   it("rejects a release identifier as the independent schema compatibility version", async () => {

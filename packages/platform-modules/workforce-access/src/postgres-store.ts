@@ -1,12 +1,13 @@
 import type { DatabaseRuntime } from "@ai-crm/database";
 import { WorkforceAccessError } from "./errors.js";
 import type { WorkforceAccessCommit, WorkforceAccessMutation, WorkforceAccessStore } from "./store.js";
-import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
+import type { IdentitySyncFailureCode, IdentitySyncOperation, LoginIdentifierHistory, WorkforceAccessSubjectAccount, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus } from "./types.js";
 
 export type WorkforceAccessPersistenceRuntime = Pick<DatabaseRuntime, "execute" | "withTransaction">;
 interface AccountRow { account_id: string; workforce_person_id: string | null; keycloak_user_id: string | null; username: string; username_normalized: string; phone: string | null; status: WorkforceAccountStatus; revision: number; created_at: Date | string; updated_at: Date | string; sync_operation_id?: string | null; sync_action?: IdentitySyncOperation["action"] | null; sync_status?: IdentitySyncOperation["status"] | null; sync_retry_of_operation_id?: string | null; sync_error_code?: IdentitySyncFailureCode | null; sync_trace_id?: string | null; sync_requested_at?: Date | string | null; sync_completed_at?: Date | string | null }
 interface IdentifierRow { identifier_id: string; account_id: string; kind: "phone" | "username"; value: string; normalized_value: string; released_at: Date | string | null }
 interface IdentitySyncRow { operation_id: string; account_id: string; action: IdentitySyncOperation["action"]; status: IdentitySyncOperation["status"]; retry_of_operation_id: string | null; error_code: IdentitySyncFailureCode | null; trace_id: string; requested_at: Date | string; completed_at: Date | string | null }
+interface SubjectAccountRow { keycloak_user_id: string; status: WorkforceAccountStatus; workforce_person_id: string | null }
 const iso = (value: Date | string): string => value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 const identitySync = (row: IdentitySyncRow): IdentitySyncOperation => ({ accountId: row.account_id, action: row.action, ...(row.completed_at ? { completedAt: iso(row.completed_at) } : {}), ...(row.error_code ? { errorCode: row.error_code } : {}), operationId: row.operation_id, requestedAt: iso(row.requested_at), ...(row.retry_of_operation_id ? { retryOfOperationId: row.retry_of_operation_id } : {}), status: row.status, traceId: row.trace_id });
 const account = (row: AccountRow): WorkforceAccount => {
@@ -42,6 +43,11 @@ class PrismaWorkforceAccessStore implements WorkforceAccessStore {
     } catch (error) { const code = (error as { code?: string }).code; if (code === "23505") throw new WorkforceAccessError("entity_conflict"); if (code === "23503") throw new WorkforceAccessError("entity_not_found"); throw error; }
   }
   async findAccount(id: string): Promise<WorkforceAccount | undefined> { const result = await this.db.execute<AccountRow>(`${accountSelect} where a.account_id=$1`, [id]); return result.rows[0] ? account(result.rows[0]) : undefined; }
+  async findSubjectAccountByKeycloakUserId(keycloakUserId: string): Promise<WorkforceAccessSubjectAccount | undefined> {
+    const result = await this.db.execute<SubjectAccountRow>("select keycloak_user_id,workforce_person_id,status from workforce_access.accounts where keycloak_user_id=$1", [keycloakUserId]);
+    const row = result.rows[0];
+    return row === undefined ? undefined : Object.freeze({ keycloakUserId: row.keycloak_user_id, status: row.status, ...(row.workforce_person_id === null ? {} : { workforcePersonId: row.workforce_person_id }) });
+  }
   async findIdentifier(kind: "phone" | "username", value: string): Promise<LoginIdentifierHistory | undefined> { const result = await this.db.execute<IdentifierRow>("select * from workforce_access.login_identifier_history where kind=$1 and normalized_value=$2 and released_at is null order by identifier_id limit 1", [kind, value]); return result.rows[0] ? identifier(result.rows[0]) : undefined; }
   async findIdentitySyncOperation(operationId: string): Promise<IdentitySyncOperation | undefined> { const result = await this.db.execute<IdentitySyncRow>("select * from workforce_access.identity_sync_operations where operation_id=$1", [operationId]); return result.rows[0] ? identitySync(result.rows[0]) : undefined; }
   async findLatestIdentitySyncOperation(accountId: string): Promise<IdentitySyncOperation | undefined> { const result = await this.db.execute<IdentitySyncRow>("select * from workforce_access.identity_sync_operations where account_id=$1 order by requested_at desc,operation_id desc limit 1", [accountId]); return result.rows[0] ? identitySync(result.rows[0]) : undefined; }

@@ -39,6 +39,7 @@ import {
   createFileCenterService,
   createPrismaFileCenterStore,
   FileCenterError,
+  LocalFileStorageAdapter,
   type FileAudit,
   type FileAuthorizationRequest,
   type FileAuthorizer,
@@ -50,7 +51,7 @@ import {
   type TaskAudit,
   type TaskAuthorization,
 } from "@ai-crm/platform-task-center";
-import { createTencentCosStorageAdapter, type TencentCosStorageAdapter } from "@ai-crm/platform-file-center/provider/tencent-cos";
+import { createTencentCosStorageAdapter } from "@ai-crm/platform-file-center/provider/tencent-cos";
 import {
   checkMigrationCompatibility,
   createDatabaseRuntime,
@@ -79,6 +80,7 @@ import {
 } from "./production-config.js";
 import type { ApiRuntimeConfiguration } from "./runtime-config.js";
 import { createWorkbenchBootstrapFacade } from "./workbench/facade.js";
+import { createWorkforceAuthorizationContext } from "./workforce-authorization-context.js";
 import { createAuthorizationGrantPort } from "./workforce-administration/authorization-grants.js";
 import { createDurableAdministrationOperationPort } from "./workforce-administration/durable-operation.js";
 import { createDurableIdentityAdministrationPort } from "./workforce-administration/durable-identity.js";
@@ -88,6 +90,8 @@ import { createKeycloakAdministrationPorts } from "./workforce-administration/ke
 export interface ApiPlatformBindingFactory {
   readonly create: (configuration: Readonly<ApiRuntimeConfiguration>, signal?: AbortSignal) => ApiPlatformBindings | Promise<ApiPlatformBindings>;
 }
+
+type HealthCheckedStorageAdapter = StorageAdapter & { readonly checkHealth: () => Promise<boolean> };
 
 const unavailableAuthenticationResponse: AuthenticationHttpResponse = Object.freeze({
   body: Object.freeze({
@@ -278,17 +282,41 @@ export interface ProductionApiBindingDependencies {
   readonly checkCompatibility: typeof checkMigrationCompatibility;
   readonly connectSessions: (config: RedisSessionConnectionConfig) => Promise<Readonly<RedisSessionConnection>>;
   readonly createDatabase: (config: DatabaseConfig) => DatabaseRuntime;
-  readonly createFileStorage?: (config: ProductionApiConfiguration["fileCenter"]["cos"]) => TencentCosStorageAdapter;
+  readonly createFileStorage?: (config: ProductionApiConfiguration["fileCenter"]["storage"]) => HealthCheckedStorageAdapter;
   readonly createOidc: typeof createOidcClient;
   readonly createTokenVerifier: (config: ProductionApiConfiguration["oidcVerifier"]) => TokenVerifier;
   readonly loadConfiguration: () => Promise<Readonly<ProductionApiConfiguration>>;
+}
+
+function createLocalFileStorageAdapter(rootDirectory: string, allowedOrigin: string): HealthCheckedStorageAdapter {
+  const adapter = new LocalFileStorageAdapter({
+    grantUrl: ({ kind }) => `${allowedOrigin}/files/local-development/${kind}`,
+    rootDirectory,
+  });
+  return Object.freeze(Object.assign(adapter, {
+    async checkHealth(): Promise<boolean> {
+      try {
+        await adapter.inspectObject({ objectHandle: "objects/00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000001" });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  }));
+}
+
+function createConfiguredFileStorage(
+  config: ProductionApiConfiguration["fileCenter"]["storage"],
+  allowedOrigin: string,
+): HealthCheckedStorageAdapter {
+  if (config.kind === "local") return createLocalFileStorageAdapter(config.rootDirectory, allowedOrigin);
+  return createTencentCosStorageAdapter(config);
 }
 
 const productionDependencies: ProductionApiBindingDependencies = Object.freeze({
   checkCompatibility: checkMigrationCompatibility,
   connectSessions: connectRedisSessionStore,
   createDatabase: createDatabaseRuntime,
-  createFileStorage: createTencentCosStorageAdapter,
   createOidc: createOidcClient,
   createTokenVerifier: createOidcTokenVerifier,
   loadConfiguration: loadProductionApiConfiguration,
@@ -450,6 +478,7 @@ export async function createProductionApiPlatformBindings(
       clientId: configuration.pcBff.keycloakClientId,
       clientSecret: configuration.pcBff.keycloakClientSecret,
       issuer: configuration.pcBff.keycloakIssuer,
+      postLogoutRedirectUri: configuration.pcBff.postLogoutRedirectUri,
       redirectUri: configuration.pcBff.redirectUri,
       signal,
       timeoutSeconds: configuration.pcBff.oidcTimeoutSeconds,
@@ -484,15 +513,8 @@ export async function createProductionApiPlatformBindings(
     { fieldPolicies: {} },
   );
   const eventing = createEventingCore(createPrismaEventingStore(activeDatabase));
-  const fileStorage: StorageAdapter & { readonly checkHealth: () => Promise<boolean> } = dependencies.createFileStorage?.(configuration.fileCenter.cos) ?? Object.freeze({
-    checkHealth: () => Promise.resolve(false),
-    createDownloadGrant: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-    createUploadGrant: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-    deleteObject: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-    inspectObject: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-    quarantineObject: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-    readObject: () => Promise.reject(new FileCenterError("file_center_storage_unavailable", { retryable: true })),
-  });
+  const fileStorage: HealthCheckedStorageAdapter = dependencies.createFileStorage?.(configuration.fileCenter.storage)
+    ?? createConfiguredFileStorage(configuration.fileCenter.storage, configuration.pcBff.allowedOrigin);
   const fileAuthorizer: FileAuthorizer = Object.freeze({
     authorize: async (request: FileAuthorizationRequest) => {
       if (request.actor.actorType !== "authenticated_subject" || (request.action !== "file:upload" && request.action !== "file:download")) {
@@ -532,10 +554,13 @@ export async function createProductionApiPlatformBindings(
   const applicationRegistryCapability = createPostgresApplicationRegistryCapabilityProbe(activeDatabase);
   const formSchemaCapability = createPostgresFormSchemaCapabilityProbe(activeDatabase);
   const applicationRegistryQueries = createPostgresApplicationRegistryQueryService(activeDatabase, {
-    authorize: (request) => authorizationTrace.run(request.traceId, () => authorization.check(
-      request.subject,
-      { action: request.permission.action, resource: request.permission.resource },
-    )),
+    authorize: async (request) => {
+      const decision = await authorizationTrace.run(request.traceId, () => authorization.check(
+        request.subject,
+        { action: request.permission.action, resource: request.permission.resource },
+      ));
+      return Object.freeze({ allowed: decision.allowed, decisionId: decision.decisionId });
+    },
   });
   const formQueries = createPrismaFormSchemaQueryService(activeDatabase, {
     authorize: (request) => authorizationTrace.run(request.traceId, () => authorization.check(
@@ -605,15 +630,26 @@ export async function createProductionApiPlatformBindings(
     store: notificationStore,
   });
   const organizationHolder: { value?: ReturnType<typeof createPrismaOrganizationService> } = {};
+  const grantPort = createAuthorizationGrantPort({
+    clock: () => new Date(),
+    publisher: authorizationPersistence.publisher,
+    resolveActiveAssignmentIds: async (workforcePersonId, at) => {
+      const organization = organizationHolder.value;
+      if (organization === undefined) throw new Error("organization_write_authorization_unavailable");
+      return (await organization.resolveWorkforcePersonContext(workforcePersonId, at)).assignments.map(({ assignmentId }) => assignmentId);
+    },
+    store: authorizationPersistence.store,
+  });
   const workforceManagementAuthorizer = Object.freeze({
     async authorize(request: { readonly actor: { readonly actorId: string; readonly actorType: "authenticated_subject" | "system" } }): Promise<void> {
       if (request.actor.actorType !== "authenticated_subject") throw new Error("authorization_denied");
       const context = await organizationHolder.value?.resolveWorkforcePersonContext(request.actor.actorId, new Date().toISOString());
       if (context === undefined) throw new Error("organization_write_authorization_unavailable");
-      await authorization.requireAllowed({
+      await authorization.requireAllowed(createWorkforceAuthorizationContext({
         activeAssignmentIds: context.assignments.map(({ assignmentId }) => assignmentId),
+        systemAdministrator: await grantPort.isSuperAdministrator(context.workforcePersonId),
         workforcePersonId: context.workforcePersonId,
-      }, { action: "manage", resource: "platform.workforce-access.console" });
+      }), { action: "manage", resource: "platform.workforce-access.console" });
     },
   });
   const organization = createPrismaOrganizationService(
@@ -797,40 +833,36 @@ export async function createProductionApiPlatformBindings(
     store: createRedisBrowserSessionStore(activeSessions.executor),
     tokenVerifier,
   });
-  const findAccountByKeycloakUserId = async (keycloakUserId: string) => {
-    let cursor: string | undefined;
-    for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
-      const page = await workforceAccounts.listAccounts({ ...(cursor === undefined ? {} : { cursor }), limit: 200 });
-      const match = page.items.find((account) => account.keycloakUserId === keycloakUserId);
-      if (match !== undefined) return match;
-      cursor = page.nextCursor;
-      if (cursor === undefined) break;
-    }
-    throw new Error("workforce_account_not_found");
-  };
   const resolveAdministrationPrincipal = async (input: Readonly<{ credential: string; traceId: string }>) => {
     const authenticated = await sessionService.resolvePrincipal(input.credential);
     const workforce = await organization.resolveWorkforceContext(authenticated.authenticationSubject, new Date().toISOString());
-    const account = await findAccountByKeycloakUserId(authenticated.authenticationSubject.subject);
-    if (account.status !== "active" || account.workforcePersonId !== workforce.workforcePersonId) throw new Error("employment_not_active");
+    const account = await workforceAccounts.getSubjectAccountByKeycloakUserId(authenticated.authenticationSubject.subject)
+      .catch((error: unknown) => {
+        if (typeof error === "object" && error !== null && "code" in error && error.code === "entity_not_found") {
+          throw Object.assign(new Error("workforce_account_not_found"), { code: "workforce_account_not_found" });
+        }
+        throw error;
+      });
+    if (account.status !== "active" || account.workforcePersonId !== workforce.workforcePersonId) {
+      throw Object.assign(new Error("employment_not_active"), { code: "employment_not_active" });
+    }
+    const subject = createWorkforceAuthorizationContext({
+      activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId),
+      systemAdministrator: await grantPort.isSuperAdministrator(workforce.workforcePersonId),
+      workforcePersonId: workforce.workforcePersonId,
+    });
     return Object.freeze({
-      actor: Object.freeze({ actorId: workforce.workforcePersonId, actorType: "authenticated_subject" as const }),
+      actor: Object.freeze({
+        actorId: workforce.workforcePersonId,
+        actorType: "authenticated_subject" as const,
+        ...(subject.selectedAssignmentId === undefined ? {} : { assignmentId: subject.selectedAssignmentId }),
+      }),
       identitySubjectId: authenticated.authenticationSubject.subject,
       reauthenticated: authenticated.reauthenticated === true,
-      subject: Object.freeze({
-        activeAssignmentIds: Object.freeze(workforce.assignments.map(({ assignmentId }) => assignmentId)),
-        workforcePersonId: workforce.workforcePersonId,
-      }),
+      subject,
       workforce,
     });
   };
-  const grantPort = createAuthorizationGrantPort({
-    clock: () => new Date(),
-    publisher: authorizationPersistence.publisher,
-    resolveActiveAssignmentIds: async (workforcePersonId, at) =>
-      (await organization.resolveWorkforcePersonContext(workforcePersonId, at)).assignments.map(({ assignmentId }) => assignmentId),
-    store: authorizationPersistence.store,
-  });
   const keycloakAdministration = createKeycloakAdministrationPorts({
     adminBaseUrl: configuration.workforceAdministration.keycloakAdminBaseUrl,
     clientId: configuration.workforceAdministration.keycloakClientId,

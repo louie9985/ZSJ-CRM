@@ -1,4 +1,5 @@
 import { Button, Result } from "antd";
+import { pcLoginUrl } from "./auth-routes";
 
 export const stateCopy = {
   forbidden: { status: "403", title: "无权访问", detail: "当前会话没有访问此资源的权限。请返回可用工作区。" },
@@ -14,9 +15,9 @@ export type StateKind = keyof typeof stateCopy;
 export function SystemState({ kind, loginUrl, onRetry, retryable = false }: { kind: StateKind; loginUrl?: string; onRetry?: () => void; retryable?: boolean }): React.JSX.Element {
   const copy = stateCopy[kind];
   const action = kind === "expired"
-    ? <Button type="primary" href={loginUrl ?? "/auth/pc/login"}>重新登录</Button>
+    ? <Button type="primary" href={loginUrl ?? pcLoginUrl("/applications")}>重新登录</Button>
     : retryable && onRetry
       ? <Button type="primary" onClick={onRetry}>重试</Button>
-      : <Button type="primary" href="/workspace">返回工作概览</Button>;
+      : <Button type="primary" href="/applications">返回应用选择</Button>;
   return <Result status={copy.status} title={copy.title} subTitle={copy.detail} extra={action} />;
 }

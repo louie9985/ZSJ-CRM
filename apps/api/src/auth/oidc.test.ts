@@ -16,6 +16,7 @@ let expectedNonce = "";
 let sawBasicAuthentication = false;
 let tokenRequestCount = 0;
 let failNextTokenRequest = false;
+let logoutRefreshToken = "";
 
 function json(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json" });
@@ -88,6 +89,19 @@ beforeAll(async () => {
         await tokenResponse(request, response);
         return;
       }
+      if (url === "/realms/test/protocol/openid-connect/logout" && request.method === "POST") {
+        let body = "";
+        for await (const chunk of request) body += String(chunk);
+        const form = new URLSearchParams(body);
+        if (form.get("client_id") !== clientId || form.get("client_secret") !== clientSecret) {
+          json(response, 401, { error: "invalid_client" });
+          return;
+        }
+        logoutRefreshToken = form.get("refresh_token") ?? "";
+        response.writeHead(204);
+        response.end();
+        return;
+      }
       response.writeHead(404);
       response.end();
     })().catch(() => {
@@ -103,6 +117,7 @@ beforeAll(async () => {
     clientId,
     clientSecret,
     issuer,
+    postLogoutRedirectUri: "http://127.0.0.1:8088/auth/pc/login",
     redirectUri: "http://127.0.0.1:8088/auth/pc/callback",
     timeoutSeconds: 2,
   });
@@ -139,6 +154,7 @@ describe("createOidcClient", () => {
     const callback = `http://127.0.0.1:8088/auth/pc/callback?code=synthetic&state=${login.transaction.state}`;
     const initial = await client.exchangeCallback(callback, login.transaction);
     const refreshed = await client.refresh(initial.tokens);
+    await client.endSession(refreshed.tokens);
 
     expect(sawBasicAuthentication).toBe(true);
     expect(initial.tokens).toMatchObject({
@@ -150,10 +166,8 @@ describe("createOidcClient", () => {
       idToken: initial.tokens.idToken,
       refreshToken: "refresh.refreshed",
     });
-    const logoutUrl = new URL(client.endSessionUrl() ?? "");
-    expect(logoutUrl.origin + logoutUrl.pathname).toBe(`${issuer}/protocol/openid-connect/logout`);
-    expect(logoutUrl.searchParams.get("client_id")).toBe(clientId);
-    expect(logoutUrl.searchParams.has("id_token_hint")).toBe(false);
+    expect(logoutRefreshToken).toBe("refresh.refreshed");
+    expect(client.endSessionUrl()).toBe("http://127.0.0.1:8088/auth/pc/login");
   });
 
   it("rejects callback state mismatch and external return URLs", async () => {

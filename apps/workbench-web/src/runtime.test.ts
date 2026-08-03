@@ -7,4 +7,8 @@ describe("Workbench runtime selection", () => {
     await expect(selectRuntimeWorkbenchPort({ development: false, e2e: false }).bootstrap()).resolves.toEqual({ kind: "maintenance" });
     await expect(selectRuntimeWorkbenchPort({ development: false, e2e: true }).bootstrap()).resolves.toMatchObject({ kind: "ready" });
   });
+
+  it("lets the explicit connected flag override development mode", async () => {
+    await expect(selectRuntimeWorkbenchPort({ connected: false, development: true, e2e: false }).bootstrap()).resolves.toEqual({ kind: "maintenance" });
+  });
 });

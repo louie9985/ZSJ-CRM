@@ -19,6 +19,7 @@ const directories = [
     "notifications",
     "file-center",
     "authorization",
+    "workforce-access",
   ].map((name) => resolve(import.meta.dirname, `../../platform-modules/${name}/migrations`)),
 ];
 
@@ -62,6 +63,15 @@ describe.skipIf(!missingRoleUrlFile)("PostgreSQL runtime-role migration prerequi
       await expect(finalVerification.query(
         "select version from ai_crm_migrations.applied_migrations where version='0000000014'",
       )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000014" }] });
+      await expect(finalVerification.query(
+        "select version from ai_crm_migrations.applied_migrations where version='0000000019'",
+      )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000019" }] });
+      await expect(finalVerification.query(
+        "select version from ai_crm_migrations.applied_migrations where version='0000000020'",
+      )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000020" }] });
+      await expect(finalVerification.query(
+        "select version from ai_crm_migrations.applied_migrations where version='0000000021'",
+      )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000021" }] });
     } finally {
       await finalVerification.end();
     }

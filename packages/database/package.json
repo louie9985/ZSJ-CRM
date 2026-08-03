@@ -7,7 +7,7 @@
     ".": "./dist/index.js"
   },
   "scripts": {
-    "prisma:generate": "node ../../scripts/prisma/compose-schema.mjs && prisma generate --config ../../prisma.config.ts",
+    "prisma:generate": "node ../../scripts/prisma/generate.mjs --config ../../prisma.config.ts",
     "build": "pnpm prisma:generate && tsc -b",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit --composite false",

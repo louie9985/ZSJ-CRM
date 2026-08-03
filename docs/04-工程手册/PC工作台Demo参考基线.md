@@ -53,7 +53,7 @@ Demo 不是正式项目的代码基线、运行架构或业务事实源。正式
 
 ### 6.1 应用壳与导航
 
-Demo 的主壳由两列可折叠导航、48px 顶栏和主内容区组成：一级导航参考宽度为 120px/折叠 56px，二级导航参考宽度为 180px/折叠 48px。顶栏集中承载面包屑、当前岗位、搜索、通知和个人入口。
+Demo 的主壳由两列可折叠导航、48px 顶栏和主内容区组成：一级导航参考宽度为 120px/折叠 56px，二级导航参考宽度为 180px/折叠 48px。正式顶栏集中承载面包屑、搜索、通知和个人入口，不承载 Demo 的岗位切换器。
 
 正式实现应延续以下原则：
 
@@ -61,7 +61,7 @@ Demo 的主壳由两列可折叠导航、48px 顶栏和主内容区组成：一�
 - 工作台专属能力与任务、通知、设置等公共能力在信息架构上分组，不混为一个长菜单。
 - 折叠、选中和深链进入时的高亮行为稳定，图标按钮提供 Tooltip 和可访问名称。
 - 顶栏保持紧凑，优先放高频全局入口；演示时钟、数据重置和主题实验只允许出现在明确的开发工具区。
-- Demo 的“岗位切换”在正式项目中映射为 Active Assignment Context 切换，不是角色模拟器，也不对多个任职做权限并集。
+- Demo 的“岗位切换”交互不进入正式工作台；顶栏不展示岗位切换入口。此 UI 约束不改变服务端对 Assignment Context 的解析、授权与失效关闭规则。
 
 第一阶段仍以 ProLayout 作为正式壳层组件。若要采用 Demo 的双列 Sider 外观，应在 ProLayout 的应用注册、路由、权限和响应式能力之上实现并单独测试，而不是复制 `Dept3Layout`。
 
@@ -110,7 +110,7 @@ Demo 的 `RecordInbox` 使用约 300px 左侧检索列表和右侧详情，适�
 |---|---|---|
 | Umi 路由与 `history` | React Router 显式路由与导航 API | 路由 ID、守卫和错误边界可定位、可测试 |
 | Umi Initial State/Model | BFF `/me`、`platform-sdk`、TanStack Query | 不保存 Keycloak Token，不复制全局业务 Store |
-| 岗位切换器 | Active Assignment Context | 切换后服务端重新解析权限和数据范围 |
+| 岗位切换器 | 不采用此 Demo 交互 | 顶栏不提供岗位切换入口，不从 Demo 推断角色或任职规则 |
 | 前端角色路由判断 | Application Registry + Authorization View | 前端只控制呈现，API 仍逐次授权 |
 | `dept3Store` | 平台模块/未来领域模块的服务端事实 + Query Cache | Cache 不是事实源，禁止跨模块表查询 |
 | Action Engine | 正式 HTTP Command + 服务端事务/授权/审计 | 先改契约，再实现；失败语义显式 |
@@ -172,4 +172,3 @@ AI Agent 不得为满足视觉参考而创建 Lead、Customer、Student、Order�
 - `myapp/src/models/dept3Session.ts`
 - `myapp/src/dept3/services/actions/engine.ts`
 - `myapp/src/pages/dept3/` 下的首页、审批、通知、列表和详情代表页面
-

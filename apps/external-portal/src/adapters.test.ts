@@ -53,6 +53,23 @@ describe("Taro portal adapters", () => {
     expect(taro.offNetworkStatusChange).toHaveBeenCalledWith(callback);
   });
 
+  it("keeps startup usable when network change events are unavailable", () => {
+    const originalOnNetworkStatusChange = taro.onNetworkStatusChange;
+    const originalOffNetworkStatusChange = taro.offNetworkStatusChange;
+    try {
+      (taro as unknown as { onNetworkStatusChange?: unknown }).onNetworkStatusChange = undefined;
+      (taro as unknown as { offNetworkStatusChange?: unknown }).offNetworkStatusChange = undefined;
+      const listener = vi.fn();
+      const unsubscribe = createTaroPortalAdapters().connectivity.subscribe(listener);
+      expect(unsubscribe).toEqual(expect.any(Function));
+      expect(() => { unsubscribe(); }).not.toThrow();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      taro.onNetworkStatusChange = originalOnNetworkStatusChange;
+      taro.offNetworkStatusChange = originalOffNetworkStatusChange;
+    }
+  });
+
   it("distinguishes selected, cancelled, and unavailable file capability results", async () => {
     const adapters = createTaroPortalAdapters();
     taro.chooseImage.mockResolvedValueOnce({ tempFilePaths: ["local://synthetic"] });

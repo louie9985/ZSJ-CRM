@@ -19,6 +19,7 @@ const moduleNames = [
   "notifications",
   "file-center",
   "authorization",
+  "workforce-access",
 ] as const;
 
 const directories = [
@@ -76,12 +77,14 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
       );
 
       await expect(runtime.query("select version from ai_crm_migrations.applied_migrations order by version desc limit 1"))
-        .resolves.toMatchObject({ rows: [{ version: "0000000015" }] });
+        .resolves.toMatchObject({ rows: [{ version: "0000000021" }] });
       await expect(runtime.query(
         "select has_database_privilege(current_user,current_database(),'CONNECT') as connect,has_database_privilege(current_user,current_database(),'TEMP') as temporary,has_schema_privilege(current_user,'public','USAGE') as public_usage,has_function_privilege(current_user,'pg_catalog.hashtextextended(text,bigint)','EXECUTE') as hash_execute,has_function_privilege(current_user,'pg_catalog.pg_advisory_xact_lock(bigint)','EXECUTE') as lock_execute",
       )).resolves.toMatchObject({
         rows: [{ connect: true, hash_execute: true, lock_execute: true, public_usage: false, temporary: false }],
       });
+      await expect(runtime.query("select has_schema_privilege(current_user,'platform_eventing','USAGE') as allowed"))
+        .resolves.toMatchObject({ rows: [{ allowed: true }] });
       for (const relation of [
         "organization.assignments",
         "organization.employments",
@@ -89,6 +92,14 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         "organization.organization_units",
         "organization.positions",
         "organization.subject_associations",
+        "organization.workforce_people",
+        "organization.workforce_person_profiles",
+        "organization.department_directory",
+        "organization.position_directory",
+        "workforce_access.accounts",
+        "workforce_access.login_identifier_history",
+        "workforce_access.operations",
+        "workforce_access.identity_sync_operations",
         "app_registry.applications",
         "app_registry.navigation",
         "app_registry.routes",
@@ -114,6 +125,29 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         ["file_center.outbox_events", ["INSERT"]],
         ["platform_notifications.in_app_notifications", ["SELECT"]],
         ["platform_task_center.task_projections", ["SELECT"]],
+        ["workforce_access.accounts", ["SELECT", "INSERT", "UPDATE"]],
+        ["workforce_access.login_identifier_history", ["SELECT", "INSERT", "UPDATE"]],
+        ["workforce_access.operations", ["SELECT", "INSERT"]],
+        ["workforce_access.identity_sync_operations", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.workforce_people", ["SELECT", "INSERT"]],
+        ["organization.employments", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.assignments", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.organization_units", ["SELECT", "INSERT"]],
+        ["organization.organization_unit_placements", ["SELECT", "INSERT"]],
+        ["organization.positions", ["SELECT", "INSERT"]],
+        ["organization.operation_receipts", ["SELECT", "INSERT"]],
+        ["organization.workforce_person_profiles", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.workforce_person_profile_history", ["INSERT"]],
+        ["organization.department_directory", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.department_directory_history", ["INSERT"]],
+        ["organization.position_directory", ["SELECT", "INSERT", "UPDATE"]],
+        ["organization.position_directory_history", ["INSERT"]],
+        ["organization.directory_operation_receipts", ["SELECT", "INSERT"]],
+        ["platform_eventing.outbox_messages", ["INSERT"]],
+        ["platform_eventing.job_requests", ["SELECT", "INSERT"]],
+        ["authorization_core.policy_versions", ["SELECT", "INSERT"]],
+        ["authorization_core.policy_publications", ["SELECT", "INSERT"]],
+        ["authorization_core.current_policy", ["SELECT", "INSERT", "UPDATE"]],
       ] as const) {
         for (const privilege of privileges) {
           await expect(runtime.query("select has_table_privilege(current_user,$1,$2) as allowed", [relation, privilege]))
@@ -126,11 +160,21 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         ["file_center.outbox_events", "SELECT"],
         ["platform_notifications.in_app_notifications", "INSERT"],
         ["platform_task_center.task_projections", "UPDATE"],
+        ["workforce_access.operations", "UPDATE"],
+        ["organization.workforce_people", "UPDATE"],
+        ["organization.workforce_person_profile_history", "SELECT"],
+        ["platform_eventing.outbox_messages", "SELECT"],
+        ["platform_eventing.job_requests", "UPDATE"],
+        ["authorization_core.policy_versions", "UPDATE"],
+        ["authorization_core.policy_publications", "UPDATE"],
       ] as const) {
         await expect(runtime.query("select has_table_privilege(current_user,$1,$2) as allowed", [relation, privilege]))
           .resolves.toMatchObject({ rows: [{ allowed: false }] });
       }
-
+      for (const column of ["keycloak_user_id", "workforce_person_id", "status", "phone", "username", "username_normalized"]) {
+        await expect(runtime.query("select has_column_privilege(current_user,'workforce_access.accounts',$1,'SELECT') as allowed", [column]))
+          .resolves.toMatchObject({ rows: [{ allowed: true }] });
+      }
       for (const relation of [
         "ai_crm_migrations.applied_migrations",
         "platform_eventing.inbox_receipts",
@@ -234,15 +278,13 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
       for (const sql of [
         "select * from business_configuration.dictionary_releases limit 0",
         "select * from platform_eventing.inbox_receipts limit 0",
-        "select * from platform_eventing.job_requests limit 0",
         "select * from platform_notifications.notification_intents limit 0",
         "select * from platform_task_center.projection_events limit 0",
         "select * from platform_task_center.task_commands limit 0",
-        "select * from organization.workforce_people limit 0",
-        "insert into organization.workforce_people(workforce_person_id,recorded_at) values('50000000-0000-4000-8000-000000000013',now())",
+        "insert into organization.subject_associations(association_id,issuer,subject,workforce_person_id,effective_from) values('50000000-0000-4000-8000-000000000013','forbidden','forbidden','50000000-0000-4000-8000-000000000014',now())",
+        "delete from organization.workforce_people",
         "update app_registry.applications set enabled=false",
         "insert into form_schema.releases(definition_id,release_version,owner_module,content_digest,json_schema,ui_schema,published_at) values('forbidden',1,'test',repeat('d',64),'{}','{}',now())",
-        "insert into authorization_core.policy_versions(version,contract_version,content_digest,snapshot,created_at) values('forbidden','authorization-policy.v1',repeat('e',64),'{}',now())",
         "update audit.records set action='forbidden'",
         "create schema runtime_forbidden",
         "create table public.runtime_forbidden(id integer)",

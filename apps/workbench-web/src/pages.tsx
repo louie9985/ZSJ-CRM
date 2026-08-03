@@ -48,7 +48,8 @@ function useCollectionUrlState(collection: PlatformCollection): NormalizedCollec
   const location = useLocation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const basePath = `/${location.pathname.split("/").filter(Boolean)[0] ?? ""}`;
+  const pathSegments = location.pathname.split("/").filter(Boolean);
+  const basePath = itemId === undefined ? location.pathname : `/${pathSegments.slice(0, -1).join("/")}`;
   const invalidPathSelection = itemId !== undefined && !collection.items.some((item) => item.id === itemId);
   const pageValue = Number(params.get("page") ?? "1");
   const raw = useMemo(() => ({

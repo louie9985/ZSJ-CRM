@@ -14,8 +14,10 @@ export interface PlatformCollection {
 }
 
 export type BootstrapResult =
+  | { kind: "logged-out" }
   | { kind: "signed-out" }
   | { kind: "session-expired" }
+  | { kind: "forbidden" }
   | { kind: "maintenance" }
   | {
       kind: "ready";
@@ -107,7 +109,7 @@ export interface WorkforceAccountPage {
 export type WorkforceAdministrationCommand =
   | { readonly kind: "create_account"; readonly departmentId: string; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "update_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly phone?: string; readonly username: string }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly legalName: string; readonly phone?: string; readonly username: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" | "reset_password" }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
@@ -129,8 +131,9 @@ export interface WorkforceAdministrationPort {
 }
 
 export interface WorkbenchPort {
+  beginLogin(returnTo: string): void;
   bootstrap(): Promise<BootstrapResult>;
-  logout(): Promise<{ kind: "session-expired" | "signed-out" }>;
+  logout(): Promise<{ kind: "logged-out" | "session-expired" }>;
   pollCollections?(): Promise<Readonly<Pick<Extract<BootstrapResult, { kind: "ready" }>["collections"], "tasks" | "notifications">>>;
   workforceAdministration?: WorkforceAdministrationPort;
   syntheticFormEvidence?: import("./synthetic-form-evidence-page").SyntheticFormEvidencePort & {

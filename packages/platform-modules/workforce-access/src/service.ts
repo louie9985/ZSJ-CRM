@@ -4,7 +4,7 @@ import type { WorkforceAccessCommit, WorkforceAccessMutation, WorkforceAccessSto
 import type {
   BeginIdentitySyncCommand, CreateWorkforceAccountCommand, FinishIdentitySyncCommand, IdentitySyncFailureCode, IdentitySyncOperation, LinkKeycloakUserCommand, LoginIdentifierHistory, ReleasePhoneCommand,
   SetAccountStatusCommand, UpdateLoginIdentifiersCommand, WorkforceAccessAuthorizer, WorkforceAccessCommandMetadata,
-  WorkforceAccessServiceApi, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus,
+  WorkforceAccessServiceApi, WorkforceAccessSubjectAccount, WorkforceAccount, WorkforceAccountPage, WorkforceAccountStatus,
 } from "./types.js";
 import { normalizePhone, normalizeUsername, requireId, requireText, requireTimestamp } from "./validation.js";
 
@@ -60,6 +60,13 @@ export class WorkforceAccessService implements WorkforceAccessServiceApi {
   async getIdentitySyncOperation(operationId: string): Promise<IdentitySyncOperation> {
     requireId(operationId); const operation = await this.store.findIdentitySyncOperation(operationId);
     if (!operation) throw new WorkforceAccessError("entity_not_found"); return operation;
+  }
+
+  async getSubjectAccountByKeycloakUserId(keycloakUserId: string): Promise<WorkforceAccessSubjectAccount> {
+    requireId(keycloakUserId);
+    const account = await this.store.findSubjectAccountByKeycloakUserId(keycloakUserId);
+    if (!account) throw new WorkforceAccessError("entity_not_found");
+    return account;
   }
 
   async finishIdentitySync(command: FinishIdentitySyncCommand): Promise<IdentitySyncOperation> {

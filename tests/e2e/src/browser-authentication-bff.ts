@@ -220,6 +220,7 @@ export async function startBrowserAuthenticationBff(
       clientId,
       clientSecret,
       issuer: options.issuer,
+      postLogoutRedirectUri: `${options.publicOrigin}/auth/pc/login`,
       redirectUri,
       timeoutSeconds: 5,
     });

@@ -1,0 +1,13 @@
+{
+  "moduleOwner": "database",
+  "purpose": "Grant the API runtime the minimal subject-account and display-name columns required by the authenticated Workbench bootstrap.",
+  "applicationCompatibility": {
+    "minimumInclusive": "0.0.0"
+  },
+  "lockImpact": "Catalog-only GRANT operations take short permission metadata locks; no application table data or definitions are changed.",
+  "dataImpact": "No rows are changed. ai_crm_runtime gains only three workforce account columns and four workforce profile columns used by the reviewed bootstrap path.",
+  "backfill": "Not required. The privilege change is effective for new statements.",
+  "destructive": false,
+  "recovery": "If the bootstrap composition is withdrawn, append a reviewed migration that revokes these exact column grants and workforce_access schema usage after confirming no remaining API path consumes them.",
+  "forwardFix": "Append a later globally numbered migration to narrow, revoke, or add a specifically reviewed privilege. Never rewrite this migration after application."
+}

@@ -209,8 +209,21 @@ paths:
         - $ref: "#/components/parameters/Origin"
         - $ref: "#/components/parameters/Referer"
       responses:
+        "200":
+          description: Browser-safe JSON redirect to the same-origin login entry for callers that send Accept application/json. The Keycloak session and local session are already revoked and the Cookie is cleared before this response is returned.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [redirectUrl]
+                properties:
+                  redirectUrl: { type: string, format: uri, maxLength: 4096 }
         "302":
-          description: Revoke the local session, clear its Cookie, and redirect the browser to the token-free Keycloak logout flow.
+          description: End the Keycloak session through the BFF, revoke the local session, clear its Cookie, and redirect the browser to the same-origin login entry.
           headers:
             Location:
               required: true
@@ -236,7 +249,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthenticationError"
         "503":
-          description: Session storage or durable authentication audit is unavailable; logout fails closed.
+          description: Keycloak, session storage, or durable authentication audit is unavailable; logout fails closed and a still-current local session remains retryable.
           content:
             application/json:
               schema:

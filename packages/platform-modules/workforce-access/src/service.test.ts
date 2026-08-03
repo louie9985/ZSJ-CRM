@@ -15,6 +15,22 @@ describe("WorkforceAccessService", () => {
     expect(account).not.toHaveProperty("password");
   });
 
+  it("resolves only the access facts associated with a Keycloak subject", async () => {
+    const service = new WorkforceAccessService(new InMemoryWorkforceAccessStore(), allow);
+    const accountId = randomUUID();
+    const keycloakUserId = randomUUID();
+    const workforcePersonId = randomUUID();
+    await service.createAccount({ ...metadata(), accountId, createdAt: at, username: "subject.user", workforcePersonId });
+    await service.linkKeycloakUser({ ...metadata(), accountId, expectedRevision: 0, keycloakUserId, updatedAt: at });
+
+    await expect(service.getSubjectAccountByKeycloakUserId(keycloakUserId)).resolves.toEqual({
+      keycloakUserId,
+      status: "provisioning",
+      workforcePersonId,
+    });
+    await expect(service.getSubjectAccountByKeycloakUserId(randomUUID())).rejects.toMatchObject({ code: "entity_not_found" });
+  });
+
   it("permanently reserves historical usernames and requires explicit phone release", async () => {
     const service = new WorkforceAccessService(new InMemoryWorkforceAccessStore(), allow);
     const firstId = randomUUID();

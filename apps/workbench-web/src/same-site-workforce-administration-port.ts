@@ -122,7 +122,7 @@ export function createSameSiteWorkforceAdministrationPort(
     async beginSystemAccountReauthentication(): Promise<void> {
       const session = record(await json(await fetchPort("/auth/pc/session", { credentials: "same-origin", headers: { Accept: "application/json" } }), "workforce_session_unavailable"), "workforce_session_invalid");
       const csrfToken = text(session["csrfToken"], "workforce_session_invalid", 512);
-      const body = record(await json(await fetchPort("/auth/pc/reauthentication?returnTo=%2Fworkforce-administration", {
+      const body = record(await json(await fetchPort("/auth/pc/reauthentication?returnTo=%2Fcrm%2Fworkforce-administration", {
         credentials: "same-origin",
         headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
         method: "POST",

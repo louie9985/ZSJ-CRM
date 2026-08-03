@@ -13,7 +13,7 @@
   "loginWithEmailAllowed": false,
   "duplicateEmailsAllowed": false,
   "verifyEmail": false,
-  "editUsernameAllowed": false,
+  "editUsernameAllowed": true,
   "bruteForceProtected": true,
   "permanentLockout": false,
   "failureFactor": 5,
@@ -88,6 +88,9 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
+      "attributes": {
+        "post.logout.redirect.uris": "http://127.0.0.1:8088/auth/pc/login"
+      },
       "redirectUris": ["http://127.0.0.1:8088/auth/pc/callback"],
       "webOrigins": ["http://127.0.0.1:8088"],
       "protocolMappers": [

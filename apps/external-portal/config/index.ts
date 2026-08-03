@@ -12,7 +12,7 @@ const baseConfig: UserConfigExport = {
   sourceRoot: "src",
   outputRoot: `dist/${target}`,
   framework: "react",
-  compiler: "webpack5",
+  compiler: { type: "webpack5", prebundle: { enable: false } },
   cache: { enable: false },
   mini: {},
   h5: { publicPath: "/", staticDirectory: "static", router: { mode: "browser" } },

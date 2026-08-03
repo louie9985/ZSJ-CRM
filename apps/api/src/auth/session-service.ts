@@ -412,13 +412,27 @@ export function createPcBffSessionService(
       if (credential === undefined) return Object.freeze({});
       const traceId = requestTraceId(requestTrace);
       const sessionIndex = createSessionIndex(credential, securityKeys.indexingKey);
-      const current = expectedSessionReference === undefined
-        ? await options.store.getSession(sessionIndex, idleTtlMs, now())
-        : undefined;
-      const sessionReference = expectedSessionReference ?? current?.id;
-      if (sessionReference === undefined) return Object.freeze({});
+      const current = await options.store.getSession(sessionIndex, idleTtlMs, now());
+      if (!current) {
+        if (expectedSessionReference !== undefined) {
+          await auditOrFail(options.audit,
+            authenticationAuditEvent("session_logout_requested", expectedSessionReference, traceId, expectedSessionReference));
+          const rotated = await options.store.revokeSession(sessionIndex, expectedSessionReference);
+          if (rotated) {
+            const tokens = decryptSessionTokens(rotated.tokens, securityKeys.decryptionKeys, rotated.id);
+            await options.oidc.endSession(tokens);
+            const endSessionUrl = options.oidc.endSessionUrl();
+            return Object.freeze(endSessionUrl === undefined ? {} : { endSessionUrl });
+          }
+        }
+        return Object.freeze({});
+      }
+      if (expectedSessionReference !== undefined && current.id !== expectedSessionReference) return Object.freeze({});
+      const sessionReference = current.id;
       await auditOrFail(options.audit,
         authenticationAuditEvent("session_logout_requested", sessionReference, traceId, sessionReference));
+      const tokens = decryptSessionTokens(current.tokens, securityKeys.decryptionKeys, current.id);
+      await options.oidc.endSession(tokens);
       const session = await options.store.revokeSession(sessionIndex, sessionReference);
       if (!session) return Object.freeze({});
       const endSessionUrl = options.oidc.endSessionUrl();

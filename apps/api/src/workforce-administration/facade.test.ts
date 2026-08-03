@@ -121,29 +121,29 @@ describe("workforce administration application facade", () => {
     expect(dependencies.identity.synchronizeLoginIdentifiers).toHaveBeenCalledWith(expect.objectContaining({ operationId: retryOperationId, retryOfOperationId: failedOperationId, username: account.username }));
   });
 
-  it("updates only the reauthenticated super administrator's own login identifiers through one durable synchronization", async () => {
+  it("updates only the reauthenticated super administrator's own profile and login identifiers through one durable synchronization", async () => {
     const { dependencies, facade } = fixture();
     const systemAccount: AccountRecord = { ...account, accountId: "20000000-0000-4000-8000-000000000011", workforcePersonId: ids.actorPerson };
     vi.mocked(dependencies.accounts.getAccount).mockResolvedValue(systemAccount);
     vi.mocked(dependencies.principals.resolve).mockResolvedValue({ actor, identitySubjectId: "keycloak-operator-subject", reauthenticated: true, subject });
 
-    await expect(facade.execute(input({ accountId: systemAccount.accountId, expectedRevision: 2, kind: "update_system_account" as const, phone: "+8613900000000", username: "system.admin.two" }))).resolves.toEqual({ replayed: false });
+    await expect(facade.execute(input({ accountId: systemAccount.accountId, expectedRevision: 2, kind: "update_system_account" as const, legalName: "ZSJ系统管理员", phone: "+8613900000000", username: "system.admin.two" }))).resolves.toEqual({ replayed: false });
 
     expect(dependencies.accounts.updateLoginIdentifiers).toHaveBeenCalledWith(expect.objectContaining({ accountId: systemAccount.accountId, expectedRevision: 2, username: "system.admin.two" }));
+    expect(dependencies.organizationDirectory.upsertPersonProfile).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1, realName: "ZSJ系统管理员", workforcePersonId: ids.actorPerson }));
     expect(dependencies.identity.synchronizeLoginIdentifiers).toHaveBeenCalledWith(expect.objectContaining({ accountId: systemAccount.accountId, username: "system.admin.two" }));
     expect(dependencies.identity.revokeSessions).not.toHaveBeenCalled();
     expect(dependencies.accounts.beginIdentitySync).toHaveBeenCalledOnce();
     expect(dependencies.organization.resolveWorkforcePersonContext).not.toHaveBeenCalled();
-    expect(dependencies.organizationDirectory.upsertPersonProfile).not.toHaveBeenCalled();
     expect(dependencies.audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "update_system_account", targetId: systemAccount.accountId }));
-    expect(JSON.stringify(vi.mocked(dependencies.audit.record).mock.calls)).not.toMatch(/system\.admin\.two|8613900000000/u);
+    expect(JSON.stringify(vi.mocked(dependencies.audit.record).mock.calls)).not.toMatch(/ZSJ系统管理员|system\.admin\.two|8613900000000/u);
   });
 
-  it("rejects system-account identifier changes without fresh reauthentication or for another target", async () => {
+  it("rejects system-account profile changes without fresh reauthentication or for another target", async () => {
     const { dependencies, facade } = fixture();
     const systemAccount: AccountRecord = { ...account, accountId: "20000000-0000-4000-8000-000000000011", workforcePersonId: ids.actorPerson };
     vi.mocked(dependencies.accounts.getAccount).mockResolvedValue(systemAccount);
-    const command = { accountId: systemAccount.accountId, expectedRevision: 2, kind: "update_system_account" as const, username: "system.admin.two" };
+    const command = { accountId: systemAccount.accountId, expectedRevision: 2, kind: "update_system_account" as const, legalName: "ZSJ系统管理员", username: "system.admin.two" };
     await expect(facade.execute(input(command))).rejects.toEqual(new WorkforceAdministrationFacadeError("forbidden"));
     vi.mocked(dependencies.principals.resolve).mockResolvedValue({ actor, identitySubjectId: "keycloak-operator-subject", reauthenticated: true, subject });
     vi.mocked(dependencies.accounts.getAccount).mockResolvedValue({ ...systemAccount, workforcePersonId: ids.person });

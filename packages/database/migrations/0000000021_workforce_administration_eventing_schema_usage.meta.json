@@ -1,0 +1,13 @@
+{
+  "moduleOwner": "database",
+  "purpose": "Grant the API runtime schema usage required to reach the exact Eventing tables granted by migration 0020.",
+  "applicationCompatibility": {
+    "minimumInclusive": "0.0.0"
+  },
+  "lockImpact": "The catalog-only schema GRANT takes a short permission metadata lock; no application table data or definitions are changed.",
+  "dataImpact": "No rows are changed. ai_crm_runtime gains USAGE on platform_eventing but no table privileges beyond the exact operations granted separately.",
+  "backfill": "Not required. The privilege change is effective for new statements.",
+  "destructive": false,
+  "recovery": "If all API Eventing paths are withdrawn, append a reviewed migration that revokes platform_eventing schema usage after revoking its exact table grants.",
+  "forwardFix": "Append a later globally numbered migration to narrow, revoke, or add a specifically reviewed privilege. Never rewrite this migration after application."
+}

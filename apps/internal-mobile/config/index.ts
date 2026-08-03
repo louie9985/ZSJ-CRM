@@ -11,7 +11,7 @@ const baseConfig: UserConfigExport = {
   sourceRoot: "src",
   outputRoot: "dist/h5",
   framework: "react",
-  compiler: "webpack5",
+  compiler: { type: "webpack5", prebundle: { enable: false } },
   cache: { enable: false },
   mini: {},
   h5: {

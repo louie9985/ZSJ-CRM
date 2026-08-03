@@ -4,6 +4,7 @@ import type { ApplicationRegistryQueryService } from "@ai-crm/platform-app-regis
 import type { OrganizationDirectoryServiceApi, WorkforceContext } from "@ai-crm/platform-organization";
 
 import type { WorkbenchBootstrapFacade, WorkbenchBootstrapView } from "../platform-http/workbench-http.js";
+import { createWorkforceAuthorizationContext } from "../workforce-authorization-context.js";
 
 export interface WorkbenchPrincipalPort {
   resolve(input: Readonly<{ credential: string; traceId: string }>): Promise<Readonly<{
@@ -36,16 +37,22 @@ export function createWorkbenchBootstrapFacade(dependencies: WorkbenchFacadeDepe
         dependencies.directory.getPersonProfile(workforcePersonId),
         dependencies.accountKinds.isSuperAdministrator(workforcePersonId),
       ]);
-      const activeAssignmentIds = Object.freeze(resolved.workforce.assignments.map(({ assignmentId }) => assignmentId));
+      const subject = createWorkforceAuthorizationContext({
+        activeAssignmentIds: resolved.workforce.assignments.map(({ assignmentId }) => assignmentId),
+        systemAdministrator,
+        workforcePersonId,
+      });
+      const selectedAssignmentId = subject.selectedAssignmentId;
       const registry = await dependencies.registry.loadRegistry({
         audience: "internal",
         context: {
           actor: {
             actorId: resolved.actorId,
             actorType: "authenticated_subject",
+            ...(selectedAssignmentId === undefined ? {} : { assignmentId: selectedAssignmentId }),
             workforcePersonId,
           },
-          subject: { activeAssignmentIds, workforcePersonId },
+          subject,
           traceId: input.traceId,
         },
       });
@@ -53,9 +60,7 @@ export function createWorkbenchBootstrapFacade(dependencies: WorkbenchFacadeDepe
         .filter(({ enabled }) => enabled)
         .sort((left, right) => left.order - right.order || left.navigationId.localeCompare(right.navigationId, "en"))
         .map(({ navigationId }) => navigationId);
-      const assignmentReference = !systemAdministrator && activeAssignmentIds.length === 1
-        ? activeAssignmentIds[0]
-        : undefined;
+      const assignmentReference = selectedAssignmentId;
       return Object.freeze({
         accountKind: systemAdministrator ? "system_administrator" : "workforce",
         ...(assignmentReference === undefined ? {} : { assignmentReference }),

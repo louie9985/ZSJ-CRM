@@ -550,6 +550,37 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "redirectUrl": {
+                      "format": "uri",
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "redirectUrl"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Browser-safe JSON redirect to the same-origin login entry for callers that send Accept application/json. The Keycloak session and local session are already revoked and the Cookie is cleared before this response is returned.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
           "204": {
             "description": "Clear an absent session Cookie idempotently; no provider redirect is required.",
             "headers": {
@@ -564,7 +595,7 @@
             }
           },
           "302": {
-            "description": "Revoke the local session, clear its Cookie, and redirect the browser to the token-free Keycloak logout flow.",
+            "description": "End the Keycloak session through the BFF, revoke the local session, clear its Cookie, and redirect the browser to the same-origin login entry.",
             "headers": {
               "Location": {
                 "required": true,
@@ -673,7 +704,7 @@
                 }
               }
             },
-            "description": "Session storage or durable authentication audit is unavailable; logout fails closed."
+            "description": "Keycloak, session storage, or durable authentication audit is unavailable; logout fails closed and a still-current local session remains retryable."
           }
         },
         "x-ai-crm-audiences": [
@@ -4674,7 +4705,7 @@
                   },
                   {
                     "additionalProperties": false,
-                    "description": "Updates only the current ZSJ super administrator's login identifiers after BFF-enforced prompt=login reauthentication. Organization and personal-profile fields are forbidden.",
+                    "description": "Updates the current ZSJ super administrator's legal name and login identifiers after BFF-enforced prompt=login reauthentication. Organization assignment fields are forbidden.",
                     "properties": {
                       "accountId": {
                         "format": "uuid",
@@ -4686,6 +4717,11 @@
                       },
                       "kind": {
                         "const": "update_system_account"
+                      },
+                      "legalName": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
                       },
                       "phone": {
                         "pattern": "^\\+?[0-9 -]{6,24}$",
@@ -4702,6 +4738,7 @@
                       "kind",
                       "accountId",
                       "expectedRevision",
+                      "legalName",
                       "username"
                     ],
                     "type": "object"

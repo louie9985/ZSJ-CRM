@@ -175,12 +175,14 @@ describe.skipIf(!enabled)("Keycloak PC BFF integration", () => {
       clientId,
       clientSecret: await secret(clientSecretFile),
       issuer,
+      postLogoutRedirectUri: "http://127.0.0.1:8088/auth/pc/login",
       redirectUri,
       timeoutSeconds: 5,
     });
     let issuedIdToken: string | undefined;
     const observingOidc: OidcClientPort = Object.freeze({
       beginLogin: (returnTo: string) => oidc.beginLogin(returnTo),
+      endSession: (tokens: SessionTokenSet) => oidc.endSession(tokens),
       endSessionUrl: () => oidc.endSessionUrl(),
       exchangeCallback: async (
         callbackUrl: string,
@@ -246,11 +248,9 @@ describe.skipIf(!enabled)("Keycloak PC BFF integration", () => {
     });
     expect(logout.status).toBe(302);
     expect(logout.headers["Set-Cookie"]).toContain("Max-Age=0");
-    expect(logout.headers["Location"]).not.toContain("id_token_hint");
+    expect(logout.headers["Location"]).toBe("http://127.0.0.1:8088/auth/pc/login");
     const logoutLocation = logout.headers["Location"];
     if (!logoutLocation) throw new Error("Keycloak logout redirect was unavailable.");
-    const logoutResponse = await browser.request(logoutLocation);
-    expect(logoutResponse.status).toBeLessThan(500);
     await expect(service.currentSession(refreshed.credential)).rejects.toMatchObject({
       code: "authentication_session_invalid",
     });

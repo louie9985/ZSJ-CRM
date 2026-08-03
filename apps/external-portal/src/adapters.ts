@@ -3,6 +3,11 @@ import { createH5SessionAdapter, createMemoryHandleStore, createWeappSessionAdap
 import { homePath, statusPath, type PortalView } from "./route-state";
 import type { PortalStatus } from "./portal-port";
 
+type NetworkEventApi = Partial<{
+  offNetworkStatusChange(listener: (event: { isConnected: boolean }) => void): void;
+  onNetworkStatusChange(listener: (event: { isConnected: boolean }) => void): void;
+}>;
+
 export interface PortalAdapters {
   connectivity: {
     current(): Promise<boolean>;
@@ -34,9 +39,13 @@ export function createTaroPortalAdapters(): PortalAdapters {
     connectivity: {
       current: async () => (await Taro.getNetworkType()).networkType !== "none",
       subscribe: (listener) => {
+        const networkEvents: NetworkEventApi = Taro;
+        if (typeof networkEvents.onNetworkStatusChange !== "function" || typeof networkEvents.offNetworkStatusChange !== "function") {
+          return () => {};
+        }
         const callback = (event: { isConnected: boolean }): void => { listener(event.isConnected); };
-        Taro.onNetworkStatusChange(callback);
-        return () => { Taro.offNetworkStatusChange(callback); };
+        networkEvents.onNetworkStatusChange(callback);
+        return () => { networkEvents.offNetworkStatusChange?.(callback); };
       },
     },
     filePicker: {

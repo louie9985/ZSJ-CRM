@@ -113,6 +113,8 @@ class MemoryStore implements BrowserSessionStore {
 
 class FakeOidc implements OidcClientPort {
   beginOptions: Readonly<BeginLoginOptions> | undefined;
+  endSessionCalls: SessionTokenSet[] = [];
+  endSessionFailure: Error | undefined;
   refreshCalls = 0;
 
   beginLogin(_returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<{ authorizationUrl: string; transaction: LoginTransaction }> {
@@ -121,7 +123,12 @@ class FakeOidc implements OidcClientPort {
   }
 
   endSessionUrl(): string | undefined {
-    return "https://identity.example.test/logout";
+    return "https://workbench.example.test/auth/pc/login";
+  }
+
+  endSession(tokens: SessionTokenSet): Promise<void> {
+    this.endSessionCalls.push(tokens);
+    return this.endSessionFailure === undefined ? Promise.resolve() : Promise.reject(this.endSessionFailure);
   }
 
   exchangeCallback(): Promise<Readonly<OidcTokenResult>> {
@@ -359,16 +366,28 @@ describe("createPcBffSessionService", () => {
     expect(store.sessions.size).toBe(0);
   });
 
-  it("logs out locally before returning the provider end-session URL and remains idempotent", async () => {
+  it("ends the provider session before revoking the local session and remains idempotent", async () => {
     const service = createPcBffSessionService(options);
     await service.beginLogin("/tasks");
     const completed = await service.completeLogin(`https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`);
 
     await expect(service.logout(completed.credential)).resolves.toEqual({
-      endSessionUrl: "https://identity.example.test/logout",
+      endSessionUrl: "https://workbench.example.test/auth/pc/login",
     });
     await expect(service.logout(completed.credential)).resolves.toEqual({});
+    expect(oidc.endSessionCalls).toEqual([initialTokens]);
     expect(store.sessions.has(createSessionIndex(completed.credential, options.indexingKey))).toBe(false);
+  });
+
+  it("keeps the local session retryable when provider logout fails", async () => {
+    const service = createPcBffSessionService(options);
+    await service.beginLogin("/tasks");
+    const completed = await service.completeLogin(`https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`);
+    oidc.endSessionFailure = new BrowserSessionFailure("authentication_dependency_unavailable");
+
+    await expect(service.logout(completed.credential)).rejects.toMatchObject({ code: "authentication_dependency_unavailable" });
+    await expect(service.currentSession(completed.credential)).resolves.toMatchObject({ client: "pc-web" });
+    oidc.endSessionFailure = undefined;
   });
 
   it("derives the same audit operation for repeated logout of one logical session", async () => {
@@ -405,7 +424,7 @@ describe("createPcBffSessionService", () => {
     const refreshed = await service.refresh(completed.credential);
 
     await expect(service.logout(completed.credential, mutationSession.sessionReference)).resolves.toEqual({
-      endSessionUrl: "https://identity.example.test/logout",
+      endSessionUrl: "https://workbench.example.test/auth/pc/login",
     });
     await expect(service.currentSession(refreshed.credential)).rejects.toMatchObject({
       code: "authentication_session_invalid",

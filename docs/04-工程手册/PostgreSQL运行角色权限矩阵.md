@@ -15,8 +15,16 @@
 | 角色 | Schema | Relation | 权限 | 当前生产 SQL 依据 |
 |---|---|---|---|---|
 | API | `ai_crm_migrations` | `applied_migrations` | `SELECT` | 启动迁移兼容性检查 |
-| API | `organization` | `subject_associations`、`employments`、`assignments`、`organization_units`、`organization_unit_placements`、`positions` | `SELECT` | BFF 主体解析后的 Workforce Context、活动任职与组织路径解析 |
-| API | `authorization_core` | `current_policy`、`policy_versions`、`policy_publications` | `SELECT` | 当前已发布策略加载与完整性验证 |
+| API | `organization` | `subject_associations` | `SELECT` | BFF 主体解析；员工管理不获得主体关联写权限 |
+| API | `organization` | `workforce_people`、`organization_units`、`organization_unit_placements`、`positions`、`operation_receipts` | `SELECT, INSERT` | 员工、部门、岗位事实创建与幂等收据追加 |
+| API | `organization` | `employments`、`assignments` | `SELECT, INSERT, UPDATE` | 活动任职解析、员工入职、调岗、停用与恢复 |
+| API | `organization` | `workforce_person_profiles`、`department_directory`、`position_directory` | `SELECT, INSERT, UPDATE` | 员工管理展示资料和组织目录读写 |
+| API | `organization` | 三张 Directory History 表 | `INSERT` | 展示资料、部门、岗位变更历史追加；不允许读取或修改历史 |
+| API | `organization` | `directory_operation_receipts` | `SELECT, INSERT` | Directory 命令幂等收据读取与追加 |
+| API | `workforce_access` | `accounts`、`login_identifier_history`、`identity_sync_operations` | `SELECT, INSERT, UPDATE` | 员工账号查询、登录标识维护、账号状态和身份同步状态推进 |
+| API | `workforce_access` | `operations` | `SELECT, INSERT` | 员工账号命令幂等收据读取与追加 |
+| API | `authorization_core` | `current_policy` | `SELECT, INSERT, UPDATE` | 当前策略加载及 ZSJ 授权的 CRM 管理员角色发布 |
+| API | `authorization_core` | `policy_versions`、`policy_publications` | `SELECT, INSERT` | 不可变策略版本和发布历史读取与追加；禁止更新和删除 |
 | API | `authorization_core` | `decision_records` | `SELECT, INSERT` | 授权决策追加与幂等冲突读取 |
 | API | `audit` | `records` | `SELECT, INSERT` | 认证事件审计追加及 Store 读取路径 |
 | API | `audit` | `operation_receipts` | `SELECT, INSERT, UPDATE` | 幂等收据读取/追加；`SELECT ... FOR UPDATE` 要求 `UPDATE` 权限，表触发器仍禁止实际修改和删除 |
@@ -26,6 +34,8 @@
 | API | `file_center` | `files`、`content_versions`、`upload_sessions`、`operation_receipts`、`resource_links`、`outbox_events` | 精确 `SELECT/INSERT/UPDATE` | File Center 当前读写、幂等收据和 Outbox 追加路径；各表权限见 migration 0014 |
 | API | `platform_notifications` | `in_app_notifications` | `SELECT` | 当前人员站内通知查询 |
 | API | `platform_task_center` | `task_projections` | `SELECT` | Task 投影查询 |
+| API | `platform_eventing` | `outbox_messages` | `INSERT` | Organization 命令在同一事务中追加领域事件；API 不读取或投递 Outbox |
+| API | `platform_eventing` | `job_requests` | `SELECT, INSERT` | 员工账号身份同步任务幂等查询与提交；状态推进由相应 Worker 负责 |
 | Worker | `ai_crm_migrations` | `applied_migrations` | `SELECT` | 启动迁移兼容性检查 |
 | Worker | `platform_eventing` | `inbox_receipts` | `SELECT, INSERT` | Task 投影 Inbox 去重与事务提交 |
 | Worker | `platform_eventing` | `isolations` | `INSERT` | 合同、版本和终止错误的技术隔离事实 |
@@ -33,11 +43,11 @@
 | Worker | `platform_task_center` | `task_projections` | `SELECT, INSERT, UPDATE` | 幂等、乱序防回退的 Task PostgreSQL 投影写入 |
 | Worker | `platform_task_center` | `projection_events` | `SELECT, INSERT` | 投影事件收据读取与追加；当前没有更新路径 |
 
-未列出的 Schema、表和操作全部拒绝。尤其不授权 `organization.workforce_people` 和各模块写入/操作收据表，因为当前生产 API 的可达路径不需要它们；Organization 写命令在应用层也保持失败关闭。
+未列出的 Schema、表、列和操作全部拒绝。尤其不授权员工管理删除数据、写入 `organization.subject_associations`、读取 Directory History、读取 API 所追加的 Outbox、推进身份同步 Job 状态或修改不可变授权策略历史。所有写命令仍须通过应用层授权与审计。
 
 ## 迁移与回收
 
-API 基线权限由全局追加迁移 `0000000013_runtime_database_grants.sql` 管理；Task 投影 Worker 的增量精确权限由 `0000000014_task_projection_worker_grants.sql` 管理。前者要求 `ai_crm_runtime` 已由受控初始化创建，后者同时要求 `ai_crm_runtime` 与 `ai_crm_worker_runtime` 存在，因为它还包含同一发布所需的 API File/Notification/Task 查询权限。角色缺失时迁移以 `42704` 中止且不会写入迁移账本。迁移从 `PUBLIC` 回收当前应用数据库的 `CONNECT/TEMPORARY` 和 `public` Schema 权限，再分别回收角色在受管 Schema/表上的既有权限，只返还 `CONNECT` 和上述精确集合。迁移不修改数据或历史迁移。隔离测试必须显式预建两个受限角色，不能通过跳过权限语句制造成功结果。
+API 基线权限由全局追加迁移 `0000000013_runtime_database_grants.sql` 管理；Task 投影 Worker 的增量精确权限由 `0000000014_task_projection_worker_grants.sql` 管理；Workbench 主体账号和展示名读取列由 `0000000019_workbench_subject_read_grants.sql` 追加授权；员工管理完整 SQL 路径由 `0000000020_workforce_administration_runtime_grants.sql` 追加授权，`0000000021_workforce_administration_eventing_schema_usage.sql` 前向补充其 Eventing Schema `USAGE`。`0013`、`0019`、`0020`、`0021` 要求 `ai_crm_runtime` 已由受控初始化创建，`0014` 同时要求 `ai_crm_runtime` 与 `ai_crm_worker_runtime` 存在，因为它还包含同一发布所需的 API File/Notification/Task 查询权限。角色缺失时迁移以 `42704` 中止且不会写入迁移账本。迁移从 `PUBLIC` 回收当前应用数据库的 `CONNECT/TEMPORARY` 和 `public` Schema 权限，再分别回收角色在受管 Schema/表上的既有权限，只返还 `CONNECT` 和上述精确集合。迁移不修改数据或历史迁移。隔离测试必须显式预建两个受限角色，不能通过跳过权限语句制造成功结果。
 
 生产不执行机械 Down Migration。若权限过宽，追加迁移立即 `REVOKE` 并验证受影响能力；若合法路径缺少权限，停止该能力发布，基于实际 SQL 追加最小 `GRANT`。不得临时授予 Schema 全表写权限或使用迁移凭据运行应用。
 

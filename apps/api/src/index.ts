@@ -277,7 +277,31 @@ class PcAuthenticationController {
       sendAuthenticationResponse(response, context.error);
       return;
     }
-    sendAuthenticationResponse(response, await this.adapter().logout(context.value));
+    const result = await this.adapter().logout(context.value);
+    const accept = singleHeader(request, "accept", 512);
+    if (!accept.valid) {
+      sendAuthenticationResponse(response, invalidCallbackResponse);
+      return;
+    }
+    if (result.status === 302 && accept.value?.split(",").some((value) => value.trim().split(";")[0] === "application/json")) {
+      const redirectUrl = result.headers["Location"];
+      if (redirectUrl === undefined || redirectUrl.length === 0 || redirectUrl.length > 4096 || /[\0\r\n]/u.test(redirectUrl)) {
+        sendAuthenticationResponse(response, invalidCallbackResponse);
+        return;
+      }
+      const setCookie = result.headers["Set-Cookie"];
+      sendAuthenticationResponse(response, Object.freeze({
+        body: Object.freeze({ redirectUrl }),
+        headers: Object.freeze({
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          ...(setCookie === undefined ? {} : { "Set-Cookie": setCookie }),
+        }),
+        status: 200,
+      }));
+      return;
+    }
+    sendAuthenticationResponse(response, result);
   }
 
   private mutationContext(request: Request, csrfRequired: boolean):

@@ -29,8 +29,8 @@ export interface TaroAdapterApi {
   navigateTo(input: { url: string }): Promise<unknown>;
   redirectTo(input: { url: string }): Promise<unknown>;
   getNetworkType(): Promise<{ networkType: string }>;
-  onNetworkStatusChange(listener: (result: { isConnected: boolean }) => void): void;
-  offNetworkStatusChange(listener: (result: { isConnected: boolean }) => void): void;
+  onNetworkStatusChange?(listener: (result: { isConnected: boolean }) => void): void;
+  offNetworkStatusChange?(listener: (result: { isConnected: boolean }) => void): void;
   chooseImage(input: { count: number }): Promise<{ tempFilePaths: string[] }>;
   request(input: Record<string, unknown>): Promise<{ data: unknown; statusCode: number }>;
 }
@@ -51,9 +51,14 @@ export function createTaroH5Adapters(api: TaroAdapterApi = Taro as unknown as Ta
     connectivity: {
       current: async () => (await api.getNetworkType()).networkType !== "none",
       subscribe: (listener) => {
+        const onNetworkStatusChange = api.onNetworkStatusChange?.bind(api);
+        const offNetworkStatusChange = api.offNetworkStatusChange?.bind(api);
+        if (typeof onNetworkStatusChange !== "function" || typeof offNetworkStatusChange !== "function") {
+          return () => {};
+        }
         const receive = (result: { isConnected: boolean }): void => { listener(result.isConnected); };
-        api.onNetworkStatusChange(receive);
-        return () => { api.offNetworkStatusChange(receive); };
+        onNetworkStatusChange(receive);
+        return () => { offNetworkStatusChange(receive); };
       },
     },
     filePicker: {

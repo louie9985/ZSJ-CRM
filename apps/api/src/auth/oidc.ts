@@ -2,7 +2,6 @@ import {
   allowInsecureRequests,
   authorizationCodeGrant,
   buildAuthorizationUrl,
-  buildEndSessionUrl,
   calculatePKCECodeChallenge,
   ClientSecretBasic,
   customFetch,
@@ -22,6 +21,7 @@ export interface OidcClientConfiguration {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly issuer: string;
+  readonly postLogoutRedirectUri: string;
   readonly redirectUri: string;
   readonly signal?: AbortSignal;
   readonly timeoutSeconds: number;
@@ -56,6 +56,7 @@ export interface OidcTokenResult {
 
 export interface OidcClientPort {
   beginLogin(returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<Readonly<BeginLoginResult>>;
+  endSession(tokens: SessionTokenSet): Promise<void>;
   exchangeCallback(callbackUrl: string, transaction: LoginTransaction): Promise<Readonly<OidcTokenResult>>;
   refresh(tokens: SessionTokenSet): Promise<Readonly<OidcTokenResult>>;
   endSessionUrl(): string | undefined;
@@ -241,6 +242,29 @@ export async function createOidcClient(
       }
     },
 
+    async endSession(tokens: SessionTokenSet): Promise<void> {
+      const endpoint = configuration.serverMetadata().end_session_endpoint;
+      if (typeof endpoint !== "string") throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      const timeoutSignal = AbortSignal.timeout(input.timeoutSeconds * 1000);
+      const signal = input.signal === undefined ? timeoutSignal : AbortSignal.any([input.signal, timeoutSignal]);
+      try {
+        const response = await guardedFetch(endpoint, {
+          body: new URLSearchParams({
+            client_id: input.clientId,
+            client_secret: input.clientSecret,
+            refresh_token: tokens.refreshToken,
+          }),
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          method: "POST",
+          redirect: "manual",
+          signal,
+        });
+        if (!response.ok) throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      } catch {
+        throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      }
+    },
+
     async refresh(tokens: SessionTokenSet): Promise<Readonly<OidcTokenResult>> {
       try {
         const response = await refreshTokenGrant(configuration, tokens.refreshToken);
@@ -252,7 +276,7 @@ export async function createOidcClient(
 
     endSessionUrl(): string | undefined {
       try {
-        return buildEndSessionUrl(configuration).href;
+        return new URL(input.postLogoutRedirectUri).href;
       } catch {
         return undefined;
       }

@@ -167,11 +167,11 @@ components:
       required: [kind,accountId,departmentId,expectedRevision,legalName,positionId,username]
       properties: { kind: { const: update_account }, accountId: { $ref: "#/components/schemas/StableId" }, departmentId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
     UpdateSystemAccountCommand:
-      description: Updates only the current ZSJ super administrator's login identifiers after BFF-enforced prompt=login reauthentication. Organization and personal-profile fields are forbidden.
+      description: Updates the current ZSJ super administrator's legal name and login identifiers after BFF-enforced prompt=login reauthentication. Organization assignment fields are forbidden.
       type: object
       additionalProperties: false
-      required: [kind,accountId,expectedRevision,username]
-      properties: { kind: { const: update_system_account }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+      required: [kind,accountId,expectedRevision,legalName,username]
+      properties: { kind: { const: update_system_account }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
     DeactivateAccountCommand:
       type: object
       additionalProperties: false

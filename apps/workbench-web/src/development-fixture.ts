@@ -66,8 +66,9 @@ const workforceFixture: WorkforceAdministrationSnapshot = Object.freeze({
 });
 
 export const developmentFixturePort: WorkbenchPort = {
+  beginLogin: () => undefined,
   bootstrap: () => Promise.resolve(fixture),
-  logout: () => Promise.resolve({ kind: "signed-out" }),
+  logout: () => Promise.resolve({ kind: "logged-out" }),
   workforceAdministration: {
     execute: (command) => Promise.resolve(command.kind === "create_account" || command.kind === "reset_password" || command.kind === "reactivate_account"
       ? { credentialRedirectUrl: "/auth/credential-ceremony/fixture" }

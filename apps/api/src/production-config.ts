@@ -32,11 +32,13 @@ const schema = {
   fileCenterMaximumScanBytes: configuration.integer("AI_CRM_FILE_MAXIMUM_SCAN_BYTES", { maximum: 1_073_741_824, minimum: 1 }),
   fileCenterMaximumUploadBytes: configuration.integer("AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES", { maximum: 1_073_741_824, minimum: 1 }),
   fileCenterUploadSessionTtlMs: configuration.integer("AI_CRM_FILE_UPLOAD_SESSION_TTL_MS", { maximum: 86_400_000, minimum: 1_000 }),
-  cosBucket: configuration.string("AI_CRM_COS_BUCKET", { maxLength: 255, pattern: /^[a-z0-9][a-z0-9.-]*-[1-9][0-9]{4,}$/u }),
-  cosRegion: configuration.string("AI_CRM_COS_REGION", { maxLength: 64, pattern: /^[a-z][a-z0-9-]+$/u }),
-  cosSecretId: configuration.secretFile("AI_CRM_COS_SECRET_ID_FILE"),
-  cosSecretKey: configuration.secretFile("AI_CRM_COS_SECRET_KEY_FILE"),
-  cosTimeoutMs: configuration.integer("AI_CRM_COS_TIMEOUT_MS", { maximum: 120_000, minimum: 100 }),
+  fileStorageProvider: configuration.enumeration("AI_CRM_FILE_STORAGE_PROVIDER", ["cos", "local"], { default: "cos" }),
+  cosBucket: configuration.optionalString("AI_CRM_COS_BUCKET", { maxLength: 255, pattern: /^[a-z0-9][a-z0-9.-]*-[1-9][0-9]{4,}$/u }),
+  cosRegion: configuration.optionalString("AI_CRM_COS_REGION", { maxLength: 64, pattern: /^[a-z][a-z0-9-]+$/u }),
+  cosSecretId: configuration.optionalSecretFile("AI_CRM_COS_SECRET_ID_FILE"),
+  cosSecretKey: configuration.optionalSecretFile("AI_CRM_COS_SECRET_KEY_FILE"),
+  cosTimeoutMs: configuration.integer("AI_CRM_COS_TIMEOUT_MS", { default: 10_000, maximum: 120_000, minimum: 100 }),
+  localFileStorageRoot: configuration.optionalString("AI_CRM_LOCAL_FILE_STORAGE_ROOT", { maxLength: 512 }),
   jwksCacheMaxAgeMs: configuration.integer("AI_CRM_OIDC_JWKS_CACHE_MAX_AGE_MS", {
     default: 3_600_000, maximum: 86_400_000, minimum: 1_000,
   }),
@@ -72,7 +74,10 @@ export interface ProductionApiConfiguration {
     readonly timeoutMs: number;
   }>;
   readonly fileCenter: Readonly<{
-    readonly cos: Readonly<{ readonly bucket: string; readonly region: string; readonly secretId: string; readonly secretKey: string; readonly timeoutMs: number }>;
+    readonly storage: Readonly<
+      | { readonly kind: "cos"; readonly bucket: string; readonly region: string; readonly secretId: string; readonly secretKey: string; readonly timeoutMs: number }
+      | { readonly kind: "local"; readonly rootDirectory: string }
+    >;
     readonly downloadGrantTtlMs: number;
     readonly maximumScanBytes: number;
     readonly maximumUploadBytes: number;
@@ -127,9 +132,40 @@ export async function loadProductionApiConfiguration(
   if (raw.databaseHealthProbeTimeoutMs >= raw.databaseHealthProbeIntervalMs) {
     throw new Error("api_database_health_window_invalid");
   }
-  if (raw.cosSecretId === raw.cosSecretKey) throw new Error("api_cos_credentials_not_separated");
+  if (raw.fileStorageProvider === "cos" &&
+    (raw.cosBucket === undefined || raw.cosRegion === undefined || raw.cosSecretId === undefined || raw.cosSecretKey === undefined)) {
+    throw new Error("api_cos_configuration_required");
+  }
+  if (raw.fileStorageProvider === "local") {
+    const localRoot = raw.localFileStorageRoot;
+    if (localRoot === undefined) throw new Error("api_local_file_storage_root_required");
+    if (!isAbsolute(localRoot)) throw new Error("api_local_file_storage_root_invalid");
+    const allowedOrigin = new URL(pcBff.allowedOrigin);
+    if (allowedOrigin.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(allowedOrigin.hostname)) {
+      throw new Error("api_local_file_storage_dev_only");
+    }
+  }
+  if (raw.fileStorageProvider === "cos" && raw.cosSecretId === raw.cosSecretKey) throw new Error("api_cos_credentials_not_separated");
   if (raw.keycloakAdministrationClientSecret === pcBff.keycloakClientSecret) throw new Error("api_keycloak_credentials_not_separated");
   if (raw.fileCenterMaximumScanBytes > raw.fileCenterMaximumUploadBytes) throw new Error("api_file_center_size_window_invalid");
+  const storage: ProductionApiConfiguration["fileCenter"]["storage"] = raw.fileStorageProvider === "cos"
+    ? (() => {
+      if (raw.cosBucket === undefined || raw.cosRegion === undefined || raw.cosSecretId === undefined || raw.cosSecretKey === undefined) {
+        throw new Error("api_cos_configuration_required");
+      }
+      return Object.freeze({
+        bucket: raw.cosBucket,
+        kind: "cos" as const,
+        region: raw.cosRegion,
+        secretId: raw.cosSecretId,
+        secretKey: raw.cosSecretKey,
+        timeoutMs: raw.cosTimeoutMs,
+      });
+    })()
+    : (() => {
+      if (raw.localFileStorageRoot === undefined) throw new Error("api_local_file_storage_root_required");
+      return Object.freeze({ kind: "local" as const, rootDirectory: raw.localFileStorageRoot });
+    })();
   return Object.freeze({
     applicationSchemaVersion: raw.applicationSchemaVersion,
     database: Object.freeze({
@@ -145,7 +181,7 @@ export async function loadProductionApiConfiguration(
       timeoutMs: raw.databaseHealthProbeTimeoutMs,
     }),
     fileCenter: Object.freeze({
-      cos: Object.freeze({ bucket: raw.cosBucket, region: raw.cosRegion, secretId: raw.cosSecretId, secretKey: raw.cosSecretKey, timeoutMs: raw.cosTimeoutMs }),
+      storage,
       downloadGrantTtlMs: raw.fileCenterDownloadGrantTtlMs,
       maximumScanBytes: raw.fileCenterMaximumScanBytes,
       maximumUploadBytes: raw.fileCenterMaximumUploadBytes,

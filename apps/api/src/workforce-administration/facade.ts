@@ -153,6 +153,7 @@ async function updateSystemAccount(dependencies: WorkforceAdministrationDependen
   ]);
   if (!self || !currentIsSuper || !targetIsSuper || principalValue.reauthenticated !== true) throw new WorkforceAdministrationFacadeError("forbidden");
   await dependencies.transactions.run(async () => {
+    const profile = await dependencies.organizationDirectory.getPersonProfile(account.workforcePersonId ?? "");
     await dependencies.accounts.updateLoginIdentifiers({
       ...metadata(principalValue, deriveAdministrationOperationId(operationId, "identifiers"), "workforce_administration:update_system_account", traceId),
       accountId: account.accountId,
@@ -160,6 +161,13 @@ async function updateSystemAccount(dependencies: WorkforceAdministrationDependen
       ...(command.phone === undefined ? {} : { phone: command.phone }),
       updatedAt: at,
       username: command.username,
+    });
+    await dependencies.organizationDirectory.upsertPersonProfile({
+      ...metadata(principalValue, deriveAdministrationOperationId(operationId, "profile"), "workforce_administration:update_system_account", traceId),
+      expectedRevision: profile.revision,
+      realName: command.legalName,
+      updatedAt: at,
+      workforcePersonId: account.workforcePersonId ?? "",
     });
     const updatedAccount = { ...account, ...(command.phone === undefined ? {} : { phone: command.phone }), username: command.username };
     await submitIdentitySync(dependencies, principalValue, { account: updatedAccount, action: "synchronize_login_identifiers", at, operationId: deriveAdministrationOperationId(operationId, "identity-sync"), traceId });

@@ -1,6 +1,8 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const bffTarget = process.env["AI_CRM_WORKBENCH_BFF_ORIGIN"] ?? "http://127.0.0.1:8088";
+
 function vendorChunk(id: string): string | undefined {
   const path = id.replaceAll("\\", "/");
   if (!path.includes("/node_modules/")) return undefined;
@@ -14,7 +16,18 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port: 3000,
+    proxy: {
+      "/application-registry": { changeOrigin: true, target: bffTarget },
+      "/auth": { changeOrigin: true, target: bffTarget },
+      "/files": { changeOrigin: true, target: bffTarget },
+      "/form-definitions": { changeOrigin: true, target: bffTarget },
+      "/notifications": { changeOrigin: true, target: bffTarget },
+      "/tasks": { changeOrigin: true, target: bffTarget },
+      "/workbench": { changeOrigin: true, target: bffTarget },
+      "/workforce-administration": { changeOrigin: true, target: bffTarget },
+    },
+    strictPort: true,
   },
   build: {
     outDir: "dist/web",

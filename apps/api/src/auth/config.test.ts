@@ -34,6 +34,7 @@ const validEnvironment: NodeJS.ProcessEnv = {
   AI_CRM_PC_LOGIN_TRANSACTION_TTL_SECONDS: "180",
   AI_CRM_PC_OIDC_CLIENT_ID: "ai-crm-pc-bff",
   AI_CRM_PC_OIDC_CLIENT_SECRET_FILE: "/run/secrets/client",
+  AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/login",
   AI_CRM_PC_OIDC_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/callback",
   AI_CRM_PC_OIDC_TIMEOUT_SECONDS: "5",
   AI_CRM_PC_REFRESH_LEASE_TTL_MS: "10000",
@@ -54,6 +55,7 @@ describe("loadPcBffConfiguration", () => {
 
     expect(config.allowedOrigin).toBe("http://127.0.0.1:8088");
     expect(config.keycloakAudience).toBe("ai-crm-api");
+    expect(config.postLogoutRedirectUri).toBe("http://127.0.0.1:8088/auth/pc/login");
     expect(config.sessionEncryptionKey.value).toHaveLength(32);
     expect(config.sessionDecryptionKeys).toHaveLength(1);
     expect(config.sessionIndexingKey).toHaveLength(32);
@@ -114,6 +116,13 @@ describe("loadPcBffConfiguration", () => {
   it("rejects non-loopback HTTP identity endpoints", async () => {
     await expect(loadPcBffConfiguration({
       env: { ...validEnvironment, AI_CRM_KEYCLOAK_ISSUER: "http://identity.example.test/realms/ai-crm" },
+      secretFilePolicy,
+    })).rejects.toMatchObject({ code: "authentication_session_invalid" });
+  });
+
+  it("rejects a post-logout redirect outside the workbench origin", async () => {
+    await expect(loadPcBffConfiguration({
+      env: { ...validEnvironment, AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "https://attacker.example.test/login" },
       secretFilePolicy,
     })).rejects.toMatchObject({ code: "authentication_session_invalid" });
   });

@@ -22,6 +22,7 @@ const directories = [
     "notifications",
     "file-center",
     "authorization",
+    "workforce-access",
   ].map((name) => resolve(import.meta.dirname, `../../platform-modules/${name}/migrations`)),
 ];
 

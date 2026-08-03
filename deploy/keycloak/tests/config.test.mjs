@@ -44,6 +44,7 @@ test("realm uses the ZSJ CRM theme and username-or-phone browser flow", () => {
 
 test("realm disables recovery and keeps email optional and admin-only", () => {
   assert.equal(realm.registrationAllowed, false);
+  assert.equal(realm.editUsernameAllowed, true);
   assert.equal(realm.resetPasswordAllowed, false);
   assert.equal(realm.loginWithEmailAllowed, false);
   assert.equal(realm.verifyEmail, false);

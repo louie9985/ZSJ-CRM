@@ -91,7 +91,14 @@ export function createWorkbenchHttpAdapter(facade: WorkbenchBootstrapFacade): Re
       } catch (error) {
         const code = errorCode(error);
         const unauthorized = code?.startsWith("authentication_") === true;
-        const forbidden = !unauthorized && ["authorization_denied", "employment_not_active", "subject_not_associated"].includes(code ?? "");
+        const forbidden = !unauthorized && [
+          "assignment_not_active",
+          "authorization_denied",
+          "employment_not_active",
+          "entity_not_found",
+          "subject_not_associated",
+          "workforce_account_not_found",
+        ].includes(code ?? "");
         return Object.freeze({
           body: Object.freeze({ code: unauthorized ? "authentication_required" : forbidden ? "workbench_forbidden" : "workbench_unavailable" }),
           headers: headers(traceId),

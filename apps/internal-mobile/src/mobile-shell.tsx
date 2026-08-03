@@ -70,6 +70,7 @@ export function MobileShell({ adapters, initialParameters, port, section }: { ad
   const [result, setResult] = useState<MobileBootstrapResult | { kind: "loading" }>({ kind: "loading" });
   const [online, setOnline] = useState<boolean>();
   const [loginPending, setLoginPending] = useState(false);
+  const [logoutState, setLogoutState] = useState<"error" | "idle" | "pending">("idle");
   const parameters = initialParameters ?? adapters.navigation.currentParameters();
   const load = (): void => { setResult({ kind: "loading" }); port.bootstrap().then(setResult, () => { setResult({ kind: "unavailable" }); }); };
 
@@ -96,17 +97,27 @@ export function MobileShell({ adapters, initialParameters, port, section }: { ad
     );
   }
 
+  const requestLogout = (): void => {
+    if (logoutState === "pending") return;
+    setLogoutState("pending");
+    port.logout().then(
+      (logout) => { setResult({ kind: logout.kind === "signed-out" ? "session-expired" : logout.kind }); },
+      () => { setLogoutState("error"); },
+    );
+  };
+
   return (
     <View className="mobile-app">
       {!online && <View className="offline-alert" role="alert" aria-live="assertive">网络已断开，当前操作不会被视为成功</View>}
       {result.fixture && <NoticeBar content="当前展示开发/测试合成 Fixture，不代表生产事实。" />}
+      {logoutState === "error" && <NoticeBar content="退出未完成，当前会话仍保持登录。请重试。" />}
       <NavBar title="内部移动工作区" safeAreaInsetTop fixed={false} />
       <View className="mobile-content">
         <View className="mobile-navigation" role="navigation" aria-label="内部移动主导航">
           {(Object.keys(labels) as MobileSection[]).map((item) => <Button key={item} fill={section === item ? "solid" : "outline"} size="small" onClick={() => { void adapters.navigation.navigate(sectionPath(item)); }}>{labels[item]}</Button>)}
         </View>
         <main>{section === "home" ? <HomeView adapters={adapters} data={result} /> : <CollectionView adapters={adapters} data={result} parameters={parameters} section={section} />}</main>
-        <View className="session-footer"><Button fill="none" onClick={() => { port.logout().then((logout) => { setResult({ kind: logout.kind === "signed-out" ? "session-expired" : logout.kind }); }, () => { setResult({ kind: "unavailable" }); }); }}>退出当前会话</Button></View>
+        <View className="session-footer"><Button fill="none" disabled={logoutState === "pending"} onClick={requestLogout}>{logoutState === "pending" ? "正在退出" : "退出当前会话"}</Button></View>
       </View>
     </View>
   );

@@ -54,7 +54,7 @@ const executeInput = (body: unknown, extra: Record<string, unknown> = {}) => ({ 
 const commands: readonly WorkforceAdministrationCommand[] = [
   { departmentId: ids.department, kind: "create_account", legalName: "测试员工", phone: "+86 138-0000-0000", positionId: ids.position, username: "Test.User" },
   { accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "update_account", legalName: "测试员工", phone: "138 0000-0000", positionId: ids.position, username: "Test.User" },
-  { accountId: ids.account, expectedRevision: 2, kind: "update_system_account", phone: "138 0000-0000", username: "Test.User" },
+  { accountId: ids.account, expectedRevision: 2, kind: "update_system_account", legalName: "ZSJ系统管理员", phone: "138 0000-0000", username: "Test.User" },
   { accountId: ids.account, expectedRevision: 2, kind: "deactivate_account" },
   { accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "reactivate_account", positionId: ids.position },
   { accountId: ids.account, expectedRevision: 2, kind: "reset_password" },

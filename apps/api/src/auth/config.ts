@@ -16,6 +16,7 @@ export interface PcBffConfiguration {
   readonly keycloakIssuer: string;
   readonly loginTransactionTtlSeconds: number;
   readonly oidcTimeoutSeconds: number;
+  readonly postLogoutRedirectUri: string;
   readonly redirectUri: string;
   readonly refreshLeaseTtlMs: number;
   readonly redisConnectTimeoutMs: number;
@@ -42,6 +43,7 @@ const pcBffSchema = {
     maximum: 60,
     minimum: 1,
   }),
+  postLogoutRedirectUri: configuration.url("AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI", { protocols: ["https:", "http:"] }),
   redirectUri: configuration.url("AI_CRM_PC_OIDC_REDIRECT_URI", { protocols: ["https:", "http:"] }),
   refreshLeaseTtlMs: configuration.integer("AI_CRM_PC_REFRESH_LEASE_TTL_MS", {
     maximum: 120_000,
@@ -105,7 +107,11 @@ export async function loadPcBffConfiguration(
   const raw = await loadConfiguration(pcBffSchema, options);
   secureWebUrl(raw.allowedOrigin, "allowed origin");
   secureWebUrl(raw.keycloakIssuer, "issuer");
+  secureWebUrl(raw.postLogoutRedirectUri, "post logout redirect URI");
   secureWebUrl(raw.redirectUri, "redirect URI");
+  if (new URL(raw.postLogoutRedirectUri).origin !== new URL(raw.allowedOrigin).origin) {
+    throw new BrowserSessionFailure("authentication_session_invalid");
+  }
   if (!/^[A-Za-z0-9_-]{43}$/u.test(raw.keycloakClientSecret)) {
     throw new BrowserSessionFailure("authentication_session_invalid");
   }
@@ -142,6 +148,7 @@ export async function loadPcBffConfiguration(
     keycloakIssuer: raw.keycloakIssuer.replace(/\/$/u, ""),
     loginTransactionTtlSeconds: raw.loginTransactionTtlSeconds,
     oidcTimeoutSeconds: raw.oidcTimeoutSeconds,
+    postLogoutRedirectUri: raw.postLogoutRedirectUri,
     redirectUri: raw.redirectUri,
     refreshLeaseTtlMs: raw.refreshLeaseTtlMs,
     redisConnectTimeoutMs: raw.redisConnectTimeoutMs,

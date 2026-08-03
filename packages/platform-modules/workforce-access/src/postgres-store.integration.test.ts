@@ -27,6 +27,9 @@ suite("PostgreSQL workforce access store", () => {
     const created = await service.createAccount({ accountId, actor, createdAt: at, operationId, phone: "138-0000-0000", reason: "integration", traceId: "trace-integration", username: "Admin.User", workforcePersonId: personId });
     await expect(service.createAccount({ accountId, actor, createdAt: at, operationId, phone: "138-0000-0000", reason: "integration", traceId: "trace-integration", username: "Admin.User", workforcePersonId: personId })).resolves.toEqual(created);
     await service.updateLoginIdentifiers({ accountId, actor, expectedRevision: 0, operationId: randomUUID(), phone: "13900000000", reason: "integration", traceId: "trace-integration", updatedAt: at });
+    const keycloakUserId = randomUUID();
+    await service.linkKeycloakUser({ accountId, actor, expectedRevision: 1, keycloakUserId, operationId: randomUUID(), reason: "integration", traceId: "trace-integration", updatedAt: at });
+    await expect(service.getSubjectAccountByKeycloakUserId(keycloakUserId)).resolves.toEqual({ keycloakUserId, status: "provisioning", workforcePersonId: personId });
     expect(await service.listIdentifierHistory(accountId)).toHaveLength(3);
     const syncOperationId = randomUUID();
     const syncCommand = { accountId, action: "synchronize_login_identifiers" as const, actor, operationId: syncOperationId, reason: "integration", requestedAt: at, traceId: "trace-integration" };
@@ -35,7 +38,7 @@ suite("PostgreSQL workforce access store", () => {
     await service.finishIdentitySync({ accountId, actor, completedAt: "2026-08-02T00:00:01.000Z", errorCode: "keycloak_administration_unavailable", operationId: syncOperationId, reason: "integration", status: "failed", traceId: "trace-integration" });
     await expect(service.getAccount(accountId)).resolves.toMatchObject({ latestIdentitySync: { errorCode: "keycloak_administration_unavailable", operationId: syncOperationId, status: "failed" } });
     const count = await pool.query<{ count: string }>("select count(*)::text count from workforce_access.operations where account_id=$1", [accountId]);
-    expect(count.rows[0]?.count).toBe("2");
+    expect(count.rows[0]?.count).toBe("3");
   });
 });
 

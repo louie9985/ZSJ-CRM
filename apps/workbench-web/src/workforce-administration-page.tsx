@@ -182,7 +182,7 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
         <span>{snapshot.data.systemAccount.username}</span>
         <StatusTag status={snapshot.data.systemAccount.status} />
         {snapshot.data.systemAccount.allowedActions.includes("edit")
-          ? <Button type="link" onClick={() => { setEditingSystemAccount(snapshot.data.systemAccount); systemAccountForm.setFieldsValue({ username: snapshot.data.systemAccount?.username, phone: snapshot.data.systemAccount?.phone }); }}>编辑登录标识</Button>
+          ? <Button type="link" onClick={() => { setEditingSystemAccount(snapshot.data.systemAccount); systemAccountForm.setFieldsValue({ legalName: snapshot.data.systemAccount?.legalName, username: snapshot.data.systemAccount?.username, phone: snapshot.data.systemAccount?.phone }); }}>编辑账号资料</Button>
           : port.beginSystemAccountReauthentication === undefined ? null : <Button type="link" loading={reauthenticatingSystemAccount} onClick={() => {
             setSystemAccountReauthenticationFailed(false);
             setReauthenticatingSystemAccount(true);
@@ -270,12 +270,13 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
       </Form>
     </Modal>
 
-    <Modal title="编辑系统账号登录标识" open={editingSystemAccount !== undefined} okText="保存" cancelText="取消" confirmLoading={execute.isPending} onCancel={() => { setEditingSystemAccount(undefined); }} onOk={() => { void systemAccountForm.validateFields().then(async (value: Record<string, string>) => {
+    <Modal title="编辑系统账号" open={editingSystemAccount !== undefined} okText="保存" cancelText="取消" confirmLoading={execute.isPending} onCancel={() => { setEditingSystemAccount(undefined); }} onOk={() => { void systemAccountForm.validateFields().then(async (value: Record<string, string>) => {
       if (editingSystemAccount === undefined) return;
-      await execute.mutateAsync({ accountId: editingSystemAccount.accountId, expectedRevision: editingSystemAccount.revision, kind: "update_system_account", ...(value["phone"] ? { phone: value["phone"] } : {}), username: value["username"] ?? "" });
+      await execute.mutateAsync({ accountId: editingSystemAccount.accountId, expectedRevision: editingSystemAccount.revision, kind: "update_system_account", legalName: value["legalName"] ?? "", ...(value["phone"] ? { phone: value["phone"] } : {}), username: value["username"] ?? "" });
       setEditingSystemAccount(undefined); systemAccountForm.resetFields();
     }); }}>
-      <Form name="system-account-identifiers" form={systemAccountForm} layout="vertical" preserve={false}>
+      <Form name="system-account-profile" form={systemAccountForm} layout="vertical" preserve={false}>
+        <Form.Item name="legalName" label="姓名（实名）" rules={[{ required: true, whitespace: true, max: 64 }]}><Input autoComplete="off" /></Form.Item>
         <Form.Item name="username" label="用户名（昵称）" rules={[{ required: true }, { pattern: /^[A-Za-z0-9._-]{4,32}$/u, message: "请输入 4-32 位字母、数字、点、下划线或短横线" }]}><Input autoComplete="off" /></Form.Item>
         <Form.Item name="phone" label="手机号（可用于登录）" rules={[{ pattern: /^\+?[0-9 -]{6,24}$/u, message: "请输入有效手机号" }]}><Input autoComplete="off" /></Form.Item>
       </Form>

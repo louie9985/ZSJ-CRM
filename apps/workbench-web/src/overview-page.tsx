@@ -1,32 +1,108 @@
-import { BellOutlined, CheckCircleOutlined, ClockCircleOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
-import { PageContainer } from "@ant-design/pro-components";
-import { Alert, Card, Descriptions, Empty, Typography } from "antd";
-import type { BootstrapResult } from "./workbench-port";
+import { RightOutlined } from "@ant-design/icons";
+import { Avatar, Badge, Card, Empty, Flex, Select, Tag, Timeline, Typography } from "antd";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import type { BootstrapResult, PlatformCollection, PlatformItem } from "./workbench-port";
+import { WorkspaceHome } from "./workspace-home";
 
 const { Text } = Typography;
+type ReadyBootstrap = Extract<BootstrapResult, { kind: "ready" }>;
+type GroupMode = "flat" | "status";
 
-export function Overview({ data }: { data: Extract<BootstrapResult, { kind: "ready" }> }): React.JSX.Element {
-  const hasNoAvailableFeature = data.navigationIds?.length === 0;
-  return (
-    <PageContainer title="工作概览" subTitle="需要关注的平台协同事项">
-      {data.fixture && <Alert className="fixture-alert" type="info" showIcon title="开发 Fixture" description="计数来自合成开发数据，不是业务指标或生产事实。" />}
-      {hasNoAvailableFeature && <Empty className="empty-workbench" description="暂无可用功能" />}
-      <div className="overview-stats">
-        <Card size="small"><StatisticCard title="待查看任务" value={data.counts.tasks} icon={<ClockCircleOutlined />} /></Card>
-        <Card size="small"><StatisticCard title="未读通知" value={data.counts.notifications} icon={<BellOutlined />} /></Card>
-        <Card size="small"><StatisticCard title="可用表单" value={data.counts.forms} icon={<CheckCircleOutlined />} /></Card>
-        <Card size="small"><StatisticCard title="可用文件引用" value={data.counts.files} icon={<SafetyCertificateOutlined />} /></Card>
-      </div>
-      <Card title="当前任职上下文" size="small" className="context-card">
-        <Descriptions column={{ xs: 1, sm: 2 }} size="small" className="stable-descriptions">
-          <Descriptions.Item label="显示名称"><span className="break-text">{data.context.displayName}</span></Descriptions.Item>
-          <Descriptions.Item label="上下文引用"><span className="break-text">{data.context.assignmentReference ?? "-"}</span></Descriptions.Item>
-        </Descriptions>
-      </Card>
-    </PageContainer>
-  );
+interface OverviewProps {
+  readonly collections: ReadyBootstrap["collections"];
+  readonly data: ReadyBootstrap;
 }
 
-function StatisticCard({ title, value, icon }: { title: string; value: number; icon: React.ReactNode }): React.JSX.Element {
-  return <div className="statistic-card"><span className="statistic-icon" aria-hidden="true">{icon}</span><span><Text type="secondary">{title}</Text><strong>{value}</strong></span></div>;
+interface ItemGroup {
+  readonly items: PlatformItem[];
+  readonly key: string;
+  readonly label: string;
+}
+
+const avatarColors = ["#eb2f96", "#fa8c16", "#52c41a", "#1677ff", "#722ed1"] as const;
+
+function groupTasks(collection: PlatformCollection, mode: GroupMode): ItemGroup[] {
+  const active = collection.items.filter((item) => item.tab === "active");
+  if (mode === "flat") return active.length === 0 ? [] : [{ items: active, key: "all", label: "全部待办" }];
+  return collection.statuses
+    .map((status) => ({ items: active.filter((item) => item.status === status), key: status, label: status }))
+    .filter((group) => group.items.length > 0);
+}
+
+export function Overview({ collections, data }: OverviewProps): React.JSX.Element {
+  const hasNoAvailableFeature = data.navigationIds?.length === 0;
+  const [groupMode, setGroupMode] = useState<GroupMode>("status");
+  const taskGroups = useMemo(() => groupTasks(collections.tasks, groupMode), [collections.tasks, groupMode]);
+  const activeTaskCount = collections.tasks.items.filter((item) => item.tab === "active").length;
+  const recentNotifications = collections.notifications.items.filter((item) => item.tab === "active").slice(0, 5);
+
+  return (
+    <WorkspaceHome
+      fixture={data.fixture}
+      metrics={[
+        { label: "待查看任务", path: "/crm/tasks", value: data.counts.tasks },
+        { label: "未读通知", path: "/crm/notifications/all", value: data.counts.notifications },
+        { label: "可用表单", path: "/crm/forms", value: data.counts.forms },
+        { label: "可用文件引用", path: "/crm/files", value: data.counts.files },
+      ]}
+    >
+      {hasNoAvailableFeature ? <Empty className="empty-workbench" description="暂无可用功能" /> : (
+        <div className="workspace-columns">
+          <Card
+            className="work-panel todo-panel"
+            size="small"
+            title={
+              <Flex align="center" justify="space-between" gap={12}>
+                <span>今日待办（{activeTaskCount}）</span>
+                <Select
+                  aria-label="待办分组方式"
+                  size="small"
+                  value={groupMode}
+                  options={[{ label: "按状态", value: "status" }, { label: "不分组", value: "flat" }]}
+                  onChange={(value) => { setGroupMode(value); }}
+                />
+              </Flex>
+            }
+            styles={{ body: { padding: taskGroups.length === 0 ? 24 : "4px 0" } }}
+          >
+            {taskGroups.length === 0 ? <Empty description="今日无待办事项" /> : taskGroups.map((group) => (
+              <section className="todo-group" key={group.key} aria-label={group.label}>
+                <Flex className="todo-group-heading" align="center" gap={8}>
+                  <Text strong>{group.label}</Text>
+                  <Badge count={group.items.length} color="#1677ff" />
+                </Flex>
+                {group.items.map((item, index) => (
+                  <Link className="todo-row" to={`/crm/tasks/${encodeURIComponent(item.id)}`} key={item.id}>
+                    <Avatar style={{ backgroundColor: avatarColors[index % avatarColors.length] }}>{item.title.slice(0, 1)}</Avatar>
+                    <span className="todo-copy">
+                      <Text strong ellipsis title={item.title}>{item.title}</Text>
+                      <Text type="secondary" ellipsis title={item.summary}>{item.summary}</Text>
+                    </span>
+                    <Tag className="todo-status">{item.status}</Tag>
+                    <RightOutlined className="todo-chevron" />
+                  </Link>
+                ))}
+              </section>
+            ))}
+          </Card>
+
+          <Card className="work-panel activity-panel" size="small" title="今日动态">
+            {recentNotifications.length === 0 ? <Empty description="今日暂无动态" /> : (
+              <Timeline items={recentNotifications.map((item) => ({
+                color: item.status === "未读" ? "blue" : "green",
+                content: (
+                  <Link className="activity-link" to={`/crm/notifications/${encodeURIComponent(item.id)}`}>
+                    <Text strong ellipsis title={item.title}>{item.title}</Text>
+                    <Text type="secondary">{item.summary}</Text>
+                    <Tag>{item.status}</Tag>
+                  </Link>
+                ),
+              }))} />
+            )}
+          </Card>
+        </div>
+      )}
+    </WorkspaceHome>
+  );
 }

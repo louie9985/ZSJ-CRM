@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, normalizeReturnTo, pcLoginUrl, RouteErrorBoundary } from "./App";
+import { App, normalizeReturnTo, RouteErrorBoundary } from "./App";
+import { pcLoginUrl } from "./auth-routes";
 import { developmentFixturePort } from "./development-fixture";
 import { WorkforceAdministrationPage } from "./workforce-administration-page";
 import type { BootstrapResult, WorkbenchPort, WorkforceAdministrationPort } from "./workbench-port";
@@ -49,7 +50,11 @@ function renderApp(entry: string, port: WorkbenchPort = developmentFixturePort):
   );
 }
 
-function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "listAccounts"> & Partial<Pick<WorkforceAdministrationPort, "listAccounts">>, entry = "/workforce-administration"): void {
+function testWorkbenchPort(overrides: Partial<WorkbenchPort>): WorkbenchPort {
+  return { ...developmentFixturePort, ...overrides };
+}
+
+function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "listAccounts"> & Partial<Pick<WorkforceAdministrationPort, "listAccounts">>, entry = "/crm/workforce-administration"): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let snapshotPromise: ReturnType<WorkforceAdministrationPort["load"]> | undefined;
   const load = (): ReturnType<WorkforceAdministrationPort["load"]> => {
@@ -115,9 +120,36 @@ afterEach(() => {
 });
 
 describe("workbench shell", () => {
+  it("uses the root route as an authenticated workbench entry", async () => {
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/applications"));
+    expect(screen.getByRole("link", { name: /CRM 系统/u })).toHaveAttribute("href", "/crm/workspace");
+  });
+
+  it("begins the reviewed BFF login flow when no server session exists", async () => {
+    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
+    renderApp("/crm/tasks?status=open", testWorkbenchPort({ beginLogin, bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }) }));
+
+    expect(await screen.findByText("正在前往统一认证中心")).toBeInTheDocument();
+    expect(beginLogin).toHaveBeenCalledWith("/crm/tasks?status=open");
+    expect(screen.queryByRole("textbox", { name: "账号" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+  });
+
+  it("keeps an application selector route before entering CRM", async () => {
+    renderApp("/applications");
+    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
+    expect(screen.getByText("ZSJ系统管理员")).toBeInTheDocument();
+    expect(screen.getByText("系统管理员账号")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /CRM 系统/u })).toHaveAttribute("href", "/crm/workspace");
+  });
+
   it("reserves the synthetic form evidence route ahead of the collection detail route", async () => {
     const loadRelease = vi.fn().mockResolvedValue(syntheticRelease);
-    renderApp("/forms/platform.synthetic.task-completion", {
+    renderApp("/crm/forms/platform.synthetic.task-completion", testWorkbenchPort({
       bootstrap: () => developmentFixturePort.bootstrap(),
       logout: () => developmentFixturePort.logout(),
       syntheticFormEvidence: {
@@ -125,7 +157,7 @@ describe("workbench shell", () => {
         loadRelease,
         submit: vi.fn(),
       },
-    });
+    }));
 
     expect(await screen.findByRole("heading", { name: "合成表单验收" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "合成值" })).toBeInTheDocument();
@@ -134,36 +166,45 @@ describe("workbench shell", () => {
   });
 
   it("normalizes inconsistent tab, filter, page and selection URL state", async () => {
-    renderApp("/tasks?tab=history&filter=unknown&page=99&selected=fixture-task-02");
+    renderApp("/crm/tasks?tab=history&filter=unknown&page=99&selected=fixture-task-02");
 
     expect(await screen.findByRole("heading", { name: "任务" }, { timeout: 10_000 })).toBeInTheDocument();
     await waitFor(
-      () => expect(screen.getByTestId("location")).toHaveTextContent("/tasks?tab=history&filter=all&page=1&selected=fixture-task-06"),
+      () => expect(screen.getByTestId("location")).toHaveTextContent("/crm/tasks?tab=history&filter=all&page=1&selected=fixture-task-06"),
       { timeout: 10_000 },
     );
     expect(screen.getByText("fixture-task-06")).toBeInTheDocument();
     expect(screen.queryByText("fixture-task-02")).not.toBeInTheDocument();
   }, 15_000);
 
-  it("uses longest-prefix selection in ProLayout and renders a collection deep link", async () => {
-    renderApp("/notifications/fixture-notification-06");
+  it("uses longest-prefix selection in the fixed primary and secondary navigation", async () => {
+    renderApp("/crm/notifications/todo");
+
+    expect(await screen.findByRole("heading", { name: "待办提醒" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "一级导航" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "二级导航" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "通知" })).toHaveClass("selected");
+    expect(screen.getByRole("link", { name: "待办提醒" })).toHaveClass("selected");
+    expect(screen.getByLabelText("待办提醒占位界面")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /系统管理员/u })).not.toBeInTheDocument();
+  });
+
+  it("retains the existing platform notification collection deep link", async () => {
+    renderApp("/crm/notifications/fixture-notification-06");
 
     expect(await screen.findByRole("heading", { name: "通知" })).toBeInTheDocument();
-    expect(screen.getByTestId("pro-layout")).toHaveAttribute("data-selected", "/notifications");
-    expect(screen.getByTestId("pro-layout")).toHaveAttribute("data-open", "/coordination");
-    expect(screen.getByTestId("pro-layout")).toHaveAttribute("data-location", "/notifications");
     expect(screen.getByText("fixture-notification-06")).toBeInTheDocument();
     expect(screen.getByTestId("location")).not.toHaveTextContent("selected=");
 
     fireEvent.click(screen.getByRole("button", { name: /合成通知 7/u }));
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/notifications/fixture-notification-07"));
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/crm/notifications/fixture-notification-07"));
     expect(screen.getByTestId("location")).not.toHaveTextContent("selected=");
     expect(screen.getByText("fixture-notification-07")).toBeInTheDocument();
   });
 
   it.each([
-    ["/coordination", "任务", "/tasks"],
-    ["/resources", "表单", "/forms"],
+    ["/crm/coordination", "任务", "/crm/tasks"],
+    ["/crm/resources", "表单", "/crm/forms"],
   ])("redirects linked parent path %s to a stable child", async (entry, heading, expectedPath) => {
     renderApp(entry);
 
@@ -172,12 +213,12 @@ describe("workbench shell", () => {
   });
 
   it("renders an explicit object not-found state for an unknown deep-link id", async () => {
-    renderApp("/tasks/fixture-does-not-exist");
+    renderApp("/crm/tasks/fixture-does-not-exist");
 
     expect(await screen.findByText("对象不存在")).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/tasks/fixture-does-not-exist");
+    expect(screen.getByTestId("location")).toHaveTextContent("/crm/tasks/fixture-does-not-exist");
     expect(screen.queryByText("fixture-task-01")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "返回当前集合" })).toHaveAttribute("href", "/tasks");
+    expect(screen.getByRole("link", { name: "返回当前集合" })).toHaveAttribute("href", "/crm/tasks");
   });
 
   it("shows every required runtime state with explicit copy", async () => {
@@ -203,33 +244,39 @@ describe("workbench shell", () => {
 
   it("uses route-appropriate actions for direct status pages", async () => {
     renderApp("/status/403");
-    expect(await screen.findByRole("link", { name: "返回工作概览" })).toHaveAttribute("href", "/workspace");
+    expect(await screen.findByRole("link", { name: "返回应用选择" })).toHaveAttribute("href", "/applications");
   });
 
-  it("returns expired-session login to the workspace instead of the expired status URL", async () => {
+  it("returns expired-session login to the application selector instead of the expired status URL", async () => {
     renderApp("/status/session-expired");
-    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Fworkspace");
+    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Fapplications");
   });
 
   it("leaves a retryable direct status route after a successful refetch", async () => {
     const bootstrap = vi.fn(() => developmentFixturePort.bootstrap());
-    renderApp("/status/500", { bootstrap, logout: () => developmentFixturePort.logout() });
+    renderApp("/status/500", testWorkbenchPort({ bootstrap, logout: () => developmentFixturePort.logout() }));
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
-    expect(await screen.findByRole("heading", { name: "工作概览" })).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/workspace");
+    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/applications");
     expect(bootstrap).toHaveBeenCalled();
   });
 
   it("fails closed when the runtime adapter reports maintenance", async () => {
-    renderApp("/workspace", { bootstrap: vi.fn().mockResolvedValue({ kind: "maintenance" }), logout: vi.fn() });
+    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: vi.fn().mockResolvedValue({ kind: "maintenance" }), logout: vi.fn() }));
     expect(await screen.findByText("服务维护中")).toBeInTheDocument();
+  });
+
+  it("renders a bootstrap authorization denial as forbidden instead of an expired session", async () => {
+    renderApp("/applications", testWorkbenchPort({ bootstrap: vi.fn().mockResolvedValue({ kind: "forbidden" }), logout: vi.fn() }));
+    expect(await screen.findByText("无权访问")).toBeInTheDocument();
+    expect(screen.queryByText("会话已过期")).not.toBeInTheDocument();
   });
 
   it("announces connectivity loss through a semantic live alert", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
-    renderApp("/workspace");
-    await screen.findByRole("heading", { name: "工作概览" });
+    renderApp("/crm/workspace");
+    await screen.findByRole("heading", { name: "工作台首页" });
 
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: false });
     window.dispatchEvent(new Event("offline"));
@@ -254,47 +301,85 @@ describe("workbench shell", () => {
     consoleError.mockRestore();
   });
 
-  it("constructs only the fixed same-site login entry with a bounded local returnTo", async () => {
-    renderApp("/tasks?tab=history", { bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }), logout: vi.fn() });
-    const login = await screen.findByRole("link", { name: /登录/u });
-    expect(login).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Ftasks%3Ftab%3Dhistory");
-    expect(normalizeReturnTo("https://outside.invalid/steal")).toBe("/workspace");
-    expect(normalizeReturnTo("//outside.invalid/steal")).toBe("/workspace");
-    expect(normalizeReturnTo("/safe\\redirect")).toBe("/workspace");
-    expect(pcLoginUrl("https://outside.invalid/steal")).toBe("/auth/pc/login?returnTo=%2Fworkspace");
+  it("keeps legacy login route handling token-free and bounds returnTo normalization", async () => {
+    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
+    renderApp("/auth/pc/login?returnTo=%2Fcrm%2Ftasks", testWorkbenchPort({ beginLogin, bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }), logout: vi.fn() }));
+    expect(await screen.findByText("正在前往统一认证中心")).toBeInTheDocument();
+    expect(beginLogin).toHaveBeenCalledWith("/applications");
+    expect(normalizeReturnTo("https://outside.invalid/steal")).toBe("/applications");
+    expect(normalizeReturnTo("//outside.invalid/steal")).toBe("/applications");
+    expect(normalizeReturnTo("/safe\\redirect")).toBe("/applications");
+    expect(normalizeReturnTo("/status/403")).toBe("/applications");
+    expect(pcLoginUrl("https://outside.invalid/steal")).toBe("/auth/pc/login?returnTo=%2Fapplications");
   });
 
-  it("disables logout while pending and converges the session to signed out on success", async () => {
-    let resolveLogout: ((value: { kind: "signed-out" }) => void) | undefined;
-    const logout = vi.fn(() => new Promise<{ kind: "signed-out" }>((resolve) => { resolveLogout = resolve; }));
-    renderApp("/workspace", { bootstrap: () => Promise.resolve(longReady), logout });
-    const button = await screen.findByRole("button", { name: "退出当前会话" });
+  it("disables logout while pending and converges the session to an explicit logged-out state", async () => {
+    let resolveLogout: ((value: { kind: "logged-out" }) => void) | undefined;
+    const logout = vi.fn(() => new Promise<{ kind: "logged-out" }>((resolve) => { resolveLogout = resolve; }));
+    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
+    renderApp("/crm/workspace", testWorkbenchPort({ beginLogin, bootstrap: () => Promise.resolve(longReady), logout }));
+    const accountButton = await screen.findByRole("button", { name: "账号菜单" });
+    fireEvent.click(accountButton);
+    const logoutItem = await screen.findByRole("menuitem", { name: "退出当前会话" });
+    fireEvent.click(logoutItem);
+    expect(accountButton).toBeDisabled();
+    expect(logout).toHaveBeenCalledTimes(1);
+    resolveLogout?.({ kind: "logged-out" });
+    expect(await screen.findByText("已退出登录")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Fapplications");
+    expect(beginLogin).not.toHaveBeenCalled();
+  });
 
-    fireEvent.mouseOver(button);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("退出当前会话");
+  it("uses the same guarded logout behavior on the application selector", async () => {
+    let resolveLogout: ((value: { kind: "logged-out" }) => void) | undefined;
+    const logout = vi.fn(() => new Promise<{ kind: "logged-out" }>((resolve) => { resolveLogout = resolve; }));
+    renderApp("/applications", testWorkbenchPort({ logout }));
+    const button = await screen.findByRole("button", { name: "退出登录" });
+
+    fireEvent.click(button);
     fireEvent.click(button);
     expect(button).toBeDisabled();
-    expect(logout).toHaveBeenCalledTimes(1);
-    resolveLogout?.({ kind: "signed-out" });
-    expect(await screen.findByText("登录 ZSJ CRM")).toBeInTheDocument();
+    expect(logout).toHaveBeenCalledOnce();
+    resolveLogout?.({ kind: "logged-out" });
+    expect(await screen.findByText("已退出登录")).toBeInTheDocument();
   });
 
   it("keeps the session active and exposes a retry when logout fails", async () => {
     const logout = vi.fn().mockRejectedValue(new Error("synthetic failure"));
-    renderApp("/workspace", { bootstrap: () => Promise.resolve(longReady), logout });
-    fireEvent.click(await screen.findByRole("button", { name: "退出当前会话" }));
+    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: () => Promise.resolve(longReady), logout }));
+    fireEvent.click(await screen.findByRole("button", { name: "账号菜单" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "退出当前会话" }));
 
     expect(await screen.findByText("退出未完成")).toBeInTheDocument();
     expect(screen.getByText("当前会话仍保持登录。请重试退出操作。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "退出当前会话" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "账号菜单" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "重试退出" })).toBeInTheDocument();
   });
 
+  it("uses the confirmed Demo shell dimensions and work-first home structure", async () => {
+    renderApp("/crm/workspace");
+
+    expect(await screen.findByTestId("workspace-home")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "工作台首页" })).toBeInTheDocument();
+    expect(screen.getByLabelText("工作指标")).toBeInTheDocument();
+    expect(screen.getByText("今日待办（5）")).toBeInTheDocument();
+    expect(screen.getByText("今日动态")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "一级导航容器" })).toHaveStyle({ width: "144px" });
+    expect(screen.getByRole("complementary", { name: "二级导航" })).toHaveStyle({ width: "180px" });
+
+    fireEvent.click(screen.getByRole("button", { name: "收起一级导航" }));
+    fireEvent.click(screen.getByRole("button", { name: "收起二级导航" }));
+    expect(screen.getByRole("complementary", { name: "一级导航容器" })).toHaveClass("ant-layout-sider-collapsed");
+    expect(screen.getByRole("complementary", { name: "二级导航" })).toHaveClass("ant-layout-sider-collapsed");
+    expect(screen.getByRole("button", { name: "展开一级导航" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "展开二级导航" })).toBeInTheDocument();
+  });
+
   it("shows an explicit empty workbench for an employee without authorized features", async () => {
-    renderApp("/workspace", {
+    renderApp("/crm/workspace", testWorkbenchPort({
       bootstrap: () => Promise.resolve({ ...longReady, fixture: false, navigationIds: [] }),
       logout: vi.fn(),
-    });
+    }));
 
     expect(await screen.findByText("暂无可用功能")).toBeInTheDocument();
   });
@@ -303,13 +388,13 @@ describe("workbench shell", () => {
     renderWorkforceAdministration({
       execute: vi.fn().mockResolvedValue({}),
       load: () => Promise.resolve({ accounts: [], departments: [], positions: [] }),
-    }, "/workforce-administration?tab=departments");
+    }, "/crm/workforce-administration?tab=departments");
 
     expect(await screen.findByRole("tab", { name: "部门" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "岗位" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/workforce-administration?tab=positions");
+    expect(screen.getByTestId("location")).toHaveTextContent("/crm/workforce-administration?tab=positions");
     fireEvent.click(screen.getByRole("tab", { name: "员工账号" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/workforce-administration");
+    expect(screen.getByTestId("location")).toHaveTextContent("/crm/workforce-administration");
   });
 
   it("requires explicit confirmation before releasing a historical phone", async () => {
@@ -369,7 +454,7 @@ describe("workbench shell", () => {
     await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, failedOperationId: "40000000-0000-4000-8000-000000000001", kind: "retry_identity_sync" }); });
   });
 
-  it("requires reauthentication before exposing the system-account identifier editor", async () => {
+  it("requires reauthentication before exposing the system-account profile editor", async () => {
     const beginSystemAccountReauthentication = vi.fn<NonNullable<WorkforceAdministrationPort["beginSystemAccountReauthentication"]>>().mockResolvedValue();
     renderWorkforceAdministration({
       beginSystemAccountReauthentication,
@@ -381,12 +466,12 @@ describe("workbench shell", () => {
     });
 
     expect(await screen.findByText("ZSJ系统管理员")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑登录标识" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑账号资料" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新认证后编辑" }));
     await waitFor(() => { expect(beginSystemAccountReauthentication).toHaveBeenCalledTimes(1); });
   });
 
-  it("submits only system-account login identifiers after server-computed reauthentication", async () => {
+  it("submits the system-account profile and login identifiers after server-computed reauthentication", async () => {
     const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
     renderWorkforceAdministration({
       execute,
@@ -396,22 +481,23 @@ describe("workbench shell", () => {
       }),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "编辑登录标识" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑账号资料" }));
+    fireEvent.change(screen.getByLabelText("姓名（实名）"), { target: { value: "ZSJ系统管理员二" } });
     fireEvent.change(screen.getByLabelText("用户名（昵称）"), { target: { value: "system.admin.two" } });
     fireEvent.change(screen.getByLabelText("手机号（可用于登录）"), { target: { value: "+8613900000000" } });
     fireEvent.click(screen.getByRole("button", { name: /保\s*存/u }));
-    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", phone: "+8613900000000", username: "system.admin.two" }); });
-    expect(JSON.stringify(execute.mock.calls)).not.toMatch(/legalName|department|position/u);
+    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", legalName: "ZSJ系统管理员二", phone: "+8613900000000", username: "system.admin.two" }); });
+    expect(JSON.stringify(execute.mock.calls)).not.toMatch(/department|position/u);
   }, 10_000);
 
   it.each([320, 360])("keeps dynamic long text in bounded elements at %ipx", async (width) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
-    renderApp("/tasks", { bootstrap: () => Promise.resolve(longReady), logout: vi.fn() });
+    renderApp("/crm/tasks", testWorkbenchPort({ bootstrap: () => Promise.resolve(longReady), logout: vi.fn() }));
 
     const title = (await screen.findAllByTitle(longText)).find((element) => element.classList.contains("truncate-text"));
     expect(title).toBeDefined();
     expect(title).toHaveClass("truncate-text");
     expect(screen.getAllByText(longText).some((element) => element.classList.contains("break-text"))).toBe(true);
-    expect(screen.getByRole("button", { name: "退出当前会话" })).toHaveAccessibleName("退出当前会话");
+    expect(screen.getByRole("button", { name: "账号菜单" })).toHaveAccessibleName("账号菜单");
   });
 });

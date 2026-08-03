@@ -35,6 +35,7 @@ services:
       AI_CRM_FILE_MAXIMUM_SCAN_BYTES: ${AI_CRM_FILE_MAXIMUM_SCAN_BYTES:?reviewed scan limit is required}
       AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES: ${AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES:?reviewed upload limit is required}
       AI_CRM_FILE_UPLOAD_SESSION_TTL_MS: ${AI_CRM_FILE_UPLOAD_SESSION_TTL_MS:?reviewed upload session TTL is required}
+      AI_CRM_FILE_STORAGE_PROVIDER: cos
       AI_CRM_COS_BUCKET: ${AI_CRM_COS_BUCKET:?reviewed COS bucket is required}
       AI_CRM_COS_REGION: ${AI_CRM_COS_REGION:?reviewed COS region is required}
       AI_CRM_COS_SECRET_ID_FILE: /run/secrets/api_cos_secret_id
@@ -44,6 +45,7 @@ services:
       AI_CRM_KEYCLOAK_JWKS_URI: https://${AI_CRM_PUBLIC_HOST:?public host is required}/realms/${AI_CRM_KEYCLOAK_REALM:?realm is required}/protocol/openid-connect/certs
       AI_CRM_PC_OIDC_CLIENT_ID: ${AI_CRM_PC_OIDC_CLIENT_ID:?required}
       AI_CRM_OIDC_API_AUDIENCE: ${AI_CRM_OIDC_API_AUDIENCE:?required}
+      AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: https://${AI_CRM_PUBLIC_HOST:?public host is required}/bff/auth/login
       AI_CRM_PC_OIDC_REDIRECT_URI: https://${AI_CRM_PUBLIC_HOST:?public host is required}/bff/auth/callback
       AI_CRM_PC_ALLOWED_ORIGIN: https://${AI_CRM_PUBLIC_HOST:?public host is required}
       AI_CRM_REDIS_URL: redis://${AI_CRM_STATE_HOST:?state host is required}:6379

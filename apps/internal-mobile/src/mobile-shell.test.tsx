@@ -166,4 +166,20 @@ describe("internal mobile shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "退出当前会话" }));
     expect(await screen.findByText("会话已过期")).toBeInTheDocument();
   });
+
+  it("prevents duplicate logout and keeps a retry available after failure", async () => {
+    const context = setup();
+    let rejectLogout: ((reason?: unknown) => void) | undefined;
+    vi.mocked(context.port.logout).mockImplementation(() => new Promise((_resolve, reject) => { rejectLogout = reject; }));
+    render(<MobileShell adapters={context.adapters} port={context.port} section="home" />);
+    const button = await screen.findByRole("button", { name: "退出当前会话" });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "正在退出" })).toBeDisabled();
+    expect(context.port.logout).toHaveBeenCalledOnce();
+    rejectLogout?.(new Error("synthetic failure"));
+    expect(await screen.findByText("退出未完成，当前会话仍保持登录。请重试。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出当前会话" })).not.toBeDisabled();
+  });
 });
