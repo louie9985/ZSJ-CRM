@@ -1,7 +1,8 @@
 import { PageContainer } from "@ant-design/pro-components";
-import { Alert, Button, Card, Descriptions, Form, Input, Typography } from "antd";
-import { useState } from "react";
+import { Alert, App, Button, Card, Descriptions, Form, Input, Result, Typography } from "antd";
+import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
+import { notifyOperation } from "./operation-notification";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -144,11 +145,16 @@ export function SyntheticFormEvidencePage({
   readonly port: SyntheticFormEvidencePort;
   readonly release: SyntheticFormEvidenceRelease;
 }): React.JSX.Element {
+  const { notification } = App.useApp();
   const [syntheticValue, setSyntheticValue] = useState("");
   const [state, setState] = useState<"failure" | "idle" | "pending" | "succeeded">("idle");
   const [submissionReference, setSubmissionReference] = useState<string>();
   const available = hasEvidenceShape(release) && hasStableFileReference(fileReference);
   const fields = [...release.uiSchema.fields].sort((left, right) => left.order - right.order);
+
+  useEffect(() => {
+    if (!available) notifyOperation(notification, "error", "表单不可用", "表单版本或文件引用未通过客户端结构检查。");
+  }, [available, notification]);
 
   const submit = (): void => {
     if (state === "pending" || !available) return;
@@ -157,6 +163,7 @@ export function SyntheticFormEvidencePage({
       submission = createSyntheticFormEvidenceSubmission(release, fileReference, syntheticValue);
     } catch {
       setState("failure");
+      notifyOperation(notification, "error", "提交未完成", "请检查必填内容和字段长度后重试。");
       return;
     }
     setState("pending");
@@ -166,11 +173,16 @@ export function SyntheticFormEvidencePage({
           assertSyntheticFormEvidenceReceipt(submission, receipt);
           setSubmissionReference(receipt.submissionReference);
           setState("succeeded");
+          notifyOperation(notification, "success", "表单提交已接受", `提交编号：${receipt.submissionReference}`);
         } catch {
           setState("failure");
+          notifyOperation(notification, "error", "提交未完成", "服务端证据回显不一致，本次操作不会被视为成功。");
         }
       },
-      () => { setState("failure"); },
+      () => {
+        setState("failure");
+        notifyOperation(notification, "error", "提交未完成", "服务器未确认成功，本次操作不会被视为成功。");
+      },
     );
   };
 
@@ -183,7 +195,7 @@ export function SyntheticFormEvidencePage({
         title="合成验收数据"
         description="此页面仅处理平台测试数据，不代表任何 CRM 业务事实。"
       />
-      {!available && <Alert type="error" showIcon title="表单不可用" description="表单版本或文件引用未通过客户端结构检查。" />}
+      {!available && <Result status="error" title="表单不可用" subTitle="表单版本或文件引用未通过客户端结构检查。" />}
       <Card size="small" className="synthetic-form-evidence">
         <Form layout="vertical" onFinish={submit}>
           {fields.map((field) => {
@@ -213,8 +225,7 @@ export function SyntheticFormEvidencePage({
           <Descriptions.Item label="定义版本">{release.definitionId}@{release.releaseVersion}</Descriptions.Item>
           <Descriptions.Item label="文件名">{fileReference.displayName}</Descriptions.Item>
         </Descriptions>
-        {state === "failure" && <Alert type="error" showIcon title="提交未完成" description="服务端校验或证据回显不一致，当前操作不会被视为成功。" />}
-        {state === "succeeded" && <Alert type="success" showIcon title="表单提交已接受" description={<Typography.Text data-testid="submission-reference">{submissionReference}</Typography.Text>} />}
+        {state === "succeeded" && <Typography.Paragraph data-testid="submission-reference">提交编号：{submissionReference}</Typography.Paragraph>}
       </Card>
     </PageContainer>
   );

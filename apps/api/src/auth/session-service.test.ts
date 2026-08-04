@@ -115,6 +115,7 @@ class FakeOidc implements OidcClientPort {
   beginOptions: Readonly<BeginLoginOptions> | undefined;
   endSessionCalls: SessionTokenSet[] = [];
   endSessionFailure: Error | undefined;
+  exchangeCalls = 0;
   refreshCalls = 0;
 
   beginLogin(_returnTo: string, options?: Readonly<BeginLoginOptions>): Promise<{ authorizationUrl: string; transaction: LoginTransaction }> {
@@ -132,6 +133,7 @@ class FakeOidc implements OidcClientPort {
   }
 
   exchangeCallback(): Promise<Readonly<OidcTokenResult>> {
+    this.exchangeCalls += 1;
     return Promise.resolve(Object.freeze({ authenticatedAtMs: 1_000, expiresInSeconds: 300, tokens: initialTokens }));
   }
 
@@ -257,6 +259,26 @@ describe("createPcBffSessionService", () => {
     expect(completed.session).not.toHaveProperty("accessToken");
     await expect(service.completeLogin(`https://workbench.example.test/auth/pc/callback?code=replay&state=${state}`))
       .rejects.toMatchObject({ code: "authentication_callback_invalid" });
+  });
+
+  it("keeps the callback retryable when session policy resolution is temporarily unavailable", async () => {
+    let attempts = 0;
+    const service = createPcBffSessionService({
+      ...options,
+      concurrentSessionLimit: () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(new Error("Synthetic policy dependency failure."))
+          : Promise.resolve(1);
+      },
+    });
+    await service.beginLogin("/tasks");
+    const callback = `https://workbench.example.test/auth/pc/callback?code=synthetic&state=${state}`;
+
+    await expect(service.completeLogin(callback)).rejects.toMatchObject({ code: "authentication_dependency_unavailable" });
+    expect(oidc.exchangeCalls).toBe(0);
+    await expect(service.completeLogin(callback)).resolves.toMatchObject({ returnTo: "/tasks" });
+    expect(oidc.exchangeCalls).toBe(1);
   });
 
   it("uses the request Trace ID for authentication audit evidence", async () => {

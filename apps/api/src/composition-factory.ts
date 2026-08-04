@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createTraceContext } from "@ai-crm/observability";
 import {
@@ -12,6 +12,7 @@ import {
   createPrismaAuthorizationPersistence,
   type AuthorizationPolicyStore,
 } from "@ai-crm/platform-authorization";
+import { createBusinessConfigurationService, createPrismaBusinessConfigurationStore } from "@ai-crm/platform-business-configuration";
 import { createOidcTokenVerifier, type TokenVerifier } from "@ai-crm/platform-auth-context";
 import { createEventingCore, createPrismaEventingStore, type EventingCore } from "@ai-crm/platform-eventing-outbox";
 import {
@@ -63,8 +64,10 @@ import {
 
 import { BrowserSessionFailure } from "./auth/errors.js";
 import { createPcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
+import { parsePcSessionCredential } from "./auth/http-adapter.js";
 import { createOidcClient, type OidcClientPort } from "./auth/oidc.js";
 import { createPcBffSessionService } from "./auth/session-service.js";
+import { createPcSessionPolicyPort } from "./auth/session-policy.js";
 import type { AuthenticationAuditEvent, AuthenticationAuditPort } from "./auth/session-service.js";
 import {
   connectRedisSessionStore,
@@ -74,6 +77,7 @@ import {
 } from "./auth/session-store.js";
 import type { AuthenticationHttpResponse } from "./auth/http-adapter.js";
 import type { ApiPlatformBindings } from "./composition.js";
+import { createRabbitRealtimeEventSource, createRealtimeServer, type RealtimeEventSource, type RealtimeIdentity } from "./realtime/index.js";
 import {
   loadProductionApiConfiguration,
   type ProductionApiConfiguration,
@@ -179,6 +183,19 @@ function deterministicUuid(material: string): string {
   value[12] = "5";
   value[16] = ((Number.parseInt(value[16] ?? "0", 16) & 3) | 8).toString(16);
   return `${value.slice(0, 8).join("")}-${value.slice(8, 12).join("")}-${value.slice(12, 16).join("")}-${value.slice(16, 20).join("")}-${value.slice(20).join("")}`;
+}
+
+export function pcSessionPolicySystemAuthorization(action: string): Readonly<{ allowed: boolean; decisionId: string }> {
+  return Object.freeze({ allowed: action === "configuration:read", decisionId: deterministicUuid("pc-session-policy-system-read") });
+}
+
+export function pcSessionRevokedEvent(input: Readonly<{ eventId: string; occurredAt: string; reason: "concurrent-limit"; sessionReference: string; subjectId: string; subjectIssuer: string }>): Readonly<Record<string, unknown>> {
+  return Object.freeze({ specversion: "1.0", id: input.eventId, source: "urn:ai-crm:authentication", type: "authentication.pc-session-revoked.v1", time: input.occurredAt, datacontenttype: "application/json", dataschema: "urn:ai-crm:events:authentication-pc-session-revoked:v1", correlationid: input.eventId, subject: input.sessionReference, data: Object.freeze({ eventId: input.eventId, occurredAt: input.occurredAt, principalId: `subject:${createHash("sha256").update(`${input.subjectIssuer}\0${input.subjectId}`).digest("hex")}`, reason: input.reason, sessionReference: input.sessionReference }) });
+}
+
+function internalPrincipalId(principal: { readonly authenticationSubject: { readonly issuer: string; readonly subject: string } }): string {
+  const subject = principal.authenticationSubject;
+  return `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
 }
 
 function managementAuditPort(
@@ -569,7 +586,24 @@ export async function createProductionApiPlatformBindings(
     )),
   });
   const taskStore = createPrismaTaskCenterStore(activeDatabase);
-  const notificationStore = createPrismaNotificationStore(activeDatabase);
+  const notificationStore = createPrismaNotificationStore(activeDatabase, {
+    async record(notification) {
+      const eventId = deterministicUuid(`notification-change\0${notification.notificationId}\0${String(notification.stateVersion)}`);
+      const occurredAt = notification.archivedAt ?? notification.readAt ?? notification.createdAt;
+      await eventing.appendEvent({
+        specversion: "1.0",
+        id: eventId,
+        source: "urn:ai-crm:notifications",
+        type: "notifications.in-app-changed.v1",
+        time: occurredAt,
+        datacontenttype: "application/json",
+        dataschema: "urn:ai-crm:events:notifications.in-app-changed:v1",
+        correlationid: notification.intentId,
+        subject: notification.notificationId,
+        data: { eventId, occurredAt, notificationId: notification.notificationId, principalId: notification.principalId, stateVersion: notification.stateVersion },
+      });
+    },
+  });
   const queryDecisionTraces = new Map<string, string>();
   const taskAuthorization: TaskAuthorization = Object.freeze({
     authorize: async ({ actor, operation, task }: Parameters<TaskAuthorization["authorize"]>[0]) => {
@@ -600,16 +634,21 @@ export async function createProductionApiPlatformBindings(
   });
   const notificationAuthorization: NotificationAuthorization = Object.freeze({
     authorize: async ({ actor, operation }: Parameters<NotificationAuthorization["authorize"]>[0]) => {
-      const action = operation === "notification_list" || operation === "notification_unread_count"
-        ? "list"
-        : operation === "notification_detail" ? "read" : undefined;
+      const action = operation === "notification_list" || operation === "notification_unread_count" ? "list"
+        : operation === "notification_detail" ? "read"
+          : operation === "notification_mark_read" ? "mark-read"
+            : operation === "notification_archive" ? "archive"
+              : operation === "notification_template_read" ? "read"
+                : operation === "notification_template_manage" ? "manage"
+                  : operation === "notification_template_publish" ? "publish"
+                    : operation === "notification_template_activate" ? "activate" : undefined;
       if (action === undefined) throw new Error("notification_mutation_authorization_unavailable");
       const workforcePersonId = actor.workforcePersonId;
       if (workforcePersonId === undefined) throw new Error("notification_workforce_context_unavailable");
       const traceId = authorizationTrace.getStore() ?? createTraceContext().traceId;
       const decision = await authorizationTrace.run(traceId, () => authorization.check(
         { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId },
-        { action, resource: "platform.notifications.in-app-notification" },
+        { action, resource: operation.startsWith("notification_template_") ? "platform.notifications.template" : "platform.notifications.in-app-notification" },
       ));
       queryDecisionTraces.set(decision.decisionId, traceId);
       return { allowed: decision.allowed, decisionId: decision.decisionId };
@@ -622,11 +661,18 @@ export async function createProductionApiPlatformBindings(
     sourceReader: { get: () => Promise.reject(new Error("task_source_reader_unavailable")) },
     store: taskStore,
   });
+  const organizationDirectoryHolder: { value?: OrganizationDirectoryService } = {};
   const notifications = createNotificationCenter({
     audit: managementAuditPort(audit, "notification", queryDecisionTraces) as NotificationAudit,
     authorization: notificationAuthorization,
     preference: { evaluate: () => Promise.reject(new Error("notification_preference_unavailable")) },
     resolver: { resolve: () => Promise.reject(new Error("notification_recipient_resolver_unavailable")) },
+    variableResolver: { displayName: async (workforcePersonId) => {
+      const directory = organizationDirectoryHolder.value;
+      if (directory === undefined) throw new Error("notification_variable_resolver_unavailable");
+      const profile = await directory.getPersonProfile(workforcePersonId);
+      return { displayName: profile.realName, resolutionVersion: `organization-profile-v${String(profile.revision)}` };
+    } },
     store: notificationStore,
   });
   const organizationHolder: { value?: ReturnType<typeof createPrismaOrganizationService> } = {};
@@ -661,6 +707,7 @@ export async function createProductionApiPlatformBindings(
     createPrismaOrganizationDirectoryStore(activeDatabase),
     workforceManagementAuthorizer,
   );
+  organizationDirectoryHolder.value = organizationDirectory;
   const workforceAccounts: WorkforceAccessServiceApi = new WorkforceAccessService(
     createPrismaWorkforceAccessStore(activeDatabase),
     workforceManagementAuthorizer,
@@ -820,8 +867,41 @@ export async function createProductionApiPlatformBindings(
       throw error;
     }
   };
+  const businessConfiguration = createBusinessConfigurationService(
+    createPrismaBusinessConfigurationStore(activeDatabase),
+    {
+      async authorize(request) {
+        if (request.actor.actorType === "system") return pcSessionPolicySystemAuthorization(request.action);
+        const decision = await authorizationTrace.run(authorizationTrace.getStore() ?? createTraceContext().traceId, () => authorization.check(
+          { activeAssignmentIds: request.actor.assignmentId === undefined ? [] : [request.actor.assignmentId], workforcePersonId: request.actor.actorId },
+          { action: request.action === "configuration:read" ? "read" : "manage", resource: "platform.authentication.session-policy" },
+        ));
+        return { allowed: decision.allowed, decisionId: decision.decisionId };
+      },
+    },
+    {
+      async record(event) {
+        await audit.record({
+          action: event.action,
+          actor: { actorId: event.actor.actorId, actorType: event.actor.actorType, ...(event.actor.actorType === "authenticated_subject" ? { workforcePersonId: event.actor.actorId } : {}) },
+          reason: { code: event.reason },
+          resource: { resourceId: event.resourceId, resourceType: "platform.authentication.session-policy" },
+          result: event.result,
+          trace: { authorizationDecisionId: event.authorizationDecisionId, operationId: event.operationId, traceId: event.traceId },
+        });
+      },
+    },
+    { get: () => Promise.resolve(undefined), invalidate: () => Promise.resolve(), set: () => Promise.resolve() },
+  );
+  const sessionStore = createRedisBrowserSessionStore(activeSessions.executor);
+  const authenticationAudit = authenticationAuditPort(audit);
+  const sessionPolicy = createPcSessionPolicyPort(businessConfiguration, (work) => activeDatabase.withTransaction(work), () => new Date(), async (limit, input) => {
+    const revoked = await sessionStore.enforceConcurrentLimit?.(limit) ?? [];
+    await Promise.all(revoked.map((sessionReference) => authenticationAudit.record({ action: "session_revoked_concurrent_limit", operationId: deterministicUuid(`${input.operationId}\0${sessionReference}`), result: "succeeded", sessionReference, traceId: input.traceId })));
+  });
+  const systemSessionPolicy = () => sessionPolicy.get({ actor: { actorId: "api.pc_bff", actorType: "system" } });
   const sessionService = createPcBffSessionService({
-    audit: authenticationAuditPort(audit),
+    audit: authenticationAudit,
     decryptionKeys: configuration.pcBff.sessionDecryptionKeys,
     encryptionKey: configuration.pcBff.sessionEncryptionKey,
     indexingKey: configuration.pcBff.sessionIndexingKey,
@@ -830,7 +910,14 @@ export async function createProductionApiPlatformBindings(
     refreshLeaseTtlMs: configuration.pcBff.refreshLeaseTtlMs,
     sessionAbsoluteTtlSeconds: configuration.pcBff.sessionAbsoluteTtlSeconds,
     sessionIdleTtlSeconds: configuration.pcBff.sessionIdleTtlSeconds,
-    store: createRedisBrowserSessionStore(activeSessions.executor),
+    concurrentSessionLimit: async () => (await systemSessionPolicy()).concurrentLimit,
+    requireSessionSchemaVersion2: true,
+    sessionRevocationPublisher: async ({ reason, sessionReference, subjectId, subjectIssuer }) => {
+      const eventId = deterministicUuid(`pc-session-revoked\0${sessionReference}`);
+      const occurredAt = new Date().toISOString();
+      await eventing.appendEvent(pcSessionRevokedEvent({ eventId, occurredAt, reason, sessionReference, subjectId, subjectIssuer }));
+    },
+    store: sessionStore,
     tokenVerifier,
   });
   const resolveAdministrationPrincipal = async (input: Readonly<{ credential: string; traceId: string }>) => {
@@ -933,6 +1020,47 @@ export async function createProductionApiPlatformBindings(
     },
     registry: applicationRegistryQueries,
   });
+  const noRealtimeEvents: RealtimeEventSource = Object.freeze({ subscribe: () => () => undefined });
+  const rabbitRealtimeEvents = configuration.realtime.enabled && configuration.realtime.rabbitUrl !== undefined
+    ? createRabbitRealtimeEventSource({ connectionUrl: configuration.realtime.rabbitUrl, nodeId: `api.${randomUUID()}` })
+    : undefined;
+  if (rabbitRealtimeEvents !== undefined) await rabbitRealtimeEvents.start().catch(() => undefined);
+  const resolveRealtimeIdentity = async (credential: string): Promise<RealtimeIdentity> => {
+    const [principal, session] = await Promise.all([sessionService.resolvePrincipal(credential), sessionService.sessionForMutation(credential)]);
+    const workforce = await organization.resolveWorkforceContext(principal.authenticationSubject, new Date().toISOString());
+    await authorization.requireAllowed({ activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId), workforcePersonId: workforce.workforcePersonId }, { action: "read", resource: "platform.workbench.shell" });
+    return Object.freeze({
+      activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId),
+      principalId: internalPrincipalId(principal),
+      sessionReference: session.sessionReference,
+      workforcePersonId: workforce.workforcePersonId,
+    });
+  };
+  const realtime = createRealtimeServer({
+    allowedOrigins: [configuration.pcBff.allowedOrigin],
+    authenticate: ({ credential }) => resolveRealtimeIdentity(credential),
+    credentialFromCookie: (cookie) => { try { return parsePcSessionCredential(cookie); } catch { return undefined; } },
+    enabled: configuration.realtime.enabled,
+    events: rabbitRealtimeEvents ?? noRealtimeEvents,
+    maxConnectionsPerSession: configuration.realtime.maximumConnectionsPerSession,
+    revalidationIntervalMs: 5_000,
+    revalidate: async ({ credential, identity }) => {
+      const current = await resolveRealtimeIdentity(credential);
+      return current.principalId === identity.principalId && current.sessionReference === identity.sessionReference && current.workforcePersonId === identity.workforcePersonId;
+    },
+    snapshots: {
+      notification: async (identity, notificationId) => {
+        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds };
+        const [item, unread] = await Promise.all([notifications.get(actor, notificationId), notifications.unreadCount(actor)]);
+        return Object.freeze({ notificationId: item.notificationId, stateVersion: item.stateVersion, templateKey: item.templateKey, templateVersion: item.templateVersion, title: item.title, summary: item.summary, bodyMarkdown: item.body, bodyFormat: item.bodyFormat, createdAt: item.createdAt, ...(item.readAt === undefined ? {} : { readAt: item.readAt }), ...(item.archivedAt === undefined ? {} : { archivedAt: item.archivedAt }), deepLink: item.deepLink, unread: { count: unread } });
+      },
+      task: async (identity, taskId) => {
+        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds };
+        const item = await tasks.getByProjectionId(actor, taskId);
+        return Object.freeze({ taskId: item.projectionId, stateVersion: item.sourceVersion, title: item.title, summary: item.summary, status: item.status, deepLink: { applicationId: item.deepLink.appId, routeId: item.deepLink.routeId, resourceType: item.sourceType, resourceId: item.sourceTaskId } });
+      },
+    },
+  });
   const unavailable = createUnavailableBindings();
 
   return Object.freeze({
@@ -950,6 +1078,7 @@ export async function createProductionApiPlatformBindings(
     authorizationTrace: {
       run: async <T>(traceId: string, work: () => Promise<T>) => authorizationTrace.run(traceId, work),
     },
+    sessionPolicy,
     async close() {
       if (state.closed) return;
       state.closed = true;
@@ -957,6 +1086,7 @@ export async function createProductionApiPlatformBindings(
       state.databaseCompatible = false;
       state.authorizationPolicyReady = false;
       stopDatabaseProbes();
+      await rabbitRealtimeEvents?.close();
       await closeResources(activeSessions, activeDatabase, cleanupTimeoutMs);
     },
     databaseCompatibility: {
@@ -997,7 +1127,9 @@ export async function createProductionApiPlatformBindings(
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.taskQueryReady, name: "task-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.notificationQueryReady, name: "notification-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.fileCenterProviderReady, name: "file-center-provider", required: true },
+      { healthy: !state.closed && (!configuration.realtime.enabled || rabbitRealtimeEvents?.health() === true), name: "realtime-rabbit-consumer", required: false },
     ],
+    realtime,
     sessions: { logout: sessionService.logout, resolvePrincipal: sessionService.resolvePrincipal, sessionForMutation: sessionService.sessionForMutation },
   });
   } catch (error) {

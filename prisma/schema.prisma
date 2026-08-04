@@ -468,12 +468,70 @@ model NotificationTemplateRelease {
   ownerReference   String   @map("owner_reference") @db.VarChar(255)
   notificationType String   @map("notification_type") @db.VarChar(255)
   variableSchema   Json     @map("variable_schema")
+  variableCatalogVersion Int? @map("variable_catalog_version")
   titleTemplate    String   @map("title_template") @db.VarChar(8000)
+  summaryTemplate  String?  @map("summary_template") @db.VarChar(2000)
   bodyTemplate     String   @map("body_template") @db.VarChar(8000)
+  bodyFormat       String   @default("plain-text") @map("body_format") @db.VarChar(32)
   contentDigest    String   @map("content_digest") @db.Char(64)
   publishedAt      DateTime @map("published_at") @db.Timestamptz(6)
   @@id([templateKey, version])
   @@map("template_releases")
+  @@schema("platform_notifications")
+}
+
+model NotificationTemplateDefinitionRow {
+  templateKey            String  @id @map("template_key") @db.VarChar(255)
+  ownerModule            String  @map("owner_module") @db.VarChar(255)
+  notificationType       String  @map("notification_type") @db.VarChar(255)
+  definitionVersion      Int     @map("definition_version")
+  allowedVariables       Json    @map("allowed_variables")
+  variableCatalogVersion Int     @map("variable_catalog_version")
+  systemSenderName       String  @map("system_sender_name") @db.VarChar(100)
+  enabled                Boolean
+  @@map("template_definitions")
+  @@schema("platform_notifications")
+}
+
+model NotificationTemplateDraftRow {
+  templateKey     String   @id @map("template_key") @db.VarChar(255)
+  revision        Int
+  titleTemplate   String   @map("title_template") @db.VarChar(512)
+  summaryTemplate String   @map("summary_template") @db.VarChar(2000)
+  bodyTemplate    String   @map("body_template") @db.VarChar(8000)
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("template_drafts")
+  @@schema("platform_notifications")
+}
+
+model NotificationTemplateDraftOperationRow {
+  operationId      String   @id @map("operation_id") @db.Uuid
+  templateKey      String   @map("template_key") @db.VarChar(255)
+  expectedRevision Int      @map("expected_revision")
+  revision         Int
+  titleTemplate    String   @map("title_template") @db.VarChar(512)
+  summaryTemplate  String   @map("summary_template") @db.VarChar(2000)
+  bodyTemplate     String   @map("body_template") @db.VarChar(8000)
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("template_draft_operations")
+  @@schema("platform_notifications")
+}
+
+model NotificationTemplateActivationRow {
+  activationId String   @id @map("activation_id") @db.Uuid
+  templateKey  String   @map("template_key") @db.VarChar(255)
+  version      Int
+  activatedAt  DateTime @map("activated_at") @db.Timestamptz(6)
+  @@map("template_activation_history")
+  @@schema("platform_notifications")
+}
+
+model CurrentNotificationTemplateReleaseRow {
+  templateKey  String   @id @map("template_key") @db.VarChar(255)
+  version      Int
+  activationId String   @unique @map("activation_id") @db.Uuid
+  activatedAt  DateTime @map("activated_at") @db.Timestamptz(6)
+  @@map("current_template_release")
   @@schema("platform_notifications")
 }
 
@@ -500,7 +558,11 @@ model InAppNotificationRow {
   templateVersion     Int       @map("template_version")
   notificationType    String    @map("notification_type") @db.VarChar(255)
   title               String    @db.VarChar(512)
+  summary             String?   @db.VarChar(2000)
   body                String    @db.VarChar(8000)
+  bodyFormat          String    @default("plain-text") @map("body_format") @db.VarChar(32)
+  contentDigest       String?   @map("content_digest") @db.Char(64)
+  stateVersion        Int       @default(1) @map("state_version")
   sourceType           String    @map("source_type") @db.VarChar(255)
   sourceId             String    @map("source_id") @db.VarChar(255)
   deepLink             Json      @map("deep_link")
@@ -693,6 +755,8 @@ model TaskCenterProjection {
   sourceTaskId           String    @db.VarChar(255) @map("source_task_id")
   sourceVersion          Int       @map("source_version")
   status                 String    @db.VarChar(16)
+  title                  String    @db.VarChar(512)
+  summary                String    @db.VarChar(2000)
   appId                  String    @db.VarChar(255) @map("app_id")
   routeId                String    @db.VarChar(255) @map("route_id")
   assigneeReference      String?   @db.VarChar(255) @map("assignee_reference")

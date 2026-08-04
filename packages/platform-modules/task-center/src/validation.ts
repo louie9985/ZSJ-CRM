@@ -6,6 +6,7 @@ const ID = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const UTC_RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/u;
 const invalid = (): never => { throw new TaskCenterError("TASK_INPUT_INVALID"); };
+const displayText = (value: unknown, maximum: number): string => typeof value === "string" && value.length >= 1 && value.length <= maximum ? value : invalid();
 export const validateId = (value: unknown): string => typeof value === "string" && ID.test(value) ? value : invalid();
 export const validateUuid = (value: unknown): string => typeof value === "string" && UUID.test(value) ? value : invalid();
 const record = (value: unknown): Record<string, unknown> => {
@@ -40,7 +41,9 @@ export const validateEvent = (value: TaskLifecycleEvent): TaskLifecycleEvent => 
   const occurredAt = validateTimestamp(input["occurredAt"]);
   const dueAt = input["dueAt"] === undefined ? undefined : validateTimestamp(input["dueAt"]);
   const deepLink = record(input["deepLink"]);
-  return { ...value, ...key, occurredAt, eventId: validateUuid(input["eventId"]), deepLink: { appId: validateId(deepLink["appId"]), routeId: validateId(deepLink["routeId"]) }, ...(input["assigneeReference"] === undefined ? {} : { assigneeReference: validateId(input["assigneeReference"]) }), ...(input["candidateScopeReference"] === undefined ? {} : { candidateScopeReference: validateId(input["candidateScopeReference"]) }), ...(dueAt === undefined ? {} : { dueAt }) };
+  const displayInput = input["display"] === undefined ? undefined : record(input["display"]);
+  const display = displayInput === undefined ? undefined : { title: displayText(displayInput["title"], 512), summary: displayText(displayInput["summary"], 2_000) };
+  return { ...value, ...key, occurredAt, eventId: validateUuid(input["eventId"]), deepLink: { appId: validateId(deepLink["appId"]), routeId: validateId(deepLink["routeId"]) }, ...(display === undefined ? {} : { display }), ...(input["assigneeReference"] === undefined ? {} : { assigneeReference: validateId(input["assigneeReference"]) }), ...(input["candidateScopeReference"] === undefined ? {} : { candidateScopeReference: validateId(input["candidateScopeReference"]) }), ...(dueAt === undefined ? {} : { dueAt }) };
 };
 const canonicalize = (value: unknown, ancestors: ReadonlySet<object>): unknown => {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;

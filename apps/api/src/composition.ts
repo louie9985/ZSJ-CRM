@@ -19,6 +19,8 @@ import type { PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
 import { validateBrowserMutation } from "./auth/session-security.js";
 import type { PcBffSessionService } from "./auth/session-service.js";
 import type { ApiComposition } from "./index.js";
+import type { RealtimeServer } from "./realtime/realtime-server.js";
+import type { PcSessionPolicyPort } from "./auth/session-policy.js";
 import {
   createApplicationRegistryHttpAdapter,
   type ApplicationRegistryHttpAdapter,
@@ -59,7 +61,7 @@ export interface ApiQueryBindings {
   readonly applicationRegistry: ApplicationRegistryQueryService;
   readonly fileCenter: Pick<FileCenterService, "authorizeDownload" | "completeUpload" | "createUploadSession">;
   readonly forms: FormSchemaQueryService;
-  readonly notifications: Pick<NotificationCenter, "get" | "list" | "unreadCount">;
+  readonly notifications: Pick<NotificationCenter, "get" | "list" | "unreadCount"> & Partial<Pick<NotificationCenter, "activateTemplate" | "archive" | "getTemplateAdministration" | "listTemplateDefinitions" | "markRead" | "previewTemplate" | "publishTemplateDraft" | "saveTemplateDraft">>;
   readonly tasks: Pick<TaskCenter, "get" | "list"> & Partial<Pick<TaskCenter, "complete">>;
 }
 
@@ -77,6 +79,8 @@ export interface ApiPlatformBindings {
   readonly organization: OrganizationServiceApi;
   readonly queries: ApiQueryBindings;
   readonly readiness: () => readonly HealthDependency[];
+  readonly realtime?: RealtimeServer;
+  readonly sessionPolicy?: PcSessionPolicyPort;
   readonly sessions: Pick<PcBffSessionService, "resolvePrincipal" | "sessionForMutation"> & Partial<Pick<PcBffSessionService, "logout">>;
   readonly workbench?: WorkbenchBootstrapFacade;
   readonly workforceAdministration?: WorkforceAdministrationFacade;
@@ -87,10 +91,11 @@ export interface ApiPlatformHttpComposition {
   readonly authorize: ApiPlatformComposition["authorize"];
   readonly fileCenter: FileCenterHttpAdapter;
   readonly forms: FormSchemaHttpAdapter;
-  readonly notifications?: Pick<NotificationCenter, "list">;
+  readonly notifications?: Pick<NotificationCenter, "list"> & Partial<Pick<NotificationCenter, "activateTemplate" | "archive" | "get" | "getTemplateAdministration" | "listTemplateDefinitions" | "markRead" | "previewTemplate" | "publishTemplateDraft" | "saveTemplateDraft" | "unreadCount">>;
   /** Test-scoped causal-evidence port; production bindings use TaskCenter.complete. */
   readonly taskCompletionWithTrace?: (command: Parameters<TaskCenter["complete"]>[0], traceparent: string) => ReturnType<TaskCenter["complete"]>;
   readonly tasks?: Partial<Pick<TaskCenter, "complete" | "list">>;
+  readonly sessionPolicy?: PcSessionPolicyPort;
   /** Explicitly bound only by the disposable Walking Skeleton E2E BFF. */
   readonly walkingSkeletonFormSubmissions?: Readonly<{
     handle(request: Readonly<{
@@ -106,6 +111,7 @@ export interface ApiPlatformHttpComposition {
     }>): Promise<Readonly<{ readonly body: unknown; readonly headers: Readonly<Record<string, string>>; readonly status: number }>>;
   }>;
   readonly validateFormMutation: (input: BrowserMutationInput) => Promise<void>;
+  readonly validateNotificationMutation?: (input: BrowserMutationInput) => Promise<void>;
   readonly validateTaskMutation: (input: BrowserMutationInput) => Promise<void>;
 }
 
@@ -118,7 +124,7 @@ export interface BrowserMutationInput {
 
 export interface ApiPlatformComposition {
   readonly bindings: ApiPlatformBindings;
-  readonly lifecycle: Pick<ApiComposition, "authentication" | "authenticationCallbackUrl" | "dependencies" | "onStart" | "onStop" | "platformHttp" | "workbenchHttp" | "workforceAdministrationHttp">;
+  readonly lifecycle: Pick<ApiComposition, "authentication" | "authenticationCallbackUrl" | "dependencies" | "onStart" | "onStop" | "platformHttp" | "realtime" | "workbenchHttp" | "workforceAdministrationHttp">;
   readonly authorize: (input: ProtectedOperationInput) => Promise<Readonly<AuthorizedOperationContext>>;
 }
 
@@ -268,13 +274,27 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
     authorize,
     fileCenter,
     forms,
-    notifications: { list: (query: Parameters<ApiQueryBindings["notifications"]["list"]>[0]) => bindings.queries.notifications.list(query) },
+    notifications: {
+      list: (query: Parameters<ApiQueryBindings["notifications"]["list"]>[0]) => bindings.queries.notifications.list(query),
+      get: bindings.queries.notifications.get.bind(bindings.queries.notifications),
+      unreadCount: bindings.queries.notifications.unreadCount.bind(bindings.queries.notifications),
+      ...(bindings.queries.notifications.markRead === undefined ? {} : { markRead: bindings.queries.notifications.markRead.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.archive === undefined ? {} : { archive: bindings.queries.notifications.archive.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.listTemplateDefinitions === undefined ? {} : { listTemplateDefinitions: bindings.queries.notifications.listTemplateDefinitions.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.getTemplateAdministration === undefined ? {} : { getTemplateAdministration: bindings.queries.notifications.getTemplateAdministration.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.saveTemplateDraft === undefined ? {} : { saveTemplateDraft: bindings.queries.notifications.saveTemplateDraft.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.previewTemplate === undefined ? {} : { previewTemplate: bindings.queries.notifications.previewTemplate.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.publishTemplateDraft === undefined ? {} : { publishTemplateDraft: bindings.queries.notifications.publishTemplateDraft.bind(bindings.queries.notifications) }),
+      ...(bindings.queries.notifications.activateTemplate === undefined ? {} : { activateTemplate: bindings.queries.notifications.activateTemplate.bind(bindings.queries.notifications) }),
+    },
     tasks: { list: (query: Parameters<ApiQueryBindings["tasks"]["list"]>[0]) => bindings.queries.tasks.list(query), complete: async (command: Parameters<NonNullable<ApiQueryBindings["tasks"]["complete"]>>[0]) => {
       const result = await bindings.queries.tasks.complete?.(command);
       if (result === undefined) throw new Error("task_completion_binding_missing");
       return result;
     } },
+    ...(bindings.sessionPolicy === undefined ? {} : { sessionPolicy: bindings.sessionPolicy }),
     validateFormMutation: validateMutation,
+    validateNotificationMutation: validateMutation,
     validateTaskMutation: validateMutation,
   });
   const workbenchHttp = bindings.workbench === undefined ? undefined : createWorkbenchHttpAdapter(bindings.workbench);
@@ -289,6 +309,7 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
       authentication: bindings.authentication,
       authenticationCallbackUrl: bindings.authenticationCallbackUrl,
       dependencies: bindings.readiness,
+      ...(bindings.realtime === undefined ? {} : { realtime: bindings.realtime }),
       platformHttp,
       ...(workbenchHttp === undefined ? {} : { workbenchHttp }),
       ...(workforceAdministrationHttp === undefined ? {} : { workforceAdministrationHttp }),

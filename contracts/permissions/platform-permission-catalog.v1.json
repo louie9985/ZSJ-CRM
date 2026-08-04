@@ -93,6 +93,48 @@
       "scopeDimensions": []
     },
     {
+      "owner": "platform.notifications",
+      "code": "platform.notifications.template:read",
+      "resource": "platform.notifications.template",
+      "action": "read",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.notifications",
+      "code": "platform.notifications.template:manage",
+      "resource": "platform.notifications.template",
+      "action": "manage",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.notifications",
+      "code": "platform.notifications.template:publish",
+      "resource": "platform.notifications.template",
+      "action": "publish",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.notifications",
+      "code": "platform.notifications.template:activate",
+      "resource": "platform.notifications.template",
+      "action": "activate",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.authentication",
+      "code": "platform.authentication.session-policy:read",
+      "resource": "platform.authentication.session-policy",
+      "action": "read",
+      "scopeDimensions": []
+    },
+    {
+      "owner": "platform.authentication",
+      "code": "platform.authentication.session-policy:manage",
+      "resource": "platform.authentication.session-policy",
+      "action": "manage",
+      "scopeDimensions": []
+    },
+    {
       "owner": "platform.task-center",
       "code": "platform.task-center.task-projection:complete",
       "resource": "platform.task-center.task-projection",

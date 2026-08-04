@@ -1,15 +1,18 @@
 import { AppstoreOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App as AntdApp, Avatar, Button, ConfigProvider, Flex, Result, Spin } from "antd";
-import { Component, lazy, Suspense, useEffect, useState } from "react";
+import { App as AntdApp, Avatar, Button, ConfigProvider, Flex, Result, Spin } from "antd";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { normalizeReturnTo as normalizeAuthReturnTo, pcLoginUrl } from "./auth-routes";
 import { getNavigationSelection, navigationFor } from "./navigation";
 import { usePolledCollections } from "./collection-polling";
+import { markNotificationRead, resolveNotificationPath } from "./notification-navigation";
+import { notifyOperation } from "./operation-notification";
 import { runtimeWorkbenchPort } from "./runtime";
 import { stateCopy, SystemState } from "./system-state";
 import type { BootstrapResult, PlatformCollection, WorkbenchPort } from "./workbench-port";
+import { resolveWorkspaceProfile } from "./workspace-profiles";
 import "./styles.css";
 
 const CollectionPage = lazy(async () => ({ default: (await import("./pages")).CollectionPage }));
@@ -19,6 +22,9 @@ const SettingsPage = lazy(async () => ({ default: (await import("./settings-page
 const StatusRoutePage = lazy(async () => ({ default: (await import("./status-route-page")).StatusRoutePage }));
 const SyntheticFormEvidencePage = lazy(async () => ({ default: (await import("./synthetic-form-evidence-page")).SyntheticFormEvidencePage }));
 const WorkforceAdministrationRoute = lazy(async () => ({ default: (await import("./workforce-administration-route")).WorkforceAdministrationRoute }));
+const NotificationTemplatePage = lazy(async () => ({ default: (await import("./notification-template-page")).NotificationTemplatePage }));
+const RealtimeMergeEvidencePage = lazy(async () => ({ default: (await import("./realtime-merge-evidence-page")).RealtimeMergeEvidencePage }));
+const SessionPolicyPage = lazy(async () => ({ default: (await import("./session-policy-page")).SessionPolicyPage }));
 const WorkbenchShell = lazy(async () => ({ default: (await import("./workbench-shell")).WorkbenchShell }));
 
 type StateKind = "expired" | "failure" | "forbidden" | "maintenance" | "missing" | "offline";
@@ -112,14 +118,19 @@ interface ApplicationOption {
   readonly path: string;
 }
 
-function applicationsFor(): ApplicationOption[] {
-  return [{ id: "crm", name: "CRM 系统", description: "内部客户关系管理工作台", path: "/crm/workspace" }];
+const applicationCatalog: readonly ApplicationOption[] = [{ id: "crm", name: "CRM 系统", description: "内部客户关系管理工作台", path: "/crm/workspace" }];
+
+export function applicationsFor(applicationIds: readonly string[] | undefined): ApplicationOption[] {
+  if (applicationIds === undefined) return [];
+  const allowed = new Set(applicationIds);
+  return applicationCatalog.filter(({ id }) => allowed.has(id));
 }
 
 function useSessionLogout(port: WorkbenchPort): Readonly<{
   logoutState: "error" | "idle" | "pending";
   requestLogout: () => void;
 }> {
+  const { notification } = AntdApp.useApp();
   const queryClient = useQueryClient();
   const [logoutState, setLogoutState] = useState<"error" | "idle" | "pending">("idle");
   const requestLogout = (): void => {
@@ -130,7 +141,10 @@ function useSessionLogout(port: WorkbenchPort): Readonly<{
         queryClient.removeQueries({ queryKey: ["workbench-collections"] });
         queryClient.setQueryData(["workbench-bootstrap"], result);
       },
-      () => { setLogoutState("error"); },
+      () => {
+        setLogoutState("error");
+        notifyOperation(notification, "error", "退出未完成", "当前会话仍保持登录，请重试。");
+      },
     );
   };
   return { logoutState, requestLogout };
@@ -141,7 +155,7 @@ function accountKindLabel(accountKind: "system_administrator" | "workforce" | un
 }
 
 function ApplicationsPage({ data, port }: { data: BootstrapResult & { kind: "ready" }; port: WorkbenchPort }): React.JSX.Element {
-  const applications = applicationsFor();
+  const applications = applicationsFor(data.applicationIds);
   const { logoutState, requestLogout } = useSessionLogout(port);
   return (
     <main className="applications-entry" aria-labelledby="applications-title">
@@ -165,13 +179,12 @@ function ApplicationsPage({ data, port }: { data: BootstrapResult & { kind: "rea
             onClick={requestLogout}
           >退出登录</Button>
         </div>
-        {logoutState === "error" && <Alert className="applications-logout-alert" type="error" showIcon title="退出未完成" description="当前会话仍保持登录，请重试。" />}
         <div className="applications-heading">
           <h1 id="applications-title">选择应用</h1>
           <p className="applications-context">进入已授权的工作空间</p>
         </div>
         <div className="application-list">
-          {applications.map((application) => (
+          {applications.length === 0 ? <Result status="403" title="暂无可访问应用" subTitle="当前账号没有已授权的应用入口。" /> : applications.map((application) => (
             <Link className="application-card" to={application.path} key={application.id}>
               <span className="application-icon" aria-hidden="true"><AppstoreOutlined /></span>
               <span><strong>{application.name}</strong><span>{application.description}</span></span>
@@ -213,18 +226,48 @@ function LegacyCrmRedirect(): React.JSX.Element {
 
 function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port: WorkbenchPort }): React.JSX.Element {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { notification } = AntdApp.useApp();
   const { logoutState, requestLogout } = useSessionLogout(port);
-  const visibleNavigation = navigationFor(data.navigationIds);
+  const workspaceProfile = resolveWorkspaceProfile(data.workspaceProfileId);
+  const visibleNavigation = navigationFor(data.navigationIds, workspaceProfile.navigationIds);
   const selection = getNavigationSelection(location.pathname, visibleNavigation);
   const selectedPrimary = selection.openKeys[0] ?? selection.selectedKey;
   const primaryItems = visibleNavigation;
   const selectedPrimaryItem = primaryItems.find((item) => item.key === selectedPrimary) ?? primaryItems[0];
   const secondaryItems = selectedPrimaryItem?.children ?? [];
-  const collections = usePolledCollections(port, data.collections, data.context.sessionScope ?? data.context.assignmentReference ?? "current-session");
+  const openNotification = useCallback((item: import("./workbench-port").PlatformItem): void => {
+    notification.open({
+      className: "realtime-notification-toast",
+      description: item.summary,
+      duration: 6,
+      title: item.title,
+      onClick: () => {
+        void resolveNotificationPath(item).then(async (path) => {
+          await navigate(path);
+          try { await markNotificationRead(item.id); } catch { notifyOperation(notification, "warning", "通知状态未更新", "页面已打开，但通知未能标记为已读。"); }
+        }).catch((error: unknown) => {
+          const code = error instanceof Error ? error.message : "";
+          void navigate(code === "notification_navigation_denied" ? "/status/403" : code === "notification_navigation_missing" ? "/status/404" : "/status/500");
+        });
+      },
+      placement: "topRight",
+    });
+  }, [navigate, notification]);
+  const handleSessionRevoked = useCallback((): void => {
+    queryClient.clear();
+    void navigate("/status/session-expired", { replace: true });
+  }, [navigate, queryClient]);
+  const realtimeOptions = useMemo(() => ({ initialUnreadCount: data.counts.notifications, onNotification: openNotification, onSessionRevoked: handleSessionRevoked }), [data.counts.notifications, handleSessionRevoked, openNotification]);
+  const realtime = usePolledCollections(port, data.collections, data.context.sessionScope ?? data.context.assignmentReference ?? "current-session", realtimeOptions);
+  const collections = realtime.collections;
+  const liveData = useMemo(() => ({ ...data, counts: { ...data.counts, notifications: realtime.unreadCount } }), [data, realtime.unreadCount]);
+  const authorized = (navigationId: string, element: React.JSX.Element): React.JSX.Element => data.navigationIds === undefined || data.navigationIds.includes(navigationId) ? element : <Navigate to="/status/403" replace />;
 
   return (
     <WorkbenchShell
-      data={data}
+      data={liveData}
       logoutState={logoutState}
       onLogout={requestLogout}
       primaryItems={primaryItems}
@@ -232,16 +275,6 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
       {...(selection.selectedKey === undefined ? {} : { selectedKey: selection.selectedKey })}
       {...(selectedPrimaryItem === undefined ? {} : { selectedPrimaryItem })}
     >
-      {logoutState === "error" && (
-        <Alert
-          className="logout-alert"
-          type="error"
-          showIcon
-          title="退出未完成"
-          description="当前会话仍保持登录。请重试退出操作。"
-          action={<Button size="small" danger onClick={requestLogout}>重试退出</Button>}
-        />
-      )}
       <Routes>
         <Route path="/" element={<Navigate to="/applications" replace />} />
         <Route path="/login" element={<Navigate to="/applications" replace />} />
@@ -263,31 +296,34 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
         <Route path="/crm/coordination" element={<Navigate to="/crm/tasks" replace />} />
         <Route path="/crm/resources" element={<Navigate to="/crm/forms" replace />} />
         <Route path="/crm/administration" element={<Navigate to={port.workforceAdministration === undefined ? "/crm/settings/system" : "/crm/workforce-administration"} replace />} />
-        <Route path="/crm/workspace" element={<Overview collections={collections} data={data} />} />
-        {port.workforceAdministration === undefined ? null : <Route path="/crm/workforce-administration" element={<WorkforceAdministrationRoute port={port.workforceAdministration} />} />}
+        <Route path="/crm/workspace" element={data.workspaceProfileId === undefined ? <Overview collections={collections} data={liveData} /> : authorized(workspaceProfile.navigationIds[0] ?? "", workspaceProfile.render())} />
+        {port.workforceAdministration === undefined ? null : <Route path="/crm/workforce-administration" element={authorized("crm.workforce-administration", <WorkforceAdministrationRoute port={port.workforceAdministration} />)} />}
         {CollectionRoutes({ path: "/crm/tasks", collection: collections.tasks })}
         <Route path="/crm/calendar" element={<Navigate to="/crm/calendar/schedule" replace />} />
-        <Route path="/crm/calendar/schedule" element={<FeaturePlaceholderPage title="我的日程" />} />
-        <Route path="/crm/calendar/interview-plan" element={<FeaturePlaceholderPage title="采访排期" />} />
+        <Route path="/crm/calendar/schedule" element={authorized("crm.calendar.schedule", <FeaturePlaceholderPage title="我的日程" />)} />
+        <Route path="/crm/calendar/interview-plan" element={authorized("crm.calendar.interview-plan", <FeaturePlaceholderPage title="采访排期" />)} />
         <Route path="/crm/approvals" element={<Navigate to="/crm/approvals/mine" replace />} />
-        <Route path="/crm/approvals/mine" element={<FeaturePlaceholderPage title="我发起的" />} />
-        <Route path="/crm/approvals/todo" element={<FeaturePlaceholderPage title="待我审批" />} />
-        <Route path="/crm/approvals/all" element={<FeaturePlaceholderPage title="全部审批" />} />
+        <Route path="/crm/approvals/mine" element={authorized("crm.approvals.mine", <FeaturePlaceholderPage title="我发起的" />)} />
+        <Route path="/crm/approvals/todo" element={authorized("crm.approvals.todo", <FeaturePlaceholderPage title="待我审批" />)} />
+        <Route path="/crm/approvals/all" element={authorized("crm.approvals.all", <FeaturePlaceholderPage title="全部审批" />)} />
         <Route path="/crm/notifications" element={<Navigate to="/crm/notifications/all" replace />} />
-        <Route path="/crm/notifications/all" element={<FeaturePlaceholderPage title="全部通知" />} />
-        <Route path="/crm/notifications/todo" element={<FeaturePlaceholderPage title="待办提醒" />} />
-        <Route path="/crm/notifications/system" element={<FeaturePlaceholderPage title="系统 / 外部" />} />
+        <Route path="/crm/notifications/all" element={authorized("crm.notifications.all", <FeaturePlaceholderPage title="全部通知" />)} />
+        <Route path="/crm/notifications/todo" element={authorized("crm.notifications.todo", <FeaturePlaceholderPage title="待办提醒" />)} />
+        <Route path="/crm/notifications/system" element={authorized("crm.notifications.system", <FeaturePlaceholderPage title="系统 / 外部" />)} />
+        {port.notificationTemplates === undefined || data.navigationIds?.includes("crm.notification-templates") !== true ? null : <Route path="/crm/notifications/templates" element={<NotificationTemplatePage port={port.notificationTemplates} />} />}
+        {data.fixture ? <Route path="/crm/realtime-merge-evidence" element={<RealtimeMergeEvidencePage />} /> : null}
         {CollectionRoutes({ path: "/crm/notifications", collection: collections.notifications })}
         <Route path="/crm/mail" element={<Navigate to="/crm/mail/inbox" replace />} />
-        <Route path="/crm/mail/inbox" element={<FeaturePlaceholderPage title="收件箱" />} />
-        <Route path="/crm/mail/sent" element={<FeaturePlaceholderPage title="已发送" />} />
-        <Route path="/crm/mail/draft" element={<FeaturePlaceholderPage title="草稿箱" />} />
+        <Route path="/crm/mail/inbox" element={authorized("crm.mail.inbox", <FeaturePlaceholderPage title="收件箱" />)} />
+        <Route path="/crm/mail/sent" element={authorized("crm.mail.sent", <FeaturePlaceholderPage title="已发送" />)} />
+        <Route path="/crm/mail/draft" element={authorized("crm.mail.draft", <FeaturePlaceholderPage title="草稿箱" />)} />
         {port.syntheticFormEvidence === undefined ? null : <Route path="/crm/forms/platform.synthetic.task-completion" element={<SyntheticFormEvidenceRoute port={port.syntheticFormEvidence} />} />}
         {CollectionRoutes({ path: "/crm/forms", collection: collections.forms })}
         {CollectionRoutes({ path: "/crm/files", collection: collections.files })}
         <Route path="/crm/settings" element={<Navigate to="/crm/settings/system" replace />} />
-        <Route path="/crm/settings/system" element={<FeaturePlaceholderPage title="系统设置" />} />
-        <Route path="/crm/settings/profile" element={<SettingsPage />} />
+        <Route path="/crm/settings/system" element={authorized("crm.settings.system", <FeaturePlaceholderPage title="系统设置" />)} />
+        {port.sessionPolicy === undefined || data.navigationIds?.includes("crm.session-policy") !== true ? null : <Route path="/crm/settings/session-policy" element={<SessionPolicyPage port={port.sessionPolicy} />} />}
+        <Route path="/crm/settings/profile" element={authorized("crm.settings.profile", <SettingsPage />)} />
         <Route path="/status/403" element={<StatusRoutePage kind="forbidden" />} />
         <Route path="/status/500" element={<StatusRoutePage kind="failure" />} />
         <Route path="/status/offline" element={<StatusRoutePage kind="offline" />} />
@@ -344,6 +380,7 @@ function Workbench({ port }: { port: WorkbenchPort }): React.JSX.Element {
   if (query.data.kind === "forbidden") return <SystemState kind="forbidden" />;
   if (query.data.kind === "maintenance") return <SystemState kind="maintenance" retryable onRetry={retry} />;
   if (location.pathname === "/applications") return <ApplicationsPage data={query.data} port={port} />;
+  if (location.pathname.startsWith("/crm") && query.data.applicationIds?.includes("crm") !== true) return <SystemState kind="forbidden" />;
   return <Shell data={query.data} port={port} />;
 }
 

@@ -4,6 +4,16 @@ export interface PlatformItem {
   status: string;
   summary: string;
   tab: "active" | "history";
+  bodyMarkdown?: string;
+  bodyFormat?: "plain-text" | "restricted-markdown";
+  createdAt?: string;
+  deepLink?: {
+    applicationId: string;
+    routeId: string;
+    resourceId: string;
+    resourceType: string;
+  };
+  stateVersion?: number;
 }
 
 export interface PlatformCollection {
@@ -30,7 +40,9 @@ export type BootstrapResult =
       };
       counts: { tasks: number; notifications: number; forms: number; files: number };
       collections: Record<"tasks" | "notifications" | "forms" | "files", PlatformCollection>;
+      applicationIds?: readonly string[];
       navigationIds?: readonly string[];
+      workspaceProfileId?: string;
     };
 
 export type WorkforceAccountStatus = "active" | "credential_pending" | "disabled" | "failed" | "provisioning";
@@ -107,10 +119,11 @@ export interface WorkforceAccountPage {
 }
 
 export type WorkforceAdministrationCommand =
-  | { readonly kind: "create_account"; readonly departmentId: string; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
+  | { readonly kind: "create_account"; readonly departmentId: string; readonly initialPassword: string; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "update_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly legalName: string; readonly phone?: string; readonly username: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" | "reset_password" }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "reset_password"; readonly password: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
   | { readonly accountId: string; readonly ceremonyOperationId: string; readonly expectedRevision: number; readonly kind: "complete_credential_ceremony" }
@@ -135,6 +148,8 @@ export interface WorkbenchPort {
   bootstrap(): Promise<BootstrapResult>;
   logout(): Promise<{ kind: "logged-out" | "session-expired" }>;
   pollCollections?(): Promise<Readonly<Pick<Extract<BootstrapResult, { kind: "ready" }>["collections"], "tasks" | "notifications">>>;
+  notificationTemplates?: import("./notification-template-port").NotificationTemplatePort;
+  sessionPolicy?: import("./session-policy-port").SessionPolicyPort;
   workforceAdministration?: WorkforceAdministrationPort;
   syntheticFormEvidence?: import("./synthetic-form-evidence-page").SyntheticFormEvidencePort & {
     readonly fileReference: import("./synthetic-form-evidence-page").SyntheticFormFileReference;

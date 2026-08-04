@@ -3,7 +3,7 @@ import { fingerprint } from "./validation.js";
 import type { ProjectionApplyResult, TaskCenterStore, TaskCommandClaim, TaskCommandResult, TaskLifecycleEvent, TaskPage, TaskProjection, TaskProjectionKey, TaskProjectionStatus } from "./types.js";
 
 const keyOf = (value: TaskProjectionKey): string => `${value.sourceType}\u0000${value.sourceTaskId}`;
-const projectionOf = (event: TaskLifecycleEvent, projectionId: string, createdAt: string): TaskProjection => ({ projectionId, sourceType: event.sourceType, sourceTaskId: event.sourceTaskId, sourceVersion: event.sourceVersion, status: event.status, deepLink: event.deepLink, createdAt, updatedAt: event.occurredAt, ...(event.assigneeReference === undefined ? {} : { assigneeReference: event.assigneeReference }), ...(event.candidateScopeReference === undefined ? {} : { candidateScopeReference: event.candidateScopeReference }), ...(event.dueAt === undefined ? {} : { dueAt: event.dueAt }) });
+const projectionOf = (event: TaskLifecycleEvent, projectionId: string, createdAt: string): TaskProjection => ({ projectionId, sourceType: event.sourceType, sourceTaskId: event.sourceTaskId, sourceVersion: event.sourceVersion, status: event.status, title: event.display?.title ?? "Task update", summary: event.display?.summary ?? "Open the task to view its current details.", deepLink: event.deepLink, createdAt, updatedAt: event.occurredAt, ...(event.assigneeReference === undefined ? {} : { assigneeReference: event.assigneeReference }), ...(event.candidateScopeReference === undefined ? {} : { candidateScopeReference: event.candidateScopeReference }), ...(event.dueAt === undefined ? {} : { dueAt: event.dueAt }) });
 export class InMemoryTaskCenterStore implements TaskCenterStore {
   private readonly projections = new Map<string, TaskProjection>();
   private readonly events = new Map<string, string>();
@@ -37,6 +37,7 @@ export class InMemoryTaskCenterStore implements TaskCenterStore {
     return Promise.resolve({status:current?"duplicate":"applied",projection});
   }
   public get(key: TaskProjectionKey): Promise<TaskProjection | undefined> { return Promise.resolve(this.projections.get(keyOf(key))); }
+  public getByProjectionId(projectionId: string): Promise<TaskProjection | undefined> { return Promise.resolve([...this.projections.values()].find((projection) => projection.projectionId === projectionId)); }
   public list(input: { status?: TaskProjectionStatus; limit: number; cursor?: string }): Promise<TaskPage> {
     const rows = [...this.projections.values()].filter((item) => input.status === undefined || item.status === input.status).sort((a,b) => keyOf(a).localeCompare(keyOf(b))).filter((item) => input.cursor === undefined || keyOf(item) > input.cursor);
     const items = rows.slice(0,input.limit); const last = items.at(-1); return Promise.resolve({ items, ...(rows.length > items.length && last ? { nextCursor: keyOf(last) } : {}) });

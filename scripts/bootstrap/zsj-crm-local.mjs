@@ -18,6 +18,12 @@ export const ZSJ_CRM_LOCAL_IDS = Object.freeze({
   crmAdministratorRoleId: "5a100000-0000-4000-8000-00000000000d",
   superPolicyPublicationId: "5a100000-0000-4000-8000-00000000000e",
   crmPolicyPublicationId: "5a100000-0000-4000-8000-00000000000f",
+  superPolicyPublicationV3Id: "5a100000-0000-4000-8000-000000000010",
+  crmPolicyPublicationV3Id: "5a100000-0000-4000-8000-000000000011",
+  crmApplicationUserRoleId: "5a100000-0000-4000-8000-000000000012",
+  crmApplicationUserGrantId: "5a100000-0000-4000-8000-000000000013",
+  superPolicyPublicationV4Id: "5a100000-0000-4000-8000-000000000014",
+  crmPolicyPublicationV4Id: "5a100000-0000-4000-8000-000000000015",
   operations: Object.freeze({
     rootOrganization: "5a110000-0000-4000-8000-000000000001",
     aiApplicationDepartment: "5a110000-0000-4000-8000-000000000002",
@@ -148,7 +154,9 @@ async function main() {
     await runZsjCrmBootstrapMain();
   } catch (error) {
     const code = error instanceof ZsjCrmBootstrapError ? error.code : "bootstrap_unexpected_failure";
-    console.error(`ZSJ CRM local bootstrap failed: ${code}.`);
+    const candidateCauseCode = error instanceof ZsjCrmBootstrapError && typeof error.cause === "object" && error.cause !== null ? error.cause.code : undefined;
+    const causeCode = typeof candidateCauseCode === "string" && /^[a-z_]{1,80}$/u.test(candidateCauseCode) ? candidateCauseCode : undefined;
+    console.error(`ZSJ CRM local bootstrap failed: ${code}${causeCode === undefined ? "" : ` (${causeCode})`}.`);
     process.exitCode = 1;
   }
 }

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { App as AntdApp } from "antd";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +8,7 @@ import {
   SyntheticFormEvidencePage,
   type SyntheticFormEvidenceReceipt,
   type SyntheticFormEvidenceRelease,
+  type SyntheticFormEvidencePort,
 } from "./synthetic-form-evidence-page";
 
 vi.mock("@ant-design/pro-components", () => ({
@@ -59,10 +61,14 @@ function receipt(overrides: Partial<SyntheticFormEvidenceReceipt> = {}): Synthet
   };
 }
 
+function renderPage(pageRelease: SyntheticFormEvidenceRelease, submit: SyntheticFormEvidencePort["submit"]): void {
+  render(<AntdApp><SyntheticFormEvidencePage release={pageRelease} fileReference={fileReference} port={{ submit }} /></AntdApp>);
+}
+
 describe("SyntheticFormEvidencePage", () => {
   it("submits browser input with the complete stable FileReference and accepts matching server evidence", async () => {
     const submit = vi.fn().mockResolvedValue(receipt());
-    render(<SyntheticFormEvidencePage release={release} fileReference={fileReference} port={{ submit }} />);
+    renderPage(release, submit);
 
     expect(screen.getByRole("textbox", { name: "File ID" })).toHaveAttribute("readonly");
     expect(screen.getByRole("textbox", { name: "Content Version ID" })).toHaveAttribute("readonly");
@@ -83,7 +89,7 @@ describe("SyntheticFormEvidencePage", () => {
 
   it("fails closed when the server receipt changes the stable FileReference", async () => {
     const changed = { ...fileReference, contentVersionId: "94000000-0000-4000-8000-000000000002" };
-    render(<SyntheticFormEvidencePage release={release} fileReference={fileReference} port={{ submit: () => Promise.resolve(receipt({ fileReference: changed })) }} />);
+    renderPage(release, () => Promise.resolve(receipt({ fileReference: changed })));
     fireEvent.change(screen.getByRole("textbox", { name: "合成值" }), { target: { value: "synthetic_value" } });
     fireEvent.click(screen.getByRole("button", { name: /提\s*交/u }));
     expect(await screen.findByText("提交未完成")).toBeInTheDocument();
@@ -92,8 +98,8 @@ describe("SyntheticFormEvidencePage", () => {
 
   it("rejects an inactive release before invoking the submission port", () => {
     const submit = vi.fn();
-    render(<SyntheticFormEvidencePage release={{ ...release, active: false }} fileReference={fileReference} port={{ submit }} />);
-    expect(screen.getByText("表单不可用")).toBeInTheDocument();
+    renderPage({ ...release, active: false }, submit);
+    expect(document.querySelector(".ant-result-title")).toHaveTextContent("表单不可用");
     expect(screen.getByRole("button", { name: /提\s*交/u })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
   });

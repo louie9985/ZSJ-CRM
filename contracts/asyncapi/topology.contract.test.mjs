@@ -20,12 +20,13 @@ test("resolves document-relative Event and Job schemas from the AsyncAPI source 
     JSON.stringify(parsed.diagnostics),
   );
   const references = [...source.matchAll(/\$ref: (\.\.\/(?:events|jobs)\/[^\s]+)/g)].map((match) => match[1]);
-  assert.equal(references.length, 10);
+  assert.equal(references.length, 16);
   assert.equal(references.every((reference) => !reference.startsWith("contracts/")), true);
 });
 
 test("contracts the reviewed Task projection policy while blocking release activation without trusted evidence", () => {
   assert.deepEqual(Object.keys(topology.operations).sort(), [
+    "consumeRealtimeNodeSignals",
     "consumeTaskProjectionLifecycle",
     "consumeWorkforceKeycloakSync",
     "publishTaskProjectionLifecycle",
@@ -33,6 +34,8 @@ test("contracts the reviewed Task projection policy while blocking release activ
     "publishWorkforceKeycloakSync",
     "publishWorkforceKeycloakSyncRetry",
   ]);
+  assert.deepEqual(topology.channels.realtimeNodeQueue.bindings.amqp.queue, { name: "", durable: false, exclusive: true, autoDelete: true });
+  assert.deepEqual(topology.channels.realtimeNodeQueue["x-ai-crm-bindings"].map(({ routingKey }) => routingKey), ["task-center.projection-changed.v1", "notifications.in-app-changed.v1", "authentication.pc-session-revoked.v1"]);
   const policy = topology.operations.consumeTaskProjectionLifecycle["x-ai-crm-runtime-policy"];
   assert.deepEqual(policy, {
     id: "taskProjectionLifecyclePolicyV1",

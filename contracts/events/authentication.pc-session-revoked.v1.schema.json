@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://ai-crm.local/contracts/events/v1/authentication.pc-session-revoked.schema.json", "title": "PC Session Revoked v1",
+  "type": "object", "additionalProperties": false, "required": ["eventId","occurredAt","principalId","sessionReference","reason"],
+  "properties": { "eventId": { "$ref": "#/$defs/uuid" }, "occurredAt": { "$ref": "#/$defs/time" }, "principalId": { "$ref": "#/$defs/stableId" }, "sessionReference": { "$ref": "#/$defs/stableId" }, "reason": { "enum": ["concurrent-limit","administrator","identity-invalid","policy-changed"] } }, "$defs": { "stableId": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$" }, "uuid": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" }, "time": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$" } }
+}

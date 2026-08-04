@@ -62,6 +62,16 @@ describe("business configuration service", () => {
     await expect(instance.publishParameterValue({ ...meta(), parameterKey: "platform.synthetic.label", value: "Bearer abc123" })).rejects.toMatchObject({ code: "configuration_invalid_input" });
   });
 
+  it("allows non-secret session policy identifiers while rejecting secret configuration identifiers", async () => {
+    const instance = service();
+    const parameterKey = "platform.authentication.pc-session.concurrent-limit";
+    await instance.registerParameter({ ...meta(), definition: numberDefinition({ parameterKey }) });
+    await expect(instance.resolveParameter({ actor, at: now, parameterKey, scopes: [] }))
+      .resolves.toMatchObject({ parameterKey, source: "default", value: 5 });
+    await expect(instance.registerParameter({ ...meta(), definition: numberDefinition({ parameterKey: "platform.authentication.client-secret" }) }))
+      .rejects.toMatchObject({ code: "configuration_invalid_input" });
+  });
+
   it("uses the highest declared scope priority and rejects overlapping intervals", async () => {
     const instance = service();
     await instance.registerParameter({ ...meta(), definition: failClosedDefinition() });

@@ -20,6 +20,13 @@ describe("workbench responsive styles", () => {
     expect(css).toContain("overflow-wrap: anywhere");
   });
 
+  it("keeps operation notifications above modal and drawer layers", async () => {
+    const css = await readFile(resolve(process.cwd(), "src/styles.css"), "utf8");
+    const notificationRule = css.match(/\.ant-notification\s*\{(?<body>[^}]+)\}/u)?.groups?.["body"];
+
+    expect(notificationRule).toContain("z-index: 10000 !important");
+  });
+
   it("preserves the confirmed Demo shell and home dimensions", async () => {
     const css = await readFile(resolve(process.cwd(), "src/styles.css"), "utf8");
 

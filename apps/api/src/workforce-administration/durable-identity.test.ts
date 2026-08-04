@@ -10,10 +10,14 @@ const traceId = "1".repeat(32);
 describe("durable workforce identity administration", () => {
   it("keeps disabled user creation synchronous and submits stable trace-linked synchronization jobs", async () => {
     const createDisabledAccount = vi.fn(() => Promise.resolve({ keycloakUserId }));
+    const setPasswordAndEnable = vi.fn(() => Promise.resolve());
     const submitJob = vi.fn((envelope: unknown) => { void envelope; return Promise.resolve({ jobId: operationId, status: "queued" as const }); });
-    const port = createDurableIdentityAdministrationPort({ clock: () => new Date("2026-08-02T00:00:00.000Z"), direct: { createDisabledAccount }, eventing: { submitJob } });
+    const port = createDurableIdentityAdministrationPort({ clock: () => new Date("2026-08-02T00:00:00.000Z"), direct: { createDisabledAccount, setPasswordAndEnable }, eventing: { submitJob } });
 
     await expect(port.createDisabledAccount({ accountId, operationId, traceId, username: "employee.one" })).resolves.toEqual({ keycloakUserId });
+    expect(submitJob).not.toHaveBeenCalled();
+    await port.setPasswordAndEnable({ accountId, keycloakUserId, operationId, password: "Synthetic-password-1!", traceId });
+    expect(setPasswordAndEnable).toHaveBeenCalledWith(expect.objectContaining({ password: "Synthetic-password-1!" }));
     expect(submitJob).not.toHaveBeenCalled();
 
     await port.synchronizeLoginIdentifiers({ accountId, keycloakUserId, operationId, phone: "+8613800000000", traceId, username: "employee.one" });
@@ -31,7 +35,7 @@ describe("durable workforce identity administration", () => {
 
   it("uses separate idempotent jobs for disabling and revoking sessions", async () => {
     const submitJob = vi.fn((envelope: unknown) => { void envelope; return Promise.resolve({ jobId: operationId, status: "queued" as const }); });
-    const port = createDurableIdentityAdministrationPort({ direct: { createDisabledAccount: vi.fn() }, eventing: { submitJob } });
+    const port = createDurableIdentityAdministrationPort({ direct: { createDisabledAccount: vi.fn(), setPasswordAndEnable: vi.fn() }, eventing: { submitJob } });
     await port.disableAccount({ accountId, keycloakUserId, operationId, traceId });
     await port.revokeSessions({ accountId, keycloakUserId, operationId, traceId });
     expect(submitJob.mock.calls.map(([envelope]) => (envelope as { payload: { action: string } }).payload.action)).toEqual(["disable", "revoke_sessions"]);
@@ -39,7 +43,7 @@ describe("durable workforce identity administration", () => {
 
   it("links a controlled retry to the failed identity operation without reusing its Job ID", async () => {
     const submitJob = vi.fn((envelope: unknown) => { void envelope; return Promise.resolve({ jobId: operationId, status: "queued" as const }); });
-    const port = createDurableIdentityAdministrationPort({ direct: { createDisabledAccount: vi.fn() }, eventing: { submitJob } });
+    const port = createDurableIdentityAdministrationPort({ direct: { createDisabledAccount: vi.fn(), setPasswordAndEnable: vi.fn() }, eventing: { submitJob } });
     const failedOperationId = "40000000-0000-4000-8000-000000000002";
     await port.disableAccount({ accountId, keycloakUserId, operationId, retryOfOperationId: failedOperationId, traceId });
     const submitted = submitJob.mock.calls[0]?.[0] as { readonly jobId: string; readonly payload: Readonly<Record<string, unknown>> } | undefined;

@@ -8,6 +8,43 @@ info:
     receive queues; a schema existing here does not by itself authorize a route.
 defaultContentType: application/json
 channels:
+  realtimeTaskChangedExchange:
+    address: task-center.projection-changed.v1
+    title: Realtime Task projection refresh signal
+    messages: { taskProjectionChangedV1: { $ref: '#/components/messages/taskProjectionChangedV1' } }
+    bindings:
+      amqp: { is: routingKey, exchange: { name: ai-crm.platform.events.v1, type: topic, durable: true, autoDelete: false }, bindingVersion: 0.3.0 }
+  realtimeNotificationChangedExchange:
+    address: notifications.in-app-changed.v1
+    title: Realtime in-app Notification refresh signal
+    messages: { notificationChangedV1: { $ref: '#/components/messages/notificationChangedV1' } }
+    bindings:
+      amqp: { is: routingKey, exchange: { name: ai-crm.platform.events.v1, type: topic, durable: true, autoDelete: false }, bindingVersion: 0.3.0 }
+  realtimeSessionRevokedExchange:
+    address: authentication.pc-session-revoked.v1
+    title: Realtime PC Session revocation signal
+    messages: { pcSessionRevokedV1: { $ref: '#/components/messages/pcSessionRevokedV1' } }
+    bindings:
+      amqp: { is: routingKey, exchange: { name: ai-crm.platform.events.v1, type: topic, durable: true, autoDelete: false }, bindingVersion: 0.3.0 }
+  realtimeNodeQueue:
+    address: ai-crm.realtime.node.generated
+    title: Per-API-node ephemeral realtime fanout queue
+    description: The runtime requests a server-named queue; this address is descriptive and is never declared literally.
+    messages:
+      taskProjectionChangedV1: { $ref: '#/components/messages/taskProjectionChangedV1' }
+      notificationChangedV1: { $ref: '#/components/messages/notificationChangedV1' }
+      pcSessionRevokedV1: { $ref: '#/components/messages/pcSessionRevokedV1' }
+    bindings:
+      amqp:
+        is: queue
+        queue: { name: "", durable: false, exclusive: true, autoDelete: true }
+        bindingVersion: 0.3.0
+    x-ai-crm-runtime-generated-name: required
+    x-ai-crm-bindings:
+      - { exchange: ai-crm.platform.events.v1, routingKey: task-center.projection-changed.v1 }
+      - { exchange: ai-crm.platform.events.v1, routingKey: notifications.in-app-changed.v1 }
+      - { exchange: ai-crm.platform.events.v1, routingKey: authentication.pc-session-revoked.v1 }
+    x-ai-crm-queue-arguments: { x-expires: 60000 }
   taskProjectionLifecycleExchange:
     address: task-center.projection-lifecycle.v1
     title: Task Center projection lifecycle delivery
@@ -239,6 +276,18 @@ channels:
         exchange: { name: ai-crm.platform.dead-letter.v1, type: direct, durable: true, autoDelete: false }
         bindingVersion: 0.3.0
 operations:
+  consumeRealtimeNodeSignals:
+    action: receive
+    channel: { $ref: '#/channels/realtimeNodeQueue' }
+    messages:
+      - { $ref: '#/channels/realtimeNodeQueue/messages/taskProjectionChangedV1' }
+      - { $ref: '#/channels/realtimeNodeQueue/messages/notificationChangedV1' }
+      - { $ref: '#/channels/realtimeNodeQueue/messages/pcSessionRevokedV1' }
+    bindings:
+      amqp: { ack: true, bindingVersion: 0.3.0 }
+    x-ai-crm-ack-mode: manual-after-local-delivery-attempt
+    x-ai-crm-delivery-semantics: best-effort-refresh-signal
+    x-ai-crm-authoritative-state-recheck: required-before-websocket-delivery
   publishTaskProjectionLifecycle:
     action: send
     channel:
@@ -370,6 +419,42 @@ operations:
       policyVersion: 1
 components:
   messages:
+    taskProjectionChangedV1:
+      name: taskProjectionChangedV1
+      title: Task projection changed reference event v1
+      contentType: application/json
+      payload:
+        allOf:
+          - { $ref: ../events/event-envelope.v1.schema.json }
+          - type: object
+            required: [type, data]
+            properties:
+              type: { const: task-center.projection-changed.v1 }
+              data: { $ref: ../events/task-center.projection-changed.v1.schema.json }
+    notificationChangedV1:
+      name: notificationChangedV1
+      title: In-app Notification changed reference event v1
+      contentType: application/json
+      payload:
+        allOf:
+          - { $ref: ../events/event-envelope.v1.schema.json }
+          - type: object
+            required: [type, data]
+            properties:
+              type: { const: notifications.in-app-changed.v1 }
+              data: { $ref: ../events/notifications.in-app-changed.v1.schema.json }
+    pcSessionRevokedV1:
+      name: pcSessionRevokedV1
+      title: PC Session revoked reference event v1
+      contentType: application/json
+      payload:
+        allOf:
+          - { $ref: ../events/event-envelope.v1.schema.json }
+          - type: object
+            required: [type, data]
+            properties:
+              type: { const: authentication.pc-session-revoked.v1 }
+              data: { $ref: ../events/authentication.pc-session-revoked.v1.schema.json }
     organizationChangeV1:
       name: organizationChangeV1
       title: Organization change event v1

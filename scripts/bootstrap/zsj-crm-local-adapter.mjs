@@ -65,8 +65,15 @@ function identityPorts(workforce, keycloak, organization) {
   return {
     ensureAccount: async (input) => {
       const common = metadata(input.operationId);
+      await keycloak.ensureRealmPasswordPolicy();
       await keycloak.ensureUserProfile();
-      let account = await workforce.createAccount({ ...common, accountId: input.accountId, createdAt: BOOTSTRAP_AT, phone: input.phone, username: input.username, workforcePersonId: input.workforcePersonId });
+      let account;
+      try { account = await workforce.getAccount(input.accountId); }
+      catch (error) {
+        if (error?.code !== "entity_not_found") throw error;
+        account = await workforce.createAccount({ ...common, accountId: input.accountId, createdAt: BOOTSTRAP_AT, phone: input.phone, username: input.username, workforcePersonId: input.workforcePersonId });
+      }
+      if (account.workforcePersonId !== input.workforcePersonId) throw new ZsjCrmBootstrapError("workforce_account_person_conflict");
       const user = await keycloak.ensureUser(input);
       await organization.createSubjectAssociation({ ...common, associationId: stableUuid(input.accountId, "subject-association"), effectiveFrom: BOOTSTRAP_AT, issuer: keycloak.issuer, operationId: stableUuid(input.operationId, "subject-association"), subject: user.userId, workforcePersonId: input.workforcePersonId });
       if (account.keycloakUserId === undefined) account = await workforce.linkKeycloakUser({ ...common, accountId: input.accountId, expectedRevision: account.revision, keycloakUserId: user.userId, operationId: stableUuid(input.operationId, "keycloak-link"), updatedAt: BOOTSTRAP_AT });
@@ -102,23 +109,38 @@ function authorizationPorts(publisher) {
 
 function policyCommand(includeCrmGrant) {
   const permissions = [
+    { action: "access", applicationId: "crm", code: "crm.application:access", resource: "crm.application", scopeDimensions: [] },
     { action: "view", applicationId: "crm", code: "crm.workforce-administration:view", resource: "crm.workforce-administration", scopeDimensions: [] },
     { action: "read", applicationId: "platform", code: "platform.workbench.shell:read", resource: "platform.workbench.shell", scopeDimensions: [] },
     { action: "read", applicationId: "platform", code: "platform.app-registry.registry:read", resource: "platform.app-registry.registry", scopeDimensions: [] },
     { action: "read", applicationId: "platform", code: "platform.workforce-access.console:read", resource: "platform.workforce-access.console", scopeDimensions: [] },
     { action: "manage", applicationId: "platform", code: "platform.workforce-access.console:manage", resource: "platform.workforce-access.console", scopeDimensions: [] },
+    { action: "read", applicationId: "crm", code: "platform.notifications.template:read", resource: "platform.notifications.template", scopeDimensions: [] },
+    { action: "manage", applicationId: "crm", code: "platform.notifications.template:manage", resource: "platform.notifications.template", scopeDimensions: [] },
+    { action: "publish", applicationId: "crm", code: "platform.notifications.template:publish", resource: "platform.notifications.template", scopeDimensions: [] },
+    { action: "activate", applicationId: "crm", code: "platform.notifications.template:activate", resource: "platform.notifications.template", scopeDimensions: [] },
+    { action: "read", applicationId: "platform", code: "platform.authentication.session-policy:read", resource: "platform.authentication.session-policy", scopeDimensions: [] },
+    { action: "manage", applicationId: "platform", code: "platform.authentication.session-policy:manage", resource: "platform.authentication.session-policy", scopeDimensions: [] },
   ];
+  const crmPermissionCodes = permissions.filter(({ code }) => !code.startsWith("platform.authentication.session-policy:")).map(({ code }) => ({ permissionCode: code, scope: { terms: [{ kind: "all" }], version: 1 } }));
+  const applicationUserPermissions = ["crm.application:access", "platform.workbench.shell:read"].map((permissionCode) => ({ permissionCode, scope: { terms: [{ kind: "all" }], version: 1 } }));
   return {
     contractVersion: "authorization-policy.v2",
-    publicationId: includeCrmGrant ? ZSJ_CRM_LOCAL_IDS.crmPolicyPublicationId : ZSJ_CRM_LOCAL_IDS.superPolicyPublicationId,
+    publicationId: includeCrmGrant ? ZSJ_CRM_LOCAL_IDS.crmPolicyPublicationV4Id : ZSJ_CRM_LOCAL_IDS.superPolicyPublicationV4Id,
     publishedAt: BOOTSTRAP_AT,
     snapshot: {
-      grants: includeCrmGrant ? [{ grantId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleGrantId, roleId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleId, subject: { assignmentId: ZSJ_CRM_LOCAL_IDS.crmAdministratorAssignmentId, kind: "assignment" }, validFrom: BOOTSTRAP_AT }] : [],
+      grants: includeCrmGrant ? [
+        { grantId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleGrantId, roleId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleId, subject: { assignmentId: ZSJ_CRM_LOCAL_IDS.crmAdministratorAssignmentId, kind: "assignment" }, validFrom: BOOTSTRAP_AT },
+        { grantId: ZSJ_CRM_LOCAL_IDS.crmApplicationUserGrantId, roleId: ZSJ_CRM_LOCAL_IDS.crmApplicationUserRoleId, subject: { assignmentId: ZSJ_CRM_LOCAL_IDS.crmAdministratorAssignmentId, kind: "assignment" }, validFrom: BOOTSTRAP_AT },
+      ] : [],
       permissions,
-      roles: [{ displayName: "CRM系统管理员", permissions: permissions.map(({ code }) => ({ permissionCode: code, scope: { terms: [{ kind: "all" }], version: 1 } })), roleId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleId, roleKey: "crm.system-administrator" }],
+      roles: [
+        { displayName: "CRM系统管理员", permissions: crmPermissionCodes, roleId: ZSJ_CRM_LOCAL_IDS.crmAdministratorRoleId, roleKey: "crm.system-administrator" },
+        { displayName: "CRM基础访问用户", permissions: applicationUserPermissions, roleId: ZSJ_CRM_LOCAL_IDS.crmApplicationUserRoleId, roleKey: "crm.application-user" },
+      ],
       schemaVersion: 2,
       superAdministratorGrants: [{ grantId: ZSJ_CRM_LOCAL_IDS.zsjSuperAdministratorGrantId, validFrom: BOOTSTRAP_AT, workforcePersonId: ZSJ_CRM_LOCAL_IDS.zsjAdministratorPersonId }],
-      version: includeCrmGrant ? "zsj-crm-local.v2" : "zsj-crm-local.super.v2",
+      version: includeCrmGrant ? "zsj-crm-local.v4" : "zsj-crm-local.super.v4",
     },
   };
 }
@@ -135,9 +157,37 @@ function createRegistry(module, runtime, audit) {
 function registryPorts(registry) {
   return { ensureWorkforceAdministration: async (input) => {
     const common = registryMetadata(input.operationId); const results = [];
+    results.push(await registry.mutate({ ...common, application: { applicationId: "crm", audience: "internal", enabled: true, permissionCode: "crm.application:access" }, kind: "register_application", operationId: stableUuid(input.operationId, "crm-application") }));
+    const commonRoutes = [
+      ["crm.workspace.unconfigured", "/crm/workspace"],
+      ["crm.calendar.schedule", "/crm/calendar/schedule"],
+      ["crm.calendar.interview-plan", "/crm/calendar/interview-plan"],
+      ["crm.approvals.mine", "/crm/approvals/mine"],
+      ["crm.approvals.todo", "/crm/approvals/todo"],
+      ["crm.approvals.all", "/crm/approvals/all"],
+      ["crm.notifications.all", "/crm/notifications/all"],
+      ["crm.notifications.todo", "/crm/notifications/todo"],
+      ["crm.notifications.system", "/crm/notifications/system"],
+      ["crm.mail.inbox", "/crm/mail/inbox"],
+      ["crm.mail.sent", "/crm/mail/sent"],
+      ["crm.mail.draft", "/crm/mail/draft"],
+      ["crm.settings.system", "/crm/settings/system"],
+      ["crm.settings.profile", "/crm/settings/profile"],
+    ];
+    for (const [index, [navigationId, path]] of commonRoutes.entries()) {
+      const routeId = `${navigationId}.route`;
+      results.push(await registry.mutate({ ...common, kind: "register_route", operationId: stableUuid(input.operationId, `crm-route:${navigationId}`), route: { applicationId: "crm", deepLinkSources: [], enabled: true, path, permissionCode: "crm.application:access", routeId } }));
+      results.push(await registry.mutate({ ...common, kind: "register_navigation", navigation: { applicationId: "crm", enabled: true, navigationId, order: 100 + index, routeId }, operationId: stableUuid(input.operationId, `crm-navigation:${navigationId}`) }));
+    }
     results.push(await registry.mutate({ ...common, application: { applicationId: "crm.workforce-administration", audience: "internal", enabled: true, permissionCode: "crm.workforce-administration:view" }, kind: "register_application" }));
     results.push(await registry.mutate({ ...common, kind: "register_route", operationId: stableUuid(input.operationId, "route"), route: { applicationId: "crm.workforce-administration", deepLinkSources: [], enabled: true, path: "/workforce-administration", permissionCode: "crm.workforce-administration:view", routeId: "crm.workforce-administration.route" } }));
     results.push(await registry.mutate({ ...common, kind: "register_navigation", navigation: { applicationId: "crm.workforce-administration", enabled: true, navigationId: "crm.workforce-administration", order: 10, routeId: "crm.workforce-administration.route" }, operationId: stableUuid(input.operationId, "navigation") }));
+    results.push(await registry.mutate({ ...common, application: { applicationId: "crm.notification-templates", audience: "internal", enabled: true, permissionCode: "platform.notifications.template:read" }, kind: "register_application", operationId: stableUuid(input.operationId, "notification-template-application") }));
+    results.push(await registry.mutate({ ...common, kind: "register_route", operationId: stableUuid(input.operationId, "notification-template-route"), route: { applicationId: "crm.notification-templates", deepLinkSources: [], enabled: true, path: "/notification-templates", permissionCode: "platform.notifications.template:read", routeId: "crm.notification-templates.route" } }));
+    results.push(await registry.mutate({ ...common, kind: "register_navigation", navigation: { applicationId: "crm.notification-templates", enabled: true, navigationId: "crm.notification-templates", order: 20, routeId: "crm.notification-templates.route" }, operationId: stableUuid(input.operationId, "notification-template-navigation") }));
+    results.push(await registry.mutate({ ...common, application: { applicationId: "crm.session-policy", audience: "internal", enabled: true, permissionCode: "platform.authentication.session-policy:read" }, kind: "register_application", operationId: stableUuid(input.operationId, "session-policy-application") }));
+    results.push(await registry.mutate({ ...common, kind: "register_route", operationId: stableUuid(input.operationId, "session-policy-route"), route: { applicationId: "crm.session-policy", deepLinkSources: [], enabled: true, path: "/settings/session-policy", permissionCode: "platform.authentication.session-policy:read", routeId: "crm.session-policy.route" } }));
+    results.push(await registry.mutate({ ...common, kind: "register_navigation", navigation: { applicationId: "crm.session-policy", enabled: true, navigationId: "crm.session-policy", order: 30, routeId: "crm.session-policy.route" }, operationId: stableUuid(input.operationId, "session-policy-navigation") }));
     return { status: results.every(({ replayed }) => replayed) ? "existing" : "created" };
   } };
 }
@@ -160,7 +210,10 @@ async function createKeycloakAdmin(env, fetchImpl) {
   let url; try { url = new URL(base); } catch { throw new ZsjCrmBootstrapError("keycloak_base_url_invalid"); }
   if (url.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(url.hostname) || !["", "/"].includes(url.pathname) || url.username || url.password || url.search || url.hash) throw new ZsjCrmBootstrapError("keycloak_base_url_invalid");
   if (!/^[A-Za-z0-9._-]{1,64}$/u.test(realm) || !/^[A-Za-z0-9._-]{1,64}$/u.test(adminRealm)) throw new ZsjCrmBootstrapError("keycloak_realm_invalid");
-  const username = await secret(env, "AI_CRM_LOCAL_KEYCLOAK_ADMIN_USERNAME_FILE"); const password = await secret(env, "AI_CRM_LOCAL_KEYCLOAK_ADMIN_PASSWORD_FILE"); let accessToken; let userProfileReady = false;
+  const username = await secret(env, "AI_CRM_LOCAL_KEYCLOAK_ADMIN_USERNAME_FILE"); const password = await secret(env, "AI_CRM_LOCAL_KEYCLOAK_ADMIN_PASSWORD_FILE"); let accessToken; let realmPasswordPolicyReady = false; let userProfileReady = false;
+  const realmTemplate = JSON.parse(await readFile(new URL("../../deploy/keycloak/realm-dev.json", import.meta.url), "utf8"));
+  const passwordPolicy = realmTemplate.passwordPolicy;
+  if (typeof passwordPolicy !== "string" || passwordPolicy.length === 0 || passwordPolicy.length > 1024 || /[\0\r\n]/u.test(passwordPolicy)) throw new ZsjCrmBootstrapError("keycloak_password_policy_invalid");
   const request = async (path, init = {}) => {
     if (!accessToken) { const response = await fetchImpl(new URL(`realms/${adminRealm}/protocol/openid-connect/token`, url), { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: "admin-cli", grant_type: "password", password, username }) }); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_admin_auth_failed"); const body = await response.json(); if (typeof body.access_token !== "string") throw new ZsjCrmBootstrapError("keycloak_admin_auth_failed"); accessToken = body.access_token; }
     const response = await fetchImpl(new URL(path, url), { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${accessToken}`, "content-type": "application/json" } });
@@ -169,7 +222,8 @@ async function createKeycloakAdmin(env, fetchImpl) {
   };
   const find = async (account) => { const response = await request(`admin/realms/${realm}/users?exact=true&username=${encodeURIComponent(account.username)}`); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_admin_unavailable"); const users = await response.json(); if (!Array.isArray(users) || users.length > 1) throw new ZsjCrmBootstrapError("keycloak_account_conflict"); const user = users[0]; if (!user) return undefined; const attributes = user.attributes ?? {}; const requiredActions = user.requiredActions ?? []; if (attributes.ai_crm_account_id?.[0] !== account.accountId || attributes.phone_login_key?.[0] !== account.phone || typeof user.id !== "string" || !Array.isArray(requiredActions) || requiredActions.some((action) => typeof action !== "string")) throw new ZsjCrmBootstrapError("keycloak_account_conflict"); return { enabled: user.enabled === true, requiredActions, userId: user.id }; };
   const issuer = new URL(`realms/${realm}`, url).href.replace(/\/$/u, "");
-  return { clear: () => { accessToken = undefined; }, issuer, ensureUserProfile: async () => { if (userProfileReady) return; const profile = JSON.parse(await readFile(new URL("../../deploy/keycloak/user-profile-dev.json", import.meta.url), "utf8")); const response = await request(`admin/realms/${realm}/users/profile`, { method: "PUT", body: JSON.stringify(profile) }); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_user_profile_update_failed"); userProfileReady = true; }, findUser: find, enableUser: async (user) => { if (user.enabled === true) return false; const response = await request(`admin/realms/${realm}/users/${user.userId}`, { method: "PUT", body: JSON.stringify({ enabled: true }) }); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_user_enable_failed"); return true; }, ensureUser: async (account) => { const existing = await find(account); if (existing) return { ...existing, created: false }; const response = await request(`admin/realms/${realm}/users`, { method: "POST", body: JSON.stringify({ attributes: { ai_crm_account_id: [account.accountId], phone_login_key: [account.phone] }, credentials: [{ temporary: true, type: "password", value: account.password }], enabled: false, requiredActions: ["UPDATE_PASSWORD"], username: account.username }) }); if (response.status !== 201 && response.status !== 409) throw new ZsjCrmBootstrapError("keycloak_user_create_failed"); const user = await find(account); if (!user) throw new ZsjCrmBootstrapError("keycloak_user_create_failed"); return { ...user, created: response.status === 201 }; } };
+  const ensureRealmPasswordPolicy = async () => { if (realmPasswordPolicyReady) return; const current = await request(`admin/realms/${realm}`); if (!current.ok) throw new ZsjCrmBootstrapError("keycloak_realm_read_failed"); const representation = await current.json(); if (representation?.passwordPolicy !== passwordPolicy) { const update = await request(`admin/realms/${realm}`, { method: "PUT", body: JSON.stringify({ passwordPolicy }) }); if (!update.ok) throw new ZsjCrmBootstrapError("keycloak_password_policy_update_failed"); } realmPasswordPolicyReady = true; };
+  return { clear: () => { accessToken = undefined; }, issuer, ensureRealmPasswordPolicy, ensureUserProfile: async () => { if (userProfileReady) return; const profile = JSON.parse(await readFile(new URL("../../deploy/keycloak/user-profile-dev.json", import.meta.url), "utf8")); const response = await request(`admin/realms/${realm}/users/profile`, { method: "PUT", body: JSON.stringify(profile) }); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_user_profile_update_failed"); userProfileReady = true; }, findUser: find, enableUser: async (user) => { if (user.enabled === true) return false; const response = await request(`admin/realms/${realm}/users/${user.userId}`, { method: "PUT", body: JSON.stringify({ enabled: true }) }); if (!response.ok) throw new ZsjCrmBootstrapError("keycloak_user_enable_failed"); return true; }, ensureUser: async (account) => { const existing = await find(account); if (existing) return { ...existing, created: false }; const response = await request(`admin/realms/${realm}/users`, { method: "POST", body: JSON.stringify({ attributes: { ai_crm_account_id: [account.accountId], phone_login_key: [account.phone] }, credentials: [{ temporary: true, type: "password", value: account.password }], enabled: false, requiredActions: ["UPDATE_PASSWORD"], username: account.username }) }); if (response.status !== 201 && response.status !== 409) throw new ZsjCrmBootstrapError("keycloak_user_create_failed"); const user = await find(account); if (!user) throw new ZsjCrmBootstrapError("keycloak_user_create_failed"); return { ...user, created: response.status === 201 }; } };
 }
 
 async function secret(env, name) { const path = env[name]; if (!path || !isAbsolute(path)) throw new ZsjCrmBootstrapError("secret_path_invalid"); return readRestrictedSecret(path); }

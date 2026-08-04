@@ -13,16 +13,20 @@ describe("workbench HTTP adapter", () => {
   it("returns an Assignment-free system administrator bootstrap", async () => {
     const adapter = createWorkbenchHttpAdapter(facade({
       accountKind: "system_administrator",
+      applicationIds: ["crm"],
       displayName: "ZSJ系统管理员",
       navigationIds: ["crm.workforce-administration"],
       sessionScope: "session:system:01",
+      workspaceProfileId: "crm.workspace.unconfigured",
     }));
     await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({
       body: {
         context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员" },
+        applicationIds: ["crm"],
         fixture: false,
         kind: "ready",
         navigationIds: ["crm.workforce-administration"],
+        workspaceProfileId: "crm.workspace.unconfigured",
       },
       status: 200,
     });
@@ -55,5 +59,10 @@ describe("workbench HTTP adapter", () => {
     const load = vi.fn().mockRejectedValue(Object.assign(new Error("private"), { code: "workforce_account_not_found" }));
     const adapter = createWorkbenchHttpAdapter({ load });
     await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, status: 403 });
+  });
+
+  it("maps an ambiguous organization context to forbidden", async () => {
+    const load = vi.fn().mockRejectedValue(Object.assign(new Error("private"), { code: "organization_context_ambiguous" }));
+    await expect(createWorkbenchHttpAdapter({ load }).bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, status: 403 });
   });
 });

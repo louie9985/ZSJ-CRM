@@ -1,4 +1,5 @@
 import {
+  AppstoreOutlined,
   BellOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -154,9 +155,13 @@ export function WorkbenchShell({
                 items: [
                   { key: "identity", label: data.context.displayName, disabled: true },
                   { type: "divider" },
+                  { key: "applications", icon: <AppstoreOutlined aria-hidden="true" />, label: "切换应用", disabled: logoutState === "pending" },
                   { key: "logout", label: logoutState === "pending" ? "正在退出" : "退出当前会话", disabled: logoutState === "pending" },
                 ],
-                onClick: ({ key }) => { if (key === "logout") onLogout(); },
+                onClick: ({ key }) => {
+                  if (key === "applications") void navigate("/applications");
+                  if (key === "logout") onLogout();
+                },
               }}
             >
               <button className="account-trigger" type="button" aria-label="账号菜单" disabled={logoutState === "pending"}>

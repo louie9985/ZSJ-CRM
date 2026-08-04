@@ -20,9 +20,12 @@ export default defineConfig({
     proxy: {
       "/application-registry": { changeOrigin: true, target: bffTarget },
       "/auth": { changeOrigin: true, target: bffTarget },
+      "/authentication": { changeOrigin: true, target: bffTarget },
       "/files": { changeOrigin: true, target: bffTarget },
       "/form-definitions": { changeOrigin: true, target: bffTarget },
       "/notifications": { changeOrigin: true, target: bffTarget },
+      "/notification-templates": { changeOrigin: true, target: bffTarget },
+      "/realtime": { changeOrigin: true, target: bffTarget, ws: true },
       "/tasks": { changeOrigin: true, target: bffTarget },
       "/workbench": { changeOrigin: true, target: bffTarget },
       "/workforce-administration": { changeOrigin: true, target: bffTarget },

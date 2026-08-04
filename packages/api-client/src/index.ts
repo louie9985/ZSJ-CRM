@@ -92,6 +92,46 @@ export const internalOperations = [
     "path": "/notifications/{notificationId}/archive"
   },
   {
+    "id": "listNotificationTemplates",
+    "method": "GET",
+    "path": "/notification-templates"
+  },
+  {
+    "id": "getNotificationTemplateAdministration",
+    "method": "GET",
+    "path": "/notification-templates/{templateKey}"
+  },
+  {
+    "id": "saveNotificationTemplateDraft",
+    "method": "PUT",
+    "path": "/notification-templates/{templateKey}/draft"
+  },
+  {
+    "id": "previewNotificationTemplate",
+    "method": "POST",
+    "path": "/notification-templates/{templateKey}/preview"
+  },
+  {
+    "id": "publishNotificationTemplate",
+    "method": "POST",
+    "path": "/notification-templates/{templateKey}/publish"
+  },
+  {
+    "id": "activateNotificationTemplateRelease",
+    "method": "POST",
+    "path": "/notification-templates/{templateKey}/activate"
+  },
+  {
+    "id": "getPcSessionPolicy",
+    "method": "GET",
+    "path": "/authentication/session-policy"
+  },
+  {
+    "id": "updatePcSessionPolicy",
+    "method": "PUT",
+    "path": "/authentication/session-policy"
+  },
+  {
     "id": "getLiveness",
     "method": "GET",
     "path": "/health/live"

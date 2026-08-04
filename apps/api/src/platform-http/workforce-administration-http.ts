@@ -1,10 +1,11 @@
 export type WorkforceAccountStatus = "active" | "credential_pending" | "disabled" | "failed" | "provisioning";
 
 export type WorkforceAdministrationCommand =
-  | { readonly departmentId: string; readonly kind: "create_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
+  | { readonly departmentId: string; readonly initialPassword: string; readonly kind: "create_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "update_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "update_system_account"; readonly legalName: string; readonly phone?: string; readonly username: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" | "reset_password" }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" }
+  | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "reset_password"; readonly password: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
   | { readonly accountId: string; readonly ceremonyOperationId: string; readonly expectedRevision: number; readonly kind: "complete_credential_ceremony" }
@@ -100,7 +101,7 @@ export interface WorkforceAdministrationFacade {
   load(input: Readonly<{ credential: string; traceId: string }>): Promise<Readonly<WorkforceAdministrationSnapshot>>;
 }
 
-export type WorkforceAdministrationFacadeErrorCode = "conflict" | "forbidden" | "invalid" | "unavailable";
+export type WorkforceAdministrationFacadeErrorCode = "conflict" | "forbidden" | "invalid" | "password_policy_violation" | "unavailable";
 
 export class WorkforceAdministrationFacadeError extends Error {
   public constructor(public readonly code: WorkforceAdministrationFacadeErrorCode) {
@@ -131,6 +132,7 @@ const DIRECTORY_ACTIONS = new Set(["deactivate", "edit", "reactivate"]);
 const STATUSES = new Set<WorkforceAccountStatus>(["active", "credential_pending", "disabled", "failed", "provisioning"]);
 
 class InvalidRequest extends Error {}
+class PasswordPolicyViolation extends Error {}
 class InvalidFacadeResult extends Error {}
 
 function invalid(): never { throw new InvalidRequest(); }
@@ -178,6 +180,10 @@ function containsControl(value: string): boolean {
 }
 
 function username(value: unknown): string { return typeof value === "string" && USERNAME.test(value) ? value : invalid(); }
+function password(value: unknown): string {
+  if (typeof value !== "string" || !/^[\x20-\x7E]{8,64}$/u.test(value)) throw new PasswordPolicyViolation();
+  return value;
+}
 function phone(value: unknown): string {
   if (typeof value !== "string" || value.length > 64) return invalid();
   const normalized = value.replace(/[ -]/gu, "");
@@ -198,9 +204,9 @@ function command(value: unknown): WorkforceAdministrationCommand {
   if (typeof kind !== "string") return invalid();
   switch (kind) {
     case "create_account": {
-      const parsed = exact(candidate, ["departmentId", "kind", "legalName", "positionId", "username"], ["phone"]);
+      const parsed = exact(candidate, ["departmentId", "initialPassword", "kind", "legalName", "positionId", "username"], ["phone"]);
       const parsedPhone = optionalPhone(parsed);
-      return Object.freeze({ departmentId: uuid(parsed["departmentId"]), kind, legalName: text(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), positionId: uuid(parsed["positionId"]), username: username(parsed["username"]) });
+      return Object.freeze({ departmentId: uuid(parsed["departmentId"]), initialPassword: password(parsed["initialPassword"]), kind, legalName: text(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), positionId: uuid(parsed["positionId"]), username: username(parsed["username"]) });
     }
     case "update_account": {
       const parsed = exact(candidate, ["accountId", "departmentId", "expectedRevision", "kind", "legalName", "positionId", "username"], ["phone"]);
@@ -212,9 +218,13 @@ function command(value: unknown): WorkforceAdministrationCommand {
       const parsedPhone = optionalPhone(parsed);
       return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, legalName: text(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }), username: username(parsed["username"]) });
     }
-    case "deactivate_account": case "reset_password": {
+    case "deactivate_account": {
       const parsed = exact(candidate, ["accountId", "expectedRevision", "kind"]);
       return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind });
+    }
+    case "reset_password": {
+      const parsed = exact(candidate, ["accountId", "expectedRevision", "kind", "password"]);
+      return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, password: password(parsed["password"]) });
     }
     case "release_phone": {
       const parsed = exact(candidate, ["accountId", "expectedRevision", "kind", "phone"]);
@@ -409,11 +419,12 @@ function errorCode(error: unknown): string | undefined {
 
 function failure(error: unknown, traceId?: string): Readonly<WorkforceAdministrationHttpResponse> {
   const code = errorCode(error);
+  const passwordPolicyViolation = error instanceof PasswordPolicyViolation || code === "password_policy_violation";
   const forbidden = code === "forbidden" || ["authorization_denied", "subject_not_associated", "employment_not_active", "assignment_not_active", "AUTHORIZATION_DENIED"].includes(code ?? "");
   const invalidInput = error instanceof InvalidRequest || code === "invalid" || code === "input_invalid";
   const conflict = code === "conflict" || ["entity_conflict", "entity_not_found", "idempotency_conflict", "login_identifier_occupied", "revision_conflict", "state_transition_invalid", "organization_hierarchy_cycle", "organization_path_invalid"].includes(code ?? "");
-  const bodyCode = invalidInput ? "workforce_administration_request_invalid" : forbidden ? "workforce_administration_forbidden" : conflict ? "workforce_administration_conflict" : "workforce_administration_unavailable";
-  const status = invalidInput ? 400 : forbidden ? 403 : conflict ? 409 : 503;
+  const bodyCode = passwordPolicyViolation ? "workforce_password_policy_violation" : invalidInput ? "workforce_administration_request_invalid" : forbidden ? "workforce_administration_forbidden" : conflict ? "workforce_administration_conflict" : "workforce_administration_unavailable";
+  const status = passwordPolicyViolation || invalidInput ? 400 : forbidden ? 403 : conflict ? 409 : 503;
   return Object.freeze({ body: Object.freeze({ code: bodyCode }), headers: headers(traceId), status });
 }
 

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { connectRedisAuthorizationCache } from "./redis-cache.js";
 
 const secretFile = process.env["AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE"] ??
-  resolve(process.cwd(), "../../../deploy/compose/.runtime/local/secrets/redis-password");
+  resolve(process.cwd(), "../../../deploy/compose/.runtime/dev/redis_password");
 const runIntegration = existsSync(secretFile) ? describe : describe.skip;
 
 runIntegration("Redis authorization cache integration", () => {

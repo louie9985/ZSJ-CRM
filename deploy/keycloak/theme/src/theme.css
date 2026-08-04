@@ -42,8 +42,8 @@ body {
     text-align: center;
 }
 
-.auth-alert {
-    margin-bottom: 20px;
+.ant-notification {
+    z-index: 10000 !important;
 }
 
 .auth-description.ant-typography {

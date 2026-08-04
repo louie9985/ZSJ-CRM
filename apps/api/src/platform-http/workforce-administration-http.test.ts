@@ -52,12 +52,12 @@ function fixture() {
 const executeInput = (body: unknown, extra: Record<string, unknown> = {}) => ({ body, credential, idempotencyKey: operationId, traceId, ...extra });
 
 const commands: readonly WorkforceAdministrationCommand[] = [
-  { departmentId: ids.department, kind: "create_account", legalName: "测试员工", phone: "+86 138-0000-0000", positionId: ids.position, username: "Test.User" },
+  { departmentId: ids.department, initialPassword: "Synthetic-password-1!", kind: "create_account", legalName: "测试员工", phone: "+86 138-0000-0000", positionId: ids.position, username: "Test.User" },
   { accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "update_account", legalName: "测试员工", phone: "138 0000-0000", positionId: ids.position, username: "Test.User" },
   { accountId: ids.account, expectedRevision: 2, kind: "update_system_account", legalName: "ZSJ系统管理员", phone: "138 0000-0000", username: "Test.User" },
   { accountId: ids.account, expectedRevision: 2, kind: "deactivate_account" },
   { accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "reactivate_account", positionId: ids.position },
-  { accountId: ids.account, expectedRevision: 2, kind: "reset_password" },
+  { accountId: ids.account, expectedRevision: 2, kind: "reset_password", password: "Replacement-password-2!" },
   { accountId: ids.account, expectedRevision: 2, kind: "release_phone", phone: "+86 137-0000-0000" },
   { accountId: ids.account, ceremonyOperationId: operationId, expectedRevision: 2, kind: "complete_credential_ceremony" },
   { accountId: ids.account, enabled: true, expectedRevision: 2, kind: "set_crm_administrator" },
@@ -106,7 +106,6 @@ describe("workforce administration HTTP adapter", () => {
   });
 
   it.each([
-    { ...commands[0], password: "must-not-cross" },
     { ...commands[0], token: "must-not-cross" },
     { ...commands[0], email: "not-in-contract@example.invalid" },
     { ...commands[0], username: "x" },
@@ -120,6 +119,19 @@ describe("workforce administration HTTP adapter", () => {
   ])("rejects forbidden, widened, or malformed commands before the facade", async (body) => {
     const { adapter, facade } = fixture();
     await expect(adapter.execute(executeInput(body))).resolves.toMatchObject({ body: { code: "workforce_administration_request_invalid" }, status: 400 });
+    expect(facade.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ...commands[0], initialPassword: "" },
+    { ...commands[0], initialPassword: "short" },
+    { ...commands[0], initialPassword: "line\nbreak" },
+    { ...commands[0], initialPassword: "含中文的密码123" },
+    { ...commands[5], password: "" },
+    { ...commands[5], password: "含中文的密码123" },
+  ])("returns a dedicated code for a malformed password", async (body) => {
+    const { adapter, facade } = fixture();
+    await expect(adapter.execute(executeInput(body))).resolves.toMatchObject({ body: { code: "workforce_password_policy_violation" }, status: 400 });
     expect(facade.execute).not.toHaveBeenCalled();
   });
 
@@ -146,6 +158,7 @@ describe("workforce administration HTTP adapter", () => {
 
   it.each([
     [new WorkforceAdministrationFacadeError("invalid"), 400, "workforce_administration_request_invalid"],
+    [new WorkforceAdministrationFacadeError("password_policy_violation"), 400, "workforce_password_policy_violation"],
     [new WorkforceAdministrationFacadeError("forbidden"), 403, "workforce_administration_forbidden"],
     [new WorkforceAdministrationFacadeError("conflict"), 409, "workforce_administration_conflict"],
     [new WorkforceAdministrationFacadeError("unavailable"), 503, "workforce_administration_unavailable"],

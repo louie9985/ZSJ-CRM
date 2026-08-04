@@ -15,6 +15,7 @@ const secretPaths = {
   encryption: secretPath("encryption"),
   index: secretPath("index"),
   redis: secretPath("redis"),
+  realtimeRabbit: secretPath("realtime-rabbit"),
 } as const;
 const secrets: Readonly<Record<string, string>> = {
   [secretPaths.adminClient]: "a".repeat(43),
@@ -25,6 +26,7 @@ const secrets: Readonly<Record<string, string>> = {
   [secretPaths.encryption]: Buffer.alloc(32, 7).toString("base64url"),
   [secretPaths.index]: Buffer.alloc(32, 9).toString("base64url"),
   [secretPaths.redis]: "synthetic-redis-secret",
+  [secretPaths.realtimeRabbit]: "amqps://realtime-consumer:secret@rabbit.example.test/ai-crm",
 };
 const secretFilePolicy = {
   fileSystem: {
@@ -154,5 +156,10 @@ describe("production API configuration", () => {
       },
       secretFilePolicy,
     })).rejects.toThrow("api_database_health_window_invalid");
+  });
+
+  it("requires an independent TLS Rabbit secret when production realtime is enabled", async () => {
+    await expect(loadProductionApiConfiguration({ env: { ...env, AI_CRM_REALTIME_ENABLED: "true" }, secretFilePolicy })).rejects.toThrow("api_realtime_rabbit_configuration_required");
+    await expect(loadProductionApiConfiguration({ env: { ...env, AI_CRM_REALTIME_ENABLED: "true", AI_CRM_REALTIME_RABBIT_URL_FILE: secretPaths.realtimeRabbit }, secretFilePolicy })).resolves.toMatchObject({ realtime: { enabled: true, maximumConnectionsPerSession: 8 } });
   });
 });

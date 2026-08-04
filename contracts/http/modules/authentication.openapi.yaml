@@ -70,7 +70,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthenticationError"
         "503":
-          description: The identity provider or session store is unavailable; authentication fails closed.
+          description: A required authentication dependency is unavailable; authentication fails closed. When the failure occurs before the one-time transaction is consumed, the same callback can be retried within its validity window.
           content:
             application/json:
               schema:
@@ -263,6 +263,15 @@ components:
         type: string
         maxLength: 1024
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+        minLength: 36
+        maxLength: 36
     CsrfToken:
       name: X-CSRF-Token
       in: header
@@ -290,6 +299,13 @@ components:
         format: uri
         maxLength: 2048
   schemas:
+    PcSessionPolicy:
+      type: object
+      additionalProperties: false
+      required: [concurrentLimit, revocationTargetSeconds]
+      properties:
+        concurrentLimit: { type: integer, minimum: 1, maximum: 5, default: 1 }
+        revocationTargetSeconds: { type: integer, minimum: 5, maximum: 60, default: 5 }
     BrowserSession:
       type: object
       additionalProperties: false

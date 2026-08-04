@@ -6,6 +6,8 @@ model TaskCenterProjection {
   sourceTaskId           String    @db.VarChar(255) @map("source_task_id")
   sourceVersion          Int       @map("source_version")
   status                 String    @db.VarChar(16)
+  title                  String    @db.VarChar(512)
+  summary                String    @db.VarChar(2000)
   appId                  String    @db.VarChar(255) @map("app_id")
   routeId                String    @db.VarChar(255) @map("route_id")
   assigneeReference      String?   @db.VarChar(255) @map("assignee_reference")

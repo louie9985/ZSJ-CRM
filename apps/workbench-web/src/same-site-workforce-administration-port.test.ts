@@ -56,18 +56,27 @@ describe("same-site workforce administration port", () => {
     await expect(createSameSiteWorkforceAdministrationPort(fetchPort).load()).rejects.toThrow("workforce_actions_invalid");
   });
 
-  it("gets CSRF before sending a password-free command", async () => {
+  it("gets CSRF before sending the reset password only in the reviewed command body", async () => {
     const fetchPort = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ csrfToken: "c".repeat(32) }), { status: 200, headers: { "Content-Type": "application/json" } }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ credentialRedirectUrl: "/auth/credential-ceremony/opaque", replayed: false }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    const result = await createSameSiteWorkforceAdministrationPort(fetchPort).execute({ accountId: "account-1", expectedRevision: 0, kind: "reset_password" });
-    expect(result).toEqual({ credentialRedirectUrl: "/auth/credential-ceremony/opaque" });
+      .mockResolvedValueOnce(new Response(JSON.stringify({ replayed: false }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const result = await createSameSiteWorkforceAdministrationPort(fetchPort).execute({ accountId: "account-1", expectedRevision: 0, kind: "reset_password", password: "Replacement-password-2!" });
+    expect(result).toEqual({});
     const request = fetchPort.mock.calls[1]?.[1] as RequestInit;
-    expect(request.body).toBe(JSON.stringify({ accountId: "account-1", expectedRevision: 0, kind: "reset_password" }));
+    expect(request.body).toBe(JSON.stringify({ accountId: "account-1", expectedRevision: 0, kind: "reset_password", password: "Replacement-password-2!" }));
     if (typeof request.body !== "string") throw new Error("string_body_expected");
     const body: unknown = JSON.parse(request.body);
-    expect(body).not.toHaveProperty("password");
+    expect(body).toHaveProperty("password", "Replacement-password-2!");
     expect(body).not.toHaveProperty("temporaryPassword");
+    expect(JSON.stringify(request.headers ?? {})).not.toMatch(/password/iu);
+  });
+
+  it("preserves the dedicated password-policy error code without exposing provider details", async () => {
+    const fetchPort = vi.fn()
+      .mockResolvedValueOnce(Response.json({ csrfToken: "c".repeat(32) }))
+      .mockResolvedValueOnce(Response.json({ code: "workforce_password_policy_violation" }, { status: 400 }));
+    await expect(createSameSiteWorkforceAdministrationPort(fetchPort).execute({ accountId: "account-1", expectedRevision: 0, kind: "reset_password", password: "Test@123456" }))
+      .rejects.toThrow("workforce_password_policy_violation");
   });
 
   it("sends an explicitly selected historical phone with revision and fresh idempotency metadata", async () => {

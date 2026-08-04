@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   checkMigrationCompatibility,
   createDatabaseRuntime,
@@ -186,7 +188,15 @@ export async function createProductionWorkerResources(
   const database = dependencies.createDatabase(configuration.database);
   const eventingStore = createPrismaEventingStore(database);
   const eventing = createEventingCore(eventingStore);
-  const taskStore = createPrismaTaskCenterStore(database);
+  const taskStore = createPrismaTaskCenterStore(database, {
+    async record(projection) {
+      if (projection.assigneeReference === undefined) return;
+      const hex = createHash("sha256").update(`task-projection-change\0${projection.projectionId}\0${String(projection.sourceVersion)}`).digest("hex").slice(0, 32).split("");
+      hex[12] = "5"; hex[16] = ((Number.parseInt(hex[16] ?? "0", 16) & 3) | 8).toString(16);
+      const eventId = `${hex.slice(0, 8).join("")}-${hex.slice(8, 12).join("")}-${hex.slice(12, 16).join("")}-${hex.slice(16, 20).join("")}-${hex.slice(20).join("")}`;
+      await eventing.appendEvent({ specversion: "1.0", id: eventId, source: "urn:ai-crm:task-center", type: "task-center.projection-changed.v1", time: projection.updatedAt, datacontenttype: "application/json", dataschema: "urn:ai-crm:events:task-center.projection-changed:v1", correlationid: eventId, subject: projection.projectionId, data: { assignmentId: projection.assigneeReference, eventId, occurredAt: projection.updatedAt, stateVersion: projection.sourceVersion, taskId: projection.projectionId } });
+    },
+  });
   const workforceAccounts = new WorkforceAccessService(createPrismaWorkforceAccessStore(database), {
     authorize: (input) => input.action === "identity_sync_result_record"
       ? Promise.resolve()
@@ -214,12 +224,12 @@ export async function createProductionWorkerResources(
     const eventTransport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
       exchange: taskProjectionRabbitTopology.exchange,
       exchangeType: taskProjectionRabbitTopology.exchangeType,
-      routes: Object.freeze([Object.freeze({
-        messageKind: "event" as const,
-        messageType: "task-center.projection-lifecycle.v1",
-        messageVersion: 1,
-        routingKey: taskProjectionRabbitTopology.routingKey,
-      })]),
+      routes: Object.freeze([
+        Object.freeze({ messageKind: "event" as const, messageType: "task-center.projection-lifecycle.v1", messageVersion: 1, routingKey: taskProjectionRabbitTopology.routingKey }),
+        Object.freeze({ messageKind: "event" as const, messageType: "task-center.projection-changed.v1", messageVersion: 1, routingKey: "task-center.projection-changed.v1" }),
+        Object.freeze({ messageKind: "event" as const, messageType: "notifications.in-app-changed.v1", messageVersion: 1, routingKey: "notifications.in-app-changed.v1" }),
+        Object.freeze({ messageKind: "event" as const, messageType: "authentication.pc-session-revoked.v1", messageVersion: 1, routingKey: "authentication.pc-session-revoked.v1" }),
+      ]),
     }));
     const workforceJobTransport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
       exchange: workforceKeycloakSyncRabbitTopology.exchange,

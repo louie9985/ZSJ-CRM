@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "notifications",
+  "purpose": "Add owner-registered notification template definitions, mutable drafts, immutable release activation history, rendered summary snapshots, content formats, and monotonic notification state versions.",
+  "applicationCompatibility": { "minimumInclusive": "0.0.0" },
+  "lockImpact": "Adds tables and nullable/defaulted columns. ALTER TABLE takes short metadata locks; existing notification rows are not rewritten with new business content.",
+  "dataImpact": "Historical title and body snapshots remain unchanged. Existing bodies are interpreted as plain text and legacy summaries fall back to the existing body at the application boundary.",
+  "backfill": "No content backfill. Existing state versions use the database default of 1.",
+  "destructive": false,
+  "recovery": "Keep all added facts and columns during application rollback. Disable template administration and forward-fix; never delete releases, activations, or notification history.",
+  "forwardFix": "Append a later globally numbered migration. Never rewrite this migration after application."
+}

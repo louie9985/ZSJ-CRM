@@ -102,6 +102,23 @@ describe("createRedisBrowserSessionStore", () => {
     await expect(store.getSession(index, 5_000, 2_000)).resolves.toEqual(record);
   });
 
+  it("atomically registers a v2 PC session and returns revoked oldest session references", async () => {
+    const session = {
+      absoluteExpiresAtMs: 10_000, authenticatedAtMs: 1_000, createdAtMs: 1_000,
+      csrfToken: "c".repeat(43), id: "d".repeat(43), revision: 0,
+      clientType: "pc-web" as const, schemaVersion: 2 as const, subjectIndex: "u".repeat(43),
+      tokens: { algorithm: "A256GCM" as const, ciphertext: "ciphertext", initializationVector: "initialization", keyId: "key-1", tag: "authenticationtag", version: 2 as const },
+    };
+    const revoked = "r".repeat(43);
+    const executor = new ScriptedExecutor([JSON.stringify([revoked])]);
+    const store = createRedisBrowserSessionStore(executor);
+
+    await expect(store.createConcurrentSession?.(index, session, 5_000, 1)).resolves.toEqual([revoked]);
+    expect(executor.commands[0]?.slice(0, 3)).toEqual(["EVAL", expect.any(String), "4"]);
+    expect(executor.commands[0]).toContain("1");
+    expect(executor.commands[0]).toContain(`ai-crm:auth:pc:subject:${session.subjectIndex}`);
+  });
+
   it("fails closed on malformed stored JSON", async () => {
     const store = createRedisBrowserSessionStore(new ScriptedExecutor(["{not-json"]));
 

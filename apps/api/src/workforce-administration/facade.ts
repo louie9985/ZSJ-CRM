@@ -50,6 +50,7 @@ function mapError(error: unknown): WorkforceAdministrationFacadeError {
   const code = safeCode(error);
   if (["AUTHORIZATION_DENIED", "authorization_denied", "assignment_not_active", "employment_not_active", "subject_not_associated"].includes(code ?? "")) return new WorkforceAdministrationFacadeError("forbidden");
   if (["entity_conflict", "entity_not_found", "idempotency_conflict", "login_identifier_occupied", "revision_conflict", "state_transition_invalid", "organization_hierarchy_cycle", "organization_path_invalid"].includes(code ?? "")) return new WorkforceAdministrationFacadeError("conflict");
+  if (code === "password_policy_violation") return new WorkforceAdministrationFacadeError("password_policy_violation");
   if (code === "input_invalid" || code === "effective_interval_invalid") return new WorkforceAdministrationFacadeError("invalid");
   return new WorkforceAdministrationFacadeError("unavailable");
 }
@@ -113,9 +114,10 @@ async function createAccount(dependencies: WorkforceAdministrationDependencies, 
   const identity = await dependencies.identity.createDisabledAccount({ accountId, operationId: deriveAdministrationOperationId(operationId, "identity-create"), ...(command.phone === undefined ? {} : { phone: command.phone }), traceId, username: command.username });
   const account = await dependencies.accounts.getAccount(accountId);
   const linked = await dependencies.accounts.linkKeycloakUser({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "identity-link"), "workforce_administration:create_account", traceId), accountId, expectedRevision: account.revision, keycloakUserId: identity.keycloakUserId, updatedAt: at });
-  await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "credential-pending"), "workforce_administration:create_account", traceId), accountId, expectedRevision: linked.revision, status: "credential_pending", updatedAt: at });
-  const ceremony = await dependencies.credentialCeremonies.start({ accountId, keycloakUserId: identity.keycloakUserId, kind: "create", operationId: deriveAdministrationOperationId(operationId, "credential-ceremony"), operatorSubjectId: principalValue.identitySubjectId, traceId });
-  return Object.freeze({ credentialRedirectUrl: ceremony.redirectUrl });
+  await dependencies.grants.setApplicationGrant({ assignmentId, enabled: true, operationId: deriveAdministrationOperationId(operationId, "crm-application-grant"), workforcePersonId });
+  await dependencies.identity.setPasswordAndEnable({ accountId, keycloakUserId: identity.keycloakUserId, operationId: deriveAdministrationOperationId(operationId, "set-initial-password"), password: command.initialPassword, traceId });
+  await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "activate-directory"), "workforce_administration:create_account", traceId), accountId, expectedRevision: linked.revision, status: "active", updatedAt: at });
+  return Object.freeze({});
 }
 
 async function updateAccount(dependencies: WorkforceAdministrationDependencies, principalValue: AdministrationPrincipal, command: Extract<WorkforceAdministrationCommand, { kind: "update_account" }>, operationId: string, traceId: string, at: string) {
@@ -127,17 +129,20 @@ async function updateAccount(dependencies: WorkforceAdministrationDependencies, 
     if (current.assignment.organizationUnitId !== command.departmentId || current.assignment.positionId !== command.positionId) throw new WorkforceAdministrationFacadeError("conflict");
   }
   const current = await exactAssignment(dependencies, account, at);
+  const assignmentChanged = current.assignment.organizationUnitId !== command.departmentId || current.assignment.positionId !== command.positionId;
+  const nextAssignmentId = deriveAdministrationOperationId(operationId, "assignment");
   await dependencies.transactions.run(async () => {
     await dependencies.accounts.updateLoginIdentifiers({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "identifiers"), "workforce_administration:update_account", traceId), accountId: account.accountId, expectedRevision: command.expectedRevision, ...(command.phone === undefined ? {} : { phone: command.phone }), updatedAt: at, username: command.username });
     const profile = await dependencies.organizationDirectory.getPersonProfile(account.workforcePersonId ?? "");
     await dependencies.organizationDirectory.upsertPersonProfile({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "profile"), "workforce_administration:update_account", traceId), expectedRevision: profile.revision, realName: command.legalName, updatedAt: at, workforcePersonId: account.workforcePersonId ?? "" });
-    if (current.assignment.organizationUnitId !== command.departmentId || current.assignment.positionId !== command.positionId) {
+    if (assignmentChanged) {
       await dependencies.organization.closeAssignment({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "close-assignment"), "workforce_administration:update_account", traceId), effectiveTo: at, factId: current.assignment.assignmentId });
-      await dependencies.organization.createAssignment({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "create-assignment"), "workforce_administration:update_account", traceId), assignmentId: deriveAdministrationOperationId(operationId, "assignment"), effectiveFrom: at, employmentId: current.assignment.employmentId, organizationUnitId: command.departmentId, positionId: command.positionId, workforcePersonId: account.workforcePersonId ?? "" });
+      await dependencies.organization.createAssignment({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "create-assignment"), "workforce_administration:update_account", traceId), assignmentId: nextAssignmentId, effectiveFrom: at, employmentId: current.assignment.employmentId, organizationUnitId: command.departmentId, positionId: command.positionId, workforcePersonId: account.workforcePersonId ?? "" });
     }
     const updatedAccount = { ...account, ...(command.phone === undefined ? {} : { phone: command.phone }), username: command.username };
     await submitIdentitySync(dependencies, principalValue, { account: updatedAccount, action: "synchronize_login_identifiers", at, operationId: deriveAdministrationOperationId(operationId, "identity-sync"), traceId });
   });
+  if (assignmentChanged) await dependencies.grants.moveApplicationGrant({ assignmentId: nextAssignmentId, closeAssignmentIds: [current.assignment.assignmentId], operationId: deriveAdministrationOperationId(operationId, "move-crm-application-grant"), workforcePersonId: account.workforcePersonId });
   return Object.freeze({});
 }
 
@@ -183,8 +188,9 @@ async function deactivateAccount(dependencies: WorkforceAdministrationDependenci
     await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "disable-directory"), "workforce_administration:deactivate_account", traceId), accountId: account.accountId, expectedRevision: command.expectedRevision, status: "disabled", updatedAt: at });
     for (const assignment of context.context.assignments) await dependencies.organization.closeAssignment({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, `close-assignment:${assignment.assignmentId}`), "workforce_administration:deactivate_account", traceId), effectiveTo: at, factId: assignment.assignmentId });
     for (const employmentId of context.context.employmentIds) await dependencies.organization.closeEmployment({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, `close-employment:${employmentId}`), "workforce_administration:deactivate_account", traceId), effectiveTo: at, factId: employmentId });
-    await submitIdentitySync(dependencies, principalValue, { account: { ...account, status: "disabled" }, action: "disable", at, operationId: deriveAdministrationOperationId(operationId, "identity-disable"), traceId });
   });
+  await dependencies.grants.setApplicationGrant({ assignmentId: context.assignment.assignmentId, enabled: false, operationId: deriveAdministrationOperationId(operationId, "close-crm-application-grant"), workforcePersonId: account.workforcePersonId });
+  await dependencies.transactions.run(() => submitIdentitySync(dependencies, principalValue, { account: { ...account, status: "disabled" }, action: "disable", at, operationId: deriveAdministrationOperationId(operationId, "identity-disable"), traceId }));
   return Object.freeze({});
 }
 
@@ -241,16 +247,21 @@ async function accountCommand(dependencies: WorkforceAdministrationDependencies,
     if (account.revision !== command.expectedRevision || account.keycloakUserId === undefined) throw new WorkforceAdministrationFacadeError("conflict");
     await dependencies.credentialCeremonies.complete({ accountId: account.accountId, keycloakUserId: account.keycloakUserId, operationId: command.ceremonyOperationId, operatorSubjectId: principalValue.identitySubjectId, traceId });
     if (account.status === "credential_pending") {
+      if (account.workforcePersonId === undefined || !await dependencies.grants.hasApplicationGrant(account.workforcePersonId)) throw new WorkforceAdministrationFacadeError("forbidden");
       await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "credential-complete"), "workforce_administration:complete_credential_ceremony", traceId), accountId: account.accountId, expectedRevision: command.expectedRevision, status: "active", updatedAt: at });
     } else if (account.status !== "active") throw new WorkforceAdministrationFacadeError("conflict");
     return Object.freeze({});
   }
   if (command.kind === "reset_password") {
     const account = await dependencies.accounts.getAccount(command.accountId);
-    if (account.revision !== command.expectedRevision || account.keycloakUserId === undefined) throw new WorkforceAdministrationFacadeError("conflict");
+    if (account.revision !== command.expectedRevision || account.keycloakUserId === undefined || !["active", "credential_pending"].includes(account.status)) throw new WorkforceAdministrationFacadeError("conflict");
+    await dependencies.identity.setPasswordAndEnable({ accountId: account.accountId, keycloakUserId: account.keycloakUserId, operationId: deriveAdministrationOperationId(operationId, "set-password"), password: command.password, traceId });
     await dependencies.transactions.run(() => submitIdentitySync(dependencies, principalValue, { account, action: "revoke_sessions", at, operationId: deriveAdministrationOperationId(operationId, "revoke-sessions"), traceId }));
-    const ceremony = await dependencies.credentialCeremonies.start({ accountId: account.accountId, keycloakUserId: account.keycloakUserId, kind: "reset", operationId: deriveAdministrationOperationId(operationId, "credential-ceremony"), operatorSubjectId: principalValue.identitySubjectId, traceId });
-    return Object.freeze({ credentialRedirectUrl: ceremony.redirectUrl });
+    if (account.status === "credential_pending") {
+      if (account.workforcePersonId === undefined || !await dependencies.grants.hasApplicationGrant(account.workforcePersonId)) throw new WorkforceAdministrationFacadeError("forbidden");
+      await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "activate-directory"), "workforce_administration:reset_password", traceId), accountId: account.accountId, expectedRevision: command.expectedRevision, status: "active", updatedAt: at });
+    } else if (account.status !== "active") throw new WorkforceAdministrationFacadeError("conflict");
+    return Object.freeze({});
   }
   if (command.kind === "release_phone") {
     const account = await dependencies.accounts.getAccount(command.accountId);
@@ -273,6 +284,8 @@ async function accountCommand(dependencies: WorkforceAdministrationDependencies,
       await dependencies.recovery.restore({ accountId: account.accountId, actor: principalValue.actor, departmentId: command.departmentId, effectiveFrom: at, operationId: deriveAdministrationOperationId(operationId, "restore-workforce"), positionId: command.positionId, traceId, workforcePersonId: account.workforcePersonId ?? "" });
       await dependencies.accounts.setStatus({ ...metadata(principalValue, deriveAdministrationOperationId(operationId, "reactivate-directory"), "workforce_administration:reactivate_account", traceId), accountId: account.accountId, expectedRevision: command.expectedRevision, status: "credential_pending", updatedAt: at });
     });
+    const recoveryOperationId = deriveAdministrationOperationId(operationId, "restore-workforce");
+    await dependencies.grants.setApplicationGrant({ assignmentId: deriveAdministrationOperationId(recoveryOperationId, "assignment"), enabled: true, operationId: deriveAdministrationOperationId(operationId, "restore-crm-application-grant"), workforcePersonId: account.workforcePersonId });
     const ceremony = await dependencies.credentialCeremonies.start({ accountId: account.accountId, keycloakUserId: account.keycloakUserId, kind: "recover", operationId: deriveAdministrationOperationId(operationId, "credential-ceremony"), operatorSubjectId: principalValue.identitySubjectId, traceId });
     return Object.freeze({ credentialRedirectUrl: ceremony.redirectUrl });
   }

@@ -1,0 +1,13 @@
+{
+  "moduleOwner": "database",
+  "purpose": "Allow the API runtime to finalize durable Workforce Administration operation records after the owning business transaction succeeds or fails.",
+  "applicationCompatibility": {
+    "minimumInclusive": "0.0.0"
+  },
+  "lockImpact": "The catalog-only GRANT takes a short permission metadata lock; no application table data or definitions are changed.",
+  "dataImpact": "No rows are changed. ai_crm_runtime gains UPDATE only on workforce_access.operations so durable commands can record their terminal status and bounded result.",
+  "backfill": "Not required. Existing pending operation rows remain unchanged and may be retried through their original idempotency key.",
+  "destructive": false,
+  "recovery": "If durable Workforce Administration commands are withdrawn, append a reviewed migration that revokes UPDATE after confirming no API path still finalizes these operation records.",
+  "forwardFix": "Append a later globally numbered migration to narrow or revoke this exact privilege. Never rewrite this migration after application."
+}

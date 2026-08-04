@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "database",
+  "purpose": "Register the two fixed PC session policy parameters and grant the API their exact versioned configuration persistence operations.",
+  "applicationCompatibility": { "minimumInclusive": "0.0.0" },
+  "lockImpact": "Two bounded catalog inserts and privilege metadata locks; no existing configuration or session rows are rewritten.",
+  "dataImpact": "Adds immutable parameter definitions with defaults of one PC session and a five-second revocation target. No activation is created.",
+  "backfill": "Not required; unresolved parameters use their registered defaults.",
+  "destructive": false,
+  "recovery": "Retain the immutable definitions, releases and activations during application rollback. Older applications continue using startup configuration.",
+  "forwardFix": "Append a later migration or publish a new parameter value; never edit this migration after application."
+}

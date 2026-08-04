@@ -409,7 +409,7 @@
                 }
               }
             },
-            "description": "The identity provider or session store is unavailable; authentication fails closed."
+            "description": "A required authentication dependency is unavailable; authentication fails closed. When the failure occurs before the one-time transaction is consumed, the same callback can be retried within its validity window."
           }
         },
         "x-ai-crm-audiences": [
@@ -1209,6 +1209,201 @@
         "x-ai-crm-audiences": [
           "internal"
         ]
+      }
+    },
+    "/authentication/session-policy": {
+      "get": {
+        "operationId": "getPcSessionPolicy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "concurrentLimit": {
+                      "default": 1,
+                      "maximum": 5,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "revocationTargetSeconds": {
+                      "default": 5,
+                      "maximum": 60,
+                      "minimum": 5,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "concurrentLimit",
+                    "revocationTargetSeconds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current effective PC Web session policy."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The current workforce subject may not read login security policy."
+          },
+          "503": {
+            "description": "Authorization or configuration storage is unavailable."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.authentication.session-policy:read",
+          "owner": "platform.authentication",
+          "resource": "platform.authentication.session-policy",
+          "version": 1
+        }
+      },
+      "put": {
+        "operationId": "updatePcSessionPolicy",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "maxLength": 36,
+              "minLength": 36,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "concurrentLimit": {
+                    "default": 1,
+                    "maximum": 5,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "revocationTargetSeconds": {
+                    "default": 5,
+                    "maximum": 60,
+                    "minimum": 5,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "concurrentLimit",
+                  "revocationTargetSeconds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "concurrentLimit": {
+                      "default": 1,
+                      "maximum": 5,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "revocationTargetSeconds": {
+                      "default": 5,
+                      "maximum": 60,
+                      "minimum": 5,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "concurrentLimit",
+                    "revocationTargetSeconds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Newly effective PC Web session policy."
+          },
+          "400": {
+            "description": "The body or operation identifier is invalid."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "CSRF validation failed or the current subject may not manage login security policy."
+          },
+          "409": {
+            "description": "The operation identifier conflicts with an earlier operation."
+          },
+          "503": {
+            "description": "Authorization, audit, or configuration storage is unavailable."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-csrf": {
+          "originCheck": true,
+          "required": true
+        },
+        "x-ai-crm-idempotency": {
+          "header": "Idempotency-Key",
+          "required": true,
+          "semantics": "stable-operation"
+        },
+        "x-ai-crm-permission": {
+          "action": "manage",
+          "code": "platform.authentication.session-policy:manage",
+          "owner": "platform.authentication",
+          "resource": "platform.authentication.session-policy",
+          "version": 1
+        }
       }
     },
     "/files/download-grants": {
@@ -2292,6 +2487,917 @@
         ]
       }
     },
+    "/notification-templates": {
+      "get": {
+        "operationId": "listNotificationTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "currentVersion": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "definition": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "allowedVariables": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "description": {
+                                  "maxLength": 1000,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "example": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean",
+                                    "null"
+                                  ]
+                                },
+                                "key": {
+                                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "maxLength": 100,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maximumLength": {
+                                  "maximum": 8000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "ownerModule": {
+                                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                  "type": "string"
+                                },
+                                "privacy": {
+                                  "enum": [
+                                    "internal",
+                                    "personal"
+                                  ],
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "enum": [
+                                    "domain",
+                                    "notification.owner",
+                                    "notification.sender",
+                                    "notification.time"
+                                  ],
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "enum": [
+                                    "string",
+                                    "integer",
+                                    "number",
+                                    "boolean",
+                                    "date-time"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "label",
+                                "description",
+                                "ownerModule",
+                                "source",
+                                "privacy",
+                                "type",
+                                "example"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 100,
+                            "type": "array"
+                          },
+                          "definitionVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "notificationType": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "ownerModule": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "systemSenderName": {
+                            "maxLength": 100,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "variableCatalogVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "templateKey",
+                          "ownerModule",
+                          "notificationType",
+                          "definitionVersion",
+                          "allowedVariables",
+                          "variableCatalogVersion",
+                          "systemSenderName",
+                          "enabled"
+                        ],
+                        "type": "object"
+                      },
+                      "draft": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "bodyTemplate": {
+                            "maxLength": 8000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "revision": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "summaryTemplate": {
+                            "maxLength": 2000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "titleTemplate": {
+                            "maxLength": 512,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "templateKey",
+                          "revision",
+                          "titleTemplate",
+                          "summaryTemplate",
+                          "bodyTemplate",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "releases": {
+                        "items": {
+                          "additionalProperties": true,
+                          "properties": {
+                            "bodyFormat": {
+                              "const": "restricted-markdown"
+                            },
+                            "bodyTemplate": {
+                              "maxLength": 8000,
+                              "type": "string"
+                            },
+                            "contentDigest": {
+                              "pattern": "^[0-9a-f]{64}$",
+                              "type": "string"
+                            },
+                            "publishedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "summaryTemplate": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            },
+                            "templateKey": {
+                              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                              "type": "string"
+                            },
+                            "titleTemplate": {
+                              "maxLength": 512,
+                              "type": "string"
+                            },
+                            "version": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "templateKey",
+                            "version",
+                            "titleTemplate",
+                            "summaryTemplate",
+                            "bodyTemplate",
+                            "bodyFormat",
+                            "contentDigest",
+                            "publishedAt"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "definition",
+                      "releases"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Registered template definitions visible to an authorized administrator."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.notifications.template:read",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
+    "/notification-templates/{templateKey}": {
+      "get": {
+        "operationId": "getNotificationTemplateAdministration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateKey",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "currentVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "definition": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowedVariables": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "description": {
+                                "maxLength": 1000,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "example": {
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "boolean",
+                                  "null"
+                                ]
+                              },
+                              "key": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "label": {
+                                "maxLength": 100,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maximumLength": {
+                                "maximum": 8000,
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "ownerModule": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                                "type": "string"
+                              },
+                              "privacy": {
+                                "enum": [
+                                  "internal",
+                                  "personal"
+                                ],
+                                "type": "string"
+                              },
+                              "source": {
+                                "enum": [
+                                  "domain",
+                                  "notification.owner",
+                                  "notification.sender",
+                                  "notification.time"
+                                ],
+                                "type": "string"
+                              },
+                              "type": {
+                                "enum": [
+                                  "string",
+                                  "integer",
+                                  "number",
+                                  "boolean",
+                                  "date-time"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "key",
+                              "label",
+                              "description",
+                              "ownerModule",
+                              "source",
+                              "privacy",
+                              "type",
+                              "example"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 100,
+                          "type": "array"
+                        },
+                        "definitionVersion": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "notificationType": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "ownerModule": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "systemSenderName": {
+                          "maxLength": 100,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "templateKey": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "variableCatalogVersion": {
+                          "minimum": 1,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "templateKey",
+                        "ownerModule",
+                        "notificationType",
+                        "definitionVersion",
+                        "allowedVariables",
+                        "variableCatalogVersion",
+                        "systemSenderName",
+                        "enabled"
+                      ],
+                      "type": "object"
+                    },
+                    "draft": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "bodyTemplate": {
+                          "maxLength": 8000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "summaryTemplate": {
+                          "maxLength": 2000,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "templateKey": {
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                          "type": "string"
+                        },
+                        "titleTemplate": {
+                          "maxLength": 512,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "templateKey",
+                        "revision",
+                        "titleTemplate",
+                        "summaryTemplate",
+                        "bodyTemplate",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "releases": {
+                      "items": {
+                        "additionalProperties": true,
+                        "properties": {
+                          "bodyFormat": {
+                            "const": "restricted-markdown"
+                          },
+                          "bodyTemplate": {
+                            "maxLength": 8000,
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "pattern": "^[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "publishedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "summaryTemplate": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                            "type": "string"
+                          },
+                          "titleTemplate": {
+                            "maxLength": 512,
+                            "type": "string"
+                          },
+                          "version": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "templateKey",
+                          "version",
+                          "titleTemplate",
+                          "summaryTemplate",
+                          "bodyTemplate",
+                          "bodyFormat",
+                          "contentDigest",
+                          "publishedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "definition",
+                    "releases"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Definition, variable catalog, mutable draft, releases, and active version."
+          },
+          "401": {
+            "description": "No valid internal BFF session."
+          },
+          "403": {
+            "description": "Current server-side authorization denied."
+          },
+          "404": {
+            "description": "Template definition is not registered."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "read",
+          "code": "platform.notifications.template:read",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
+    "/notification-templates/{templateKey}/activate": {
+      "post": {
+        "description": "Activates an immutable release, including explicit rollback to a historical version, for future notifications only.",
+        "operationId": "activateNotificationTemplateRelease",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateKey",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "version"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Release activation recorded."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "activate",
+          "code": "platform.notifications.template:activate",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
+    "/notification-templates/{templateKey}/draft": {
+      "put": {
+        "operationId": "saveNotificationTemplateDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateKey",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bodyTemplate": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "summaryTemplate": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "titleTemplate": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "titleTemplate",
+                  "summaryTemplate",
+                  "bodyTemplate"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bodyTemplate": {
+                      "maxLength": 8000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "summaryTemplate": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "titleTemplate": {
+                      "maxLength": 512,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "templateKey",
+                    "revision",
+                    "titleTemplate",
+                    "summaryTemplate",
+                    "bodyTemplate",
+                    "updatedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Idempotent revision-protected draft result."
+          },
+          "409": {
+            "description": "Revision or idempotency operation conflicts with current state."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "manage",
+          "code": "platform.notifications.template:manage",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
+    "/notification-templates/{templateKey}/preview": {
+      "post": {
+        "description": "Preview inputs are validated and rendered in memory and are never persisted or included in telemetry or Audit content.",
+        "operationId": "previewNotificationTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateKey",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "bodyTemplate": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "exampleVariables": {
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    },
+                    "maxProperties": 100,
+                    "type": "object"
+                  },
+                  "summaryTemplate": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "titleTemplate": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "titleTemplate",
+                  "summaryTemplate",
+                  "bodyTemplate"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "body": {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    "summary": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "title": {
+                      "maxLength": 512,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "summary",
+                    "body"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Non-persistent rendered preview."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "manage",
+          "code": "platform.notifications.template:manage",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
+    "/notification-templates/{templateKey}/publish": {
+      "post": {
+        "operationId": "publishNotificationTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "templateKey",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "bodyFormat": {
+                      "const": "restricted-markdown"
+                    },
+                    "bodyTemplate": {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    "contentDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "publishedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "summaryTemplate": {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
+                      "type": "string"
+                    },
+                    "titleTemplate": {
+                      "maxLength": 512,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "templateKey",
+                    "version",
+                    "titleTemplate",
+                    "summaryTemplate",
+                    "bodyTemplate",
+                    "bodyFormat",
+                    "contentDigest",
+                    "publishedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "New immutable release atomically published and activated."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ],
+        "x-ai-crm-permission": {
+          "action": "publish",
+          "code": "platform.notifications.template:publish",
+          "owner": "platform.notifications",
+          "resource": "platform.notifications.template",
+          "version": 1
+        }
+      }
+    },
     "/notifications": {
       "get": {
         "operationId": "listNotifications",
@@ -2340,6 +3446,17 @@
                           },
                           "body": {
                             "maxLength": 8000,
+                            "type": "string"
+                          },
+                          "bodyFormat": {
+                            "enum": [
+                              "plain-text",
+                              "restricted-markdown"
+                            ],
+                            "type": "string"
+                          },
+                          "contentDigest": {
+                            "pattern": "^[0-9a-f]{64}$",
                             "type": "string"
                           },
                           "createdAt": {
@@ -2437,6 +3554,15 @@
                             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                             "type": "string"
                           },
+                          "stateVersion": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "summary": {
+                            "maxLength": 2000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
                           "templateKey": {
                             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                             "type": "string"
@@ -2461,7 +3587,10 @@
                           "templateVersion",
                           "notificationType",
                           "title",
+                          "summary",
                           "body",
+                          "bodyFormat",
+                          "stateVersion",
                           "sourceType",
                           "sourceId",
                           "deepLink",
@@ -2539,6 +3668,17 @@
                       "maxLength": 8000,
                       "type": "string"
                     },
+                    "bodyFormat": {
+                      "enum": [
+                        "plain-text",
+                        "restricted-markdown"
+                      ],
+                      "type": "string"
+                    },
+                    "contentDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
@@ -2634,6 +3774,15 @@
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
                     },
+                    "stateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "summary": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "templateKey": {
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
@@ -2658,7 +3807,10 @@
                     "templateVersion",
                     "notificationType",
                     "title",
+                    "summary",
                     "body",
+                    "bodyFormat",
+                    "stateVersion",
                     "sourceType",
                     "sourceId",
                     "deepLink",
@@ -2727,6 +3879,17 @@
                       "maxLength": 8000,
                       "type": "string"
                     },
+                    "bodyFormat": {
+                      "enum": [
+                        "plain-text",
+                        "restricted-markdown"
+                      ],
+                      "type": "string"
+                    },
+                    "contentDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
@@ -2822,6 +3985,15 @@
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
                     },
+                    "stateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "summary": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "templateKey": {
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
@@ -2846,7 +4018,10 @@
                     "templateVersion",
                     "notificationType",
                     "title",
+                    "summary",
                     "body",
+                    "bodyFormat",
+                    "stateVersion",
                     "sourceType",
                     "sourceId",
                     "deepLink",
@@ -2916,6 +4091,17 @@
                       "maxLength": 8000,
                       "type": "string"
                     },
+                    "bodyFormat": {
+                      "enum": [
+                        "plain-text",
+                        "restricted-markdown"
+                      ],
+                      "type": "string"
+                    },
+                    "contentDigest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
@@ -3011,6 +4197,15 @@
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
                     },
+                    "stateVersion": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "summary": {
+                      "maxLength": 2000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "templateKey": {
                       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$",
                       "type": "string"
@@ -3035,7 +4230,10 @@
                     "templateVersion",
                     "notificationType",
                     "title",
+                    "summary",
                     "body",
+                    "bodyFormat",
+                    "stateVersion",
                     "sourceType",
                     "sourceId",
                     "deepLink",
@@ -3676,7 +4874,7 @@
     },
     "/workbench/bootstrap": {
       "get": {
-        "description": "Resolves the current opaque BFF session, workforce context and authorized navigation without exposing provider tokens or requiring an Assignment.",
+        "description": "Resolves the current opaque BFF session, unique workforce context, authorized applications and navigation without exposing provider tokens. Concurrent active Assignments fail closed.",
         "operationId": "getWorkbenchBootstrap",
         "responses": {
           "200": {
@@ -3685,6 +4883,15 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "applicationIds": {
+                      "items": {
+                        "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
                     "collections": {
                       "additionalProperties": true,
                       "description": "Initial browser collection summaries; entries may be empty when no feature is authorized.",
@@ -3764,6 +4971,10 @@
                       "maxItems": 128,
                       "type": "array",
                       "uniqueItems": true
+                    },
+                    "workspaceProfileId": {
+                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -4583,7 +5794,7 @@
     },
     "/workforce-administration/commands": {
       "post": {
-        "description": "Executes one reviewed account, department, position or fixed CRM administrator command. Password values are forbidden; credential operations return a Keycloak-hosted ceremony URL.",
+        "description": "Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password that is forwarded to Keycloak and never persisted by CRM; recovery operations may still return a Keycloak-hosted ceremony URL.",
         "operationId": "executeWorkforceAdministrationCommand",
         "parameters": [
           {
@@ -4610,7 +5821,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "description": "Discriminated command. Each kind has an exact server-side shape; password, token and arbitrary attributes are rejected.",
+                "description": "Discriminated command. Each kind has an exact server-side shape; passwords are accepted only by create_account and reset_password, while tokens and arbitrary attributes are rejected.",
                 "discriminator": {
                   "propertyName": "kind"
                 },
@@ -4621,6 +5832,15 @@
                       "departmentId": {
                         "format": "uuid",
                         "type": "string"
+                      },
+                      "initialPassword": {
+                        "description": "Forwarded to Keycloak over the server-side administration boundary and never stored by CRM. Only printable half-width ASCII characters are accepted.",
+                        "format": "password",
+                        "maxLength": 64,
+                        "minLength": 8,
+                        "pattern": "^[\\x20-\\x7E]{8,64}$",
+                        "type": "string",
+                        "writeOnly": true
                       },
                       "kind": {
                         "const": "create_account"
@@ -4648,6 +5868,7 @@
                     "required": [
                       "kind",
                       "departmentId",
+                      "initialPassword",
                       "legalName",
                       "positionId",
                       "username"
@@ -4810,12 +6031,22 @@
                       },
                       "kind": {
                         "const": "reset_password"
+                      },
+                      "password": {
+                        "description": "Replaces the Keycloak password; CRM never persists or returns the value. Only printable half-width ASCII characters are accepted.",
+                        "format": "password",
+                        "maxLength": 64,
+                        "minLength": 8,
+                        "pattern": "^[\\x20-\\x7E]{8,64}$",
+                        "type": "string",
+                        "writeOnly": true
                       }
                     },
                     "required": [
                       "kind",
                       "accountId",
-                      "expectedRevision"
+                      "expectedRevision",
+                      "password"
                     ],
                     "type": "object"
                   },
@@ -5170,7 +6401,26 @@
             "description": "Durable command result or replay."
           },
           "400": {
-            "description": "Invalid command shape."
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "workforce_administration_request_invalid",
+                        "workforce_password_policy_violation"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid command shape or password-policy violation."
           },
           "401": {
             "description": "No valid BFF session."

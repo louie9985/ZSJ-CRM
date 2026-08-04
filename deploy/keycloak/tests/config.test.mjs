@@ -19,6 +19,26 @@ const ceremonyErrorPage = await readFile(
   new URL("../theme/src/login/CredentialCeremonyError.tsx", import.meta.url),
   "utf8",
 );
+const updatePasswordPage = await readFile(
+  new URL("../theme/src/login/UpdatePassword.tsx", import.meta.url),
+  "utf8",
+);
+const themeTranslations = await readFile(
+  new URL("../theme/src/login/i18n.ts", import.meta.url),
+  "utf8",
+);
+const workforcePage = await readFile(
+  new URL("../../../apps/workbench-web/src/workforce-administration-page.tsx", import.meta.url),
+  "utf8",
+);
+const workforceHttp = await readFile(
+  new URL("../../../apps/api/src/platform-http/workforce-administration-http.ts", import.meta.url),
+  "utf8",
+);
+const localBootstrapAdapter = await readFile(
+  new URL("../../../scripts/bootstrap/zsj-crm-local-adapter.mjs", import.meta.url),
+  "utf8",
+);
 const themeContext = await readFile(
   new URL("../theme/src/login/KcContext.ts", import.meta.url),
   "utf8",
@@ -63,6 +83,23 @@ test("realm locks after five failures for a fifteen minute window", () => {
   assert.equal(realm.failureFactor, 5);
   assert.equal(realm.waitIncrementSeconds, 900);
   assert.equal(realm.maxFailureWaitSeconds, 900);
+});
+
+test("every password-setting UI states and enforces the configured Realm policy", () => {
+  assert.equal(realm.passwordPolicy, "length(8) and regexPattern(^[\\x20-\\x7E]{8,64}$)");
+  const policyCopy = "密码要求：8-64 位，仅可使用半角英文字母、数字、空格和英文符号，不支持中文或全角字符。";
+  assert.match(themeTranslations, new RegExp(policyCopy.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  assert.match(workforcePage, new RegExp(policyCopy.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  for (const page of [updatePasswordPage, ceremonyPage]) {
+    assert.match(page, /passwordPolicyDescription/u);
+    assert.match(page, /minLength=\{8\}/u);
+    assert.match(page, /maxLength=\{64\}/u);
+    assert.match(page, /pattern="\[\\x20-\\x7E\]\{8,64\}"/u);
+  }
+  assert.match(ceremonyProvider, /value\.length\(\) < 8 \|\| value\.length\(\) > 64/u);
+  assert.match(workforceHttp, /\^\[\\x20-\\x7E\]\{8,64\}\$/u);
+  assert.match(localBootstrapAdapter, /ensureRealmPasswordPolicy/u);
+  assert.match(localBootstrapAdapter, /JSON\.stringify\(\{ passwordPolicy \}\)/u);
 });
 
 test("realm contains only purpose-specific least-privilege technical users and no literal client Secret", () => {

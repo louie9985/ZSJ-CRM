@@ -36,7 +36,9 @@ posted directly to Keycloak and are never received by the API or Workbench.
 
 Both the password form and invalid/expired state are rendered by the `zsj-crm`
 Keycloakify theme through `LoginFormsProvider`; the provider contains no HTML
-or CSS. The failure page exposes no account, operator, operation, or ceremony
+or CSS. The credential ceremony and required-action password pages always
+state the complete 8-64 printable half-width ASCII rule before submission and
+repeat actionable guidance after validation failure. The failure page exposes no account, operator, operation, or ceremony
 metadata. On success Keycloak stores a temporary credential, enables the
 target, revokes its sessions, consumes the ceremony metadata, and redirects to
 the configured local Workbench callback.
@@ -55,8 +57,10 @@ mvn -f deploy/keycloak/providers/pom.xml verify
 docker compose -f deploy/compose/compose.base.yml -f deploy/compose/compose.dev.yml build keycloak
 ```
 
-Realm import only bootstraps an absent local/test Realm. Existing realms are
-not mutated on restart. Keycloak 26 does not accept user-profile configuration
-inside a Realm import, so the local Bootstrap applies `user-profile-dev.json`
-idempotently through `PUT /admin/realms/ai-crm-dev/users/profile` after import.
-Use the same reviewed Admin API operation for later changes.
+Realm import only bootstraps an absent local/test Realm and does not mutate an
+existing Realm on restart. The local Bootstrap therefore reads the existing
+Realm and idempotently reconciles only `passwordPolicy` with `realm-dev.json`
+through the Admin API. Keycloak 26 does not accept user-profile configuration
+inside a Realm import, so the same Bootstrap applies `user-profile-dev.json`
+idempotently through `PUT /admin/realms/ai-crm-dev/users/profile`. These local
+operations do not authorize automatic production Realm changes.

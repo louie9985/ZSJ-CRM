@@ -1,4 +1,4 @@
-import { ConfigProvider, Typography } from "antd";
+import { App, ConfigProvider, Typography } from "antd";
 import type { ReactNode } from "react";
 
 export function AuthShell(props: { title: string; children: ReactNode }) {
@@ -13,15 +13,17 @@ export function AuthShell(props: { title: string; children: ReactNode }) {
                 }
             }}
         >
-            <main className="auth-page">
-                <section className="auth-panel" aria-labelledby="auth-title">
-                    <Typography.Text className="auth-brand">ZSJ CRM</Typography.Text>
-                    <Typography.Title id="auth-title" level={2} className="auth-title">
-                        {props.title}
-                    </Typography.Title>
-                    {props.children}
-                </section>
-            </main>
+            <App>
+                <main className="auth-page">
+                    <section className="auth-panel" aria-labelledby="auth-title">
+                        <Typography.Text className="auth-brand">ZSJ CRM</Typography.Text>
+                        <Typography.Title id="auth-title" level={2} className="auth-title">
+                            {props.title}
+                        </Typography.Title>
+                        {props.children}
+                    </section>
+                </main>
+            </App>
         </ConfigProvider>
     );
 }

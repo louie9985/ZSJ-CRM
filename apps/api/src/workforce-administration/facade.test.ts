@@ -45,14 +45,19 @@ function fixture() {
     credentialCeremonies: { complete: vi.fn(() => Promise.resolve()), start: vi.fn(() => Promise.resolve({ redirectUrl: "/auth/pc/credential-ceremony" })) },
     crmAdministratorDepartmentId: ids.department,
     grants: {
+      backfillApplicationGrants: vi.fn(() => Promise.resolve({ grantedAccountIds: [] })),
+      hasApplicationGrant: vi.fn(() => Promise.resolve(true)),
       hasGrant: vi.fn(() => Promise.resolve(false)),
       isSuperAdministrator: vi.fn((workforcePersonId: string) => Promise.resolve(workforcePersonId === ids.actorPerson)),
+      moveApplicationGrant: vi.fn(() => Promise.resolve()),
+      setApplicationGrant: vi.fn(() => Promise.resolve()),
       setGrant: vi.fn(() => Promise.resolve()),
     },
     identity: {
       createDisabledAccount: vi.fn(() => Promise.resolve({ keycloakUserId: "30000000-0000-4000-8000-000000000001" })),
       disableAccount: vi.fn(() => Promise.resolve()),
       revokeSessions: vi.fn(() => Promise.resolve()),
+      setPasswordAndEnable: vi.fn(() => Promise.resolve()),
       synchronizeLoginIdentifiers: vi.fn(() => Promise.resolve()),
     },
     operations: { async execute<T>(_input: Readonly<{ fingerprint: string; operationId: string; traceId: string }>, work: () => Promise<Readonly<T>>) { return { replayed: false, value: await work() }; } },
@@ -84,15 +89,28 @@ function fixture() {
 const input = <Command>(command: Command) => Object.freeze({ command, credential: "c".repeat(43), operationId: ids.operation, traceId });
 
 describe("workforce administration application facade", () => {
-  it("creates one workforce account with stable derived IDs and no password boundary", async () => {
+  it("creates one workforce account, sets its initial password directly, and activates it", async () => {
     const { dependencies, facade } = fixture();
-    const command = { departmentId: ids.department, kind: "create_account" as const, legalName: "测试员工", phone: "+8613800000000", positionId: ids.position, username: "employee.one" };
-    await expect(facade.execute(input(command))).resolves.toEqual({ credentialRedirectUrl: "/auth/pc/credential-ceremony", replayed: false });
+    const command = { departmentId: ids.department, initialPassword: "Synthetic-password-1!", kind: "create_account" as const, legalName: "测试员工", phone: "+8613800000000", positionId: ids.position, username: "employee.one" };
+    await expect(facade.execute(input(command))).resolves.toEqual({ replayed: false });
     expect(dependencies.authorization.requireAllowed).toHaveBeenCalledWith(subject, { action: "manage", resource: "platform.workforce-access.console" });
     expect(dependencies.organization.createWorkforcePerson).toHaveBeenCalledWith(expect.objectContaining({ operationId: deriveAdministrationOperationId(ids.operation, "create-person"), workforcePersonId: deriveAdministrationOperationId(ids.operation, "workforce-person") }));
     expect(JSON.stringify(vi.mocked(dependencies.accounts.createAccount).mock.calls)).not.toMatch(/password|token/iu);
     expect(dependencies.identity.createDisabledAccount).toHaveBeenCalledWith(expect.objectContaining({ accountId: deriveAdministrationOperationId(ids.operation, "account") }));
+    expect(dependencies.grants.setApplicationGrant).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: deriveAdministrationOperationId(ids.operation, "assignment"), enabled: true }));
+    expect(dependencies.identity.setPasswordAndEnable).toHaveBeenCalledWith(expect.objectContaining({ password: "Synthetic-password-1!" }));
+    expect(vi.mocked(dependencies.grants.setApplicationGrant).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(dependencies.identity.setPasswordAndEnable).mock.invocationCallOrder[0] ?? 0);
+    expect(dependencies.accounts.setStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "active" }));
     expect(dependencies.audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: "create_account", operationId: deriveAdministrationOperationId(ids.operation, "audit"), targetId: deriveAdministrationOperationId(ids.operation, "account") }));
+  });
+
+  it("keeps a newly created identity disabled when the base Grant publication fails", async () => {
+    const { dependencies, facade } = fixture();
+    vi.mocked(dependencies.grants.setApplicationGrant).mockRejectedValue(new Error("authorization_publication_conflict"));
+    await expect(facade.execute(input({ departmentId: ids.department, initialPassword: "Synthetic-password-1!", kind: "create_account" as const, legalName: "测试员工", positionId: ids.position, username: "employee.one" }))).rejects.toEqual(new WorkforceAdministrationFacadeError("unavailable"));
+    expect(dependencies.identity.createDisabledAccount).toHaveBeenCalled();
+    expect(dependencies.identity.setPasswordAndEnable).not.toHaveBeenCalled();
+    expect(dependencies.accounts.setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ status: "active" }));
   });
 
   it("updates identifiers/profile and submits one durable identity-sync operation that also revokes sessions", async () => {
@@ -102,6 +120,7 @@ describe("workforce administration application facade", () => {
     await facade.execute(input({ accountId: ids.account, departmentId: newDepartment, expectedRevision: 2, kind: "update_account" as const, legalName: "新姓名", phone: "+8613900000000", positionId: newPosition, username: "employee.two" }));
     expect(dependencies.organization.closeAssignment).toHaveBeenCalledWith(expect.objectContaining({ factId: ids.assignment }));
     expect(dependencies.organization.createAssignment).toHaveBeenCalledWith(expect.objectContaining({ organizationUnitId: newDepartment, positionId: newPosition }));
+    expect(dependencies.grants.moveApplicationGrant).toHaveBeenCalledWith(expect.objectContaining({ closeAssignmentIds: [ids.assignment] }));
     expect(dependencies.identity.synchronizeLoginIdentifiers).toHaveBeenCalledWith(expect.objectContaining({ username: "employee.two" }));
     expect(dependencies.identity.revokeSessions).not.toHaveBeenCalled();
     expect(dependencies.accounts.beginIdentitySync).toHaveBeenCalledOnce();
@@ -163,18 +182,21 @@ describe("workforce administration application facade", () => {
     await facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "deactivate_account" as const }));
     expect(dependencies.accounts.setStatus).toHaveBeenCalledWith(expect.objectContaining({ status: "disabled" }));
     expect(dependencies.organization.closeEmployment).toHaveBeenCalledWith(expect.objectContaining({ factId: ids.employment }));
+    expect(dependencies.grants.setApplicationGrant).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: ids.assignment, enabled: false }));
     expect(dependencies.identity.disableAccount).toHaveBeenCalled();
 
     await facade.execute(input({ accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "reactivate_account" as const, positionId: ids.position }));
     expect(dependencies.recovery.restore).toHaveBeenCalledWith(expect.objectContaining({ departmentId: ids.department, positionId: ids.position, workforcePersonId: ids.person }));
+    expect(dependencies.grants.setApplicationGrant).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
     expect(dependencies.credentialCeremonies.start).toHaveBeenCalledWith(expect.objectContaining({ kind: "recover" }));
   });
 
-  it("starts reset ceremony without accepting or producing a password", async () => {
+  it("resets to the supplied password and revokes existing sessions", async () => {
     const { dependencies, facade } = fixture();
-    await expect(facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const }))).resolves.toMatchObject({ credentialRedirectUrl: "/auth/pc/credential-ceremony" });
+    await expect(facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const, password: "Replacement-password-2!" }))).resolves.toEqual({ replayed: false });
+    expect(dependencies.identity.setPasswordAndEnable).toHaveBeenCalledWith(expect.objectContaining({ password: "Replacement-password-2!" }));
     expect(dependencies.identity.revokeSessions).toHaveBeenCalled();
-    expect(dependencies.credentialCeremonies.start).toHaveBeenCalledWith(expect.objectContaining({ kind: "reset" }));
+    expect(dependencies.credentialCeremonies.start).not.toHaveBeenCalled();
   });
 
   it("releases only an unreleased historical phone after revision and target authorization checks", async () => {
@@ -264,7 +286,10 @@ describe("workforce administration application facade", () => {
     await expect(denied.facade.load({ credential: "c".repeat(43), traceId })).rejects.toEqual(new WorkforceAdministrationFacadeError("forbidden"));
     const conflict = fixture();
     vi.mocked(conflict.dependencies.accounts.getAccount).mockRejectedValue(Object.assign(new Error("private"), { code: "revision_conflict" }));
-    await expect(conflict.facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const }))).rejects.toEqual(new WorkforceAdministrationFacadeError("conflict"));
+    await expect(conflict.facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const, password: "Replacement-password-2!" }))).rejects.toEqual(new WorkforceAdministrationFacadeError("conflict"));
+    const policy = fixture();
+    vi.mocked(policy.dependencies.identity.setPasswordAndEnable).mockRejectedValue(Object.assign(new Error("private"), { code: "password_policy_violation" }));
+    await expect(policy.facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const, password: "Replacement-password-2!" }))).rejects.toEqual(new WorkforceAdministrationFacadeError("password_policy_violation"));
     const unavailable = fixture();
     vi.mocked(unavailable.dependencies.principals.resolve).mockRejectedValue(new Error("token and database details"));
     await expect(unavailable.facade.load({ credential: "c".repeat(43), traceId })).rejects.toEqual(new WorkforceAdministrationFacadeError("unavailable"));
@@ -276,7 +301,7 @@ describe("workforce administration application facade", () => {
       void metadata; void work;
       return Promise.resolve({ replayed: true, value: Object.freeze({}) as Readonly<T> });
     };
-    await expect(facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const }))).resolves.toEqual({ replayed: true });
+    await expect(facade.execute(input({ accountId: ids.account, expectedRevision: 2, kind: "reset_password" as const, password: "Replacement-password-2!" }))).resolves.toEqual({ replayed: true });
     expect(dependencies.credentialCeremonies.start).not.toHaveBeenCalled();
   });
 });

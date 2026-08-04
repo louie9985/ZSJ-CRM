@@ -5,12 +5,14 @@ describe("same-site workbench port", () => {
   it("parses an Assignment-free system administrator bootstrap", async () => {
     const fetchPort = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       kind: "ready", fixture: false,
+      applicationIds: ["crm"],
       context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员", sessionScope: "opaque-session-scope" },
       counts: { files: 0, forms: 0, notifications: 0, tasks: 0 }, collections: {},
       navigationIds: ["crm.workforce-administration"],
+      workspaceProfileId: "crm.workspace.unconfigured",
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
     const result = await createSameSiteWorkbenchPort(fetchPort).bootstrap();
-    expect(result).toMatchObject({ kind: "ready", context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员" }, navigationIds: ["crm.workforce-administration"] });
+    expect(result).toMatchObject({ kind: "ready", applicationIds: ["crm"], context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员" }, navigationIds: ["crm.workforce-administration"], workspaceProfileId: "crm.workspace.unconfigured" });
     if (result.kind !== "ready") throw new Error("ready_expected");
     expect(result.context.assignmentReference).toBeUndefined();
   });

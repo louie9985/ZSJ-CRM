@@ -13,7 +13,7 @@ function traceparent(traceId: string, operationId: string): string {
 
 export function createDurableIdentityAdministrationPort(input: Readonly<{
   clock?: () => Date;
-  direct: Pick<IdentityAdministrationPort, "createDisabledAccount">;
+  direct: Pick<IdentityAdministrationPort, "createDisabledAccount" | "setPasswordAndEnable">;
   eventing: Pick<EventingCore, "submitJob">;
 }>): Readonly<IdentityAdministrationPort> {
   const clock = input.clock ?? (() => new Date());
@@ -48,6 +48,7 @@ export function createDurableIdentityAdministrationPort(input: Readonly<{
     createDisabledAccount: (command: Parameters<IdentityAdministrationPort["createDisabledAccount"]>[0]) => input.direct.createDisabledAccount(command),
     disableAccount: (command: Parameters<IdentityAdministrationPort["disableAccount"]>[0]) => submit("disable", command),
     revokeSessions: (command: Parameters<IdentityAdministrationPort["revokeSessions"]>[0]) => submit("revoke_sessions", command),
+    setPasswordAndEnable: (command: Parameters<IdentityAdministrationPort["setPasswordAndEnable"]>[0]) => input.direct.setPasswordAndEnable(command),
     synchronizeLoginIdentifiers: (command: Parameters<IdentityAdministrationPort["synchronizeLoginIdentifiers"]>[0]) => submit("synchronize_login_identifiers", command),
   });
 }

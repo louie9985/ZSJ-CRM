@@ -27,6 +27,8 @@ export interface PcBffConfiguration {
   readonly sessionEncryptionKey: Readonly<KeyEncryptionKey>;
   readonly sessionIdleTtlSeconds: number;
   readonly sessionIndexingKey: Uint8Array;
+  readonly sessionConcurrentLimit: number;
+  readonly sessionRevocationTargetSeconds: number;
 }
 
 const pcBffSchema = {
@@ -74,6 +76,8 @@ const pcBffSchema = {
     minimum: 60,
   }),
   sessionIndexingKey: configuration.secretFile("AI_CRM_PC_SESSION_INDEX_KEY_FILE"),
+  sessionConcurrentLimit: configuration.integer("AI_CRM_PC_SESSION_CONCURRENT_LIMIT", { default: 1, maximum: 5, minimum: 1 }),
+  sessionRevocationTargetSeconds: configuration.integer("AI_CRM_PC_SESSION_REVOCATION_TARGET_SECONDS", { default: 5, maximum: 60, minimum: 5 }),
 } as const;
 
 function secureWebUrl(value: string, name: string): void {
@@ -159,5 +163,7 @@ export async function loadPcBffConfiguration(
     sessionEncryptionKey: currentKey,
     sessionIdleTtlSeconds: raw.sessionIdleTtlSeconds,
     sessionIndexingKey: indexingKey,
+    sessionConcurrentLimit: raw.sessionConcurrentLimit,
+    sessionRevocationTargetSeconds: raw.sessionRevocationTargetSeconds,
   });
 }

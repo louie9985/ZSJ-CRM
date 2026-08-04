@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/check-bundle.mjs",
@@ -21,6 +23,7 @@
     "antd": "6.5.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-markdown": "10.1.0",
     "react-router-dom": "7.9.5"
   },
   "devDependencies": {

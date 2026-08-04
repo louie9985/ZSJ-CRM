@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-crm.local/contracts/notifications/v1/template-definition.schema.json",
+  "title": "Notification Template Definition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["templateKey","ownerModule","notificationType","definitionVersion","allowedVariables","variableCatalogVersion","systemSenderName","enabled"],
+  "properties": {
+    "templateKey": { "$ref": "#/$defs/stableId" },
+    "ownerModule": { "$ref": "#/$defs/stableId" },
+    "notificationType": { "$ref": "#/$defs/stableId" },
+    "definitionVersion": { "type": "integer", "minimum": 1 },
+    "variableCatalogVersion": { "type": "integer", "minimum": 1 },
+    "systemSenderName": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "enabled": { "type": "boolean" },
+    "allowedVariables": { "type": "array", "items": { "$ref": "#/$defs/variable" } }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$" },
+    "variable": { "type": "object", "additionalProperties": false, "required": ["key","label","description","ownerModule","privacy","source","type","example"], "properties": {
+      "key": { "$ref": "#/$defs/stableId" }, "label": { "type": "string", "minLength": 1, "maxLength": 100 }, "description": { "type": "string", "minLength": 1, "maxLength": 500 }, "ownerModule": { "$ref": "#/$defs/stableId" }, "privacy": { "enum": ["internal","personal"] }, "source": { "enum": ["domain","notification.owner","notification.sender","notification.time"] }, "type": { "enum": ["string","integer","number","boolean","date-time"] }, "maximumLength": { "type": "integer", "minimum": 1, "maximum": 8000 }, "example": { "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }, { "type": "null" }] }
+    } }
+  }
+}

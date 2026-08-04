@@ -72,6 +72,12 @@ describe.skipIf(!missingRoleUrlFile)("PostgreSQL runtime-role migration prerequi
       await expect(finalVerification.query(
         "select version from ai_crm_migrations.applied_migrations where version='0000000021'",
       )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000021" }] });
+      await expect(finalVerification.query(
+        "select version from ai_crm_migrations.applied_migrations where version='0000000022'",
+      )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000022" }] });
+      await expect(finalVerification.query(
+        "select version from ai_crm_migrations.applied_migrations where version='0000000025'",
+      )).resolves.toMatchObject({ rowCount: 1, rows: [{ version: "0000000025" }] });
     } finally {
       await finalVerification.end();
     }

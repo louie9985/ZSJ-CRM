@@ -77,7 +77,7 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
       );
 
       await expect(runtime.query("select version from ai_crm_migrations.applied_migrations order by version desc limit 1"))
-        .resolves.toMatchObject({ rows: [{ version: "0000000021" }] });
+        .resolves.toMatchObject({ rows: [{ version: "0000000026" }] });
       await expect(runtime.query(
         "select has_database_privilege(current_user,current_database(),'CONNECT') as connect,has_database_privilege(current_user,current_database(),'TEMP') as temporary,has_schema_privilege(current_user,'public','USAGE') as public_usage,has_function_privilege(current_user,'pg_catalog.hashtextextended(text,bigint)','EXECUTE') as hash_execute,has_function_privilege(current_user,'pg_catalog.pg_advisory_xact_lock(bigint)','EXECUTE') as lock_execute",
       )).resolves.toMatchObject({
@@ -108,6 +108,13 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         "file_center.files",
         "file_center.content_versions",
         "platform_notifications.in_app_notifications",
+        "platform_notifications.template_definitions",
+        "platform_notifications.template_drafts",
+        "platform_notifications.template_draft_operations",
+        "platform_notifications.template_releases",
+        "platform_notifications.template_activation_history",
+        "platform_notifications.current_template_release",
+        "platform_notifications.notification_intents",
         "platform_task_center.task_projections",
       ]) {
         await expect(runtime.query(`select * from ${relation} limit 0`)).resolves.toMatchObject({ rowCount: 0 });
@@ -123,11 +130,18 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         ["file_center.operation_receipts", ["SELECT", "INSERT", "UPDATE"]],
         ["file_center.resource_links", ["SELECT"]],
         ["file_center.outbox_events", ["INSERT"]],
-        ["platform_notifications.in_app_notifications", ["SELECT"]],
+        ["platform_notifications.in_app_notifications", ["SELECT", "INSERT", "UPDATE"]],
+        ["platform_notifications.template_definitions", ["SELECT", "INSERT"]],
+        ["platform_notifications.template_drafts", ["SELECT", "INSERT", "UPDATE"]],
+        ["platform_notifications.template_draft_operations", ["SELECT", "INSERT"]],
+        ["platform_notifications.template_releases", ["SELECT", "INSERT"]],
+        ["platform_notifications.template_activation_history", ["SELECT", "INSERT"]],
+        ["platform_notifications.current_template_release", ["SELECT", "INSERT", "UPDATE"]],
+        ["platform_notifications.notification_intents", ["SELECT", "INSERT"]],
         ["platform_task_center.task_projections", ["SELECT"]],
         ["workforce_access.accounts", ["SELECT", "INSERT", "UPDATE"]],
         ["workforce_access.login_identifier_history", ["SELECT", "INSERT", "UPDATE"]],
-        ["workforce_access.operations", ["SELECT", "INSERT"]],
+        ["workforce_access.operations", ["SELECT", "INSERT", "UPDATE"]],
         ["workforce_access.identity_sync_operations", ["SELECT", "INSERT", "UPDATE"]],
         ["organization.workforce_people", ["SELECT", "INSERT"]],
         ["organization.employments", ["SELECT", "INSERT", "UPDATE"]],
@@ -158,9 +172,8 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         ["file_center.files", "UPDATE"],
         ["file_center.resource_links", "INSERT"],
         ["file_center.outbox_events", "SELECT"],
-        ["platform_notifications.in_app_notifications", "INSERT"],
+        ["platform_notifications.in_app_notifications", "DELETE"],
         ["platform_task_center.task_projections", "UPDATE"],
-        ["workforce_access.operations", "UPDATE"],
         ["organization.workforce_people", "UPDATE"],
         ["organization.workforce_person_profile_history", "SELECT"],
         ["platform_eventing.outbox_messages", "SELECT"],
@@ -191,7 +204,7 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         ["ai_crm_migrations.applied_migrations", ["SELECT"]],
         ["platform_eventing.inbox_receipts", ["SELECT", "INSERT"]],
         ["platform_eventing.isolations", ["INSERT"]],
-        ["platform_eventing.outbox_messages", ["SELECT", "UPDATE"]],
+        ["platform_eventing.outbox_messages", ["SELECT", "INSERT", "UPDATE"]],
         ["platform_task_center.task_projections", ["SELECT", "INSERT", "UPDATE"]],
         ["platform_task_center.projection_events", ["SELECT", "INSERT"]],
       ] as const) {
@@ -205,7 +218,7 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
       for (const [relation, privilege] of [
         ["platform_eventing.inbox_receipts", "UPDATE"],
         ["platform_eventing.isolations", "SELECT"],
-        ["platform_eventing.outbox_messages", "INSERT"],
+        ["platform_eventing.outbox_messages", "DELETE"],
         ["platform_task_center.projection_events", "UPDATE"],
       ] as const) {
         await expect(worker.query(

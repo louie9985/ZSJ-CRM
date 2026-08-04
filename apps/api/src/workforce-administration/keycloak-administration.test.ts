@@ -63,6 +63,35 @@ describe("Keycloak workforce administration adapter", () => {
     expect(body).not.toContain("password");
   });
 
+  it("sets a non-temporary password directly and keeps Keycloak as the credential owner", async () => {
+    const fetchPort = vi.fn()
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(new Response(undefined, { status: 204 }))
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(Response.json({ attributes: { ai_crm_account_id: [accountId] }, enabled: false, id: userId, username: "employee.one" }))
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(new Response(undefined, { status: 204 }));
+    const ports = createKeycloakAdministrationPorts(options(fetchPort));
+    await ports.identity.setPasswordAndEnable({ accountId, keycloakUserId: userId, operationId, password: "Synthetic-password-1!", traceId: "1".repeat(32) });
+    const request = fetchPort.mock.calls[1]?.[1] as RequestInit | undefined;
+    expect(fetchPort.mock.calls[1]?.[0]).toContain(`/users/${userId}/reset-password`);
+    expect(request).toMatchObject({ method: "PUT" });
+    const body = request?.body;
+    expect(typeof body).toBe("string");
+    expect(JSON.parse(typeof body === "string" ? body : "{}")).toEqual({ temporary: false, type: "password", value: "Synthetic-password-1!" });
+    const enableRequest = fetchPort.mock.calls[5]?.[1] as RequestInit | undefined;
+    const enableBody = enableRequest?.body;
+    expect(typeof enableBody === "string" ? JSON.parse(enableBody) : {}).toMatchObject({ enabled: true });
+    expect(enableBody).not.toContain("Synthetic-password-1!");
+  });
+
+  it("maps a Keycloak password-policy rejection to a dedicated sanitized error", async () => {
+    const fetchPort = vi.fn().mockResolvedValueOnce(token()).mockResolvedValueOnce(new Response(undefined, { status: 400 }));
+    const ports = createKeycloakAdministrationPorts(options(fetchPort));
+    await expect(ports.identity.setPasswordAndEnable({ accountId, keycloakUserId: userId, operationId, password: "rejected", traceId: "1".repeat(32) }))
+      .rejects.toMatchObject({ code: "password_policy_violation", message: "keycloak_password_policy_violation" });
+  });
+
   it("fails closed when Keycloak token acquisition fails", async () => {
     const ports = createKeycloakAdministrationPorts(options(vi.fn().mockResolvedValue(new Response(undefined, { status: 503 }))));
     await expect(ports.identity.revokeSessions({ accountId, keycloakUserId: userId, operationId, traceId: "1".repeat(32) })).rejects.toThrow("keycloak_administration_unavailable");

@@ -62,9 +62,69 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Notification does not exist for the current principal. }
         "503": { $ref: "#/components/responses/Unavailable" }
+  /notification-templates:
+    get:
+      operationId: listNotificationTemplates
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:read, resource: platform.notifications.template, action: read }
+      responses:
+        "200": { description: Registered template definitions visible to an authorized administrator., content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/NotificationTemplateSummary" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /notification-templates/{templateKey}:
+    get:
+      operationId: getNotificationTemplateAdministration
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:read, resource: platform.notifications.template, action: read }
+      parameters: [{ $ref: "#/components/parameters/TemplateKey" }]
+      responses:
+        "200": { description: "Definition, variable catalog, mutable draft, releases, and active version.", content: { application/json: { schema: { $ref: "#/components/schemas/NotificationTemplateSummary" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Template definition is not registered. }
+  /notification-templates/{templateKey}/draft:
+    put:
+      operationId: saveNotificationTemplateDraft
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:manage, resource: platform.notifications.template, action: manage }
+      parameters: [{ $ref: "#/components/parameters/TemplateKey" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TemplateDraftWrite" } } } }
+      responses:
+        "200": { description: Idempotent revision-protected draft result., content: { application/json: { schema: { $ref: "#/components/schemas/TemplateDraft" } } } }
+        "409": { description: Revision or idempotency operation conflicts with current state. }
+  /notification-templates/{templateKey}/preview:
+    post:
+      operationId: previewNotificationTemplate
+      description: Preview inputs are validated and rendered in memory and are never persisted or included in telemetry or Audit content.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:manage, resource: platform.notifications.template, action: manage }
+      parameters: [{ $ref: "#/components/parameters/TemplateKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TemplatePreviewRequest" } } } }
+      responses:
+        "200": { description: Non-persistent rendered preview., content: { application/json: { schema: { $ref: "#/components/schemas/RenderedTemplate" } } } }
+  /notification-templates/{templateKey}/publish:
+    post:
+      operationId: publishNotificationTemplate
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:publish, resource: platform.notifications.template, action: publish }
+      parameters: [{ $ref: "#/components/parameters/TemplateKey" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      responses:
+        "201": { description: New immutable release atomically published and activated., content: { application/json: { schema: { $ref: "#/components/schemas/TemplateRelease" } } } }
+  /notification-templates/{templateKey}/activate:
+    post:
+      operationId: activateNotificationTemplateRelease
+      description: Activates an immutable release, including explicit rollback to a historical version, for future notifications only.
+      x-ai-crm-audiences: [internal]
+      x-ai-crm-permission: { version: 1, owner: platform.notifications, code: platform.notifications.template:activate, resource: platform.notifications.template, action: activate }
+      parameters: [{ $ref: "#/components/parameters/TemplateKey" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: false, required: [version], properties: { version: { type: integer, minimum: 1 } } } } } }
+      responses:
+        "200": { description: Release activation recorded. }
 components:
   parameters:
     NotificationId: { name: notificationId, in: path, required: true, schema: { type: string, format: uuid } }
+    TemplateKey: { name: templateKey, in: path, required: true, schema: { $ref: "#/components/schemas/StableId" } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { $ref: "#/components/schemas/StableId" } }
   responses:
     Unauthorized: { description: No valid internal BFF session. }
     Forbidden: { description: Current server-side authorization denied. }
@@ -84,7 +144,7 @@ components:
     InAppNotification:
       type: object
       additionalProperties: false
-      required: [notificationId,intentId,principalId,recipientReference,resolutionReference,resolutionVersion,templateKey,templateVersion,notificationType,title,body,sourceType,sourceId,deepLink,preferenceDecision,preferenceReason,preferenceVersion,createdAt]
+      required: [notificationId,intentId,principalId,recipientReference,resolutionReference,resolutionVersion,templateKey,templateVersion,notificationType,title,summary,body,bodyFormat,stateVersion,sourceType,sourceId,deepLink,preferenceDecision,preferenceReason,preferenceVersion,createdAt]
       properties:
         notificationId: { type: string, format: uuid }
         intentId: { type: string, format: uuid }
@@ -96,7 +156,11 @@ components:
         templateVersion: { type: integer, minimum: 1 }
         notificationType: { $ref: "#/components/schemas/StableId" }
         title: { type: string, maxLength: 512 }
+        summary: { type: string, minLength: 1, maxLength: 2000 }
         body: { type: string, maxLength: 8000 }
+        bodyFormat: { type: string, enum: [plain-text,restricted-markdown] }
+        contentDigest: { type: string, pattern: "^[0-9a-f]{64}$" }
+        stateVersion: { type: integer, minimum: 1 }
         sourceType: { $ref: "#/components/schemas/StableId" }
         sourceId: { $ref: "#/components/schemas/StableId" }
         deepLink: { $ref: "#/components/schemas/DeepLink" }
@@ -113,3 +177,86 @@ components:
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/InAppNotification" } }
         nextCursor: { type: string, maxLength: 128 }
+    TemplateVariable:
+      type: object
+      additionalProperties: false
+      required: [key,label,description,ownerModule,source,privacy,type,example]
+      properties:
+        key: { $ref: "#/components/schemas/StableId" }
+        label: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, minLength: 1, maxLength: 1000 }
+        ownerModule: { $ref: "#/components/schemas/StableId" }
+        source: { type: string, enum: [domain,notification.owner,notification.sender,notification.time] }
+        privacy: { type: string, enum: [internal,personal] }
+        type: { type: string, enum: [string,integer,number,boolean,date-time] }
+        example: { type: [string,number,boolean,"null"] }
+        maximumLength: { type: integer, minimum: 1, maximum: 8000 }
+    TemplateDefinition:
+      type: object
+      additionalProperties: false
+      required: [templateKey,ownerModule,notificationType,definitionVersion,allowedVariables,variableCatalogVersion,systemSenderName,enabled]
+      properties:
+        templateKey: { $ref: "#/components/schemas/StableId" }
+        ownerModule: { $ref: "#/components/schemas/StableId" }
+        notificationType: { $ref: "#/components/schemas/StableId" }
+        definitionVersion: { type: integer, minimum: 1 }
+        allowedVariables: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/TemplateVariable" } }
+        variableCatalogVersion: { type: integer, minimum: 1 }
+        systemSenderName: { type: string, minLength: 1, maxLength: 100 }
+        enabled: { type: boolean }
+    TemplateDraft:
+      type: object
+      additionalProperties: false
+      required: [templateKey,revision,titleTemplate,summaryTemplate,bodyTemplate,updatedAt]
+      properties:
+        templateKey: { $ref: "#/components/schemas/StableId" }
+        revision: { type: integer, minimum: 1 }
+        titleTemplate: { type: string, minLength: 1, maxLength: 512 }
+        summaryTemplate: { type: string, minLength: 1, maxLength: 2000 }
+        bodyTemplate: { type: string, minLength: 1, maxLength: 8000 }
+        updatedAt: { type: string, format: date-time }
+    TemplateDraftWrite:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision,titleTemplate,summaryTemplate,bodyTemplate]
+      properties:
+        expectedRevision: { type: integer, minimum: 0 }
+        titleTemplate: { type: string, minLength: 1, maxLength: 512 }
+        summaryTemplate: { type: string, minLength: 1, maxLength: 2000 }
+        bodyTemplate: { type: string, minLength: 1, maxLength: 8000 }
+    TemplatePreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [titleTemplate,summaryTemplate,bodyTemplate]
+      properties:
+        titleTemplate: { type: string, minLength: 1, maxLength: 512 }
+        summaryTemplate: { type: string, minLength: 1, maxLength: 2000 }
+        bodyTemplate: { type: string, minLength: 1, maxLength: 8000 }
+        exampleVariables: { type: object, maxProperties: 100, additionalProperties: { type: [string,number,boolean,"null"] } }
+    RenderedTemplate:
+      type: object
+      additionalProperties: false
+      required: [title,summary,body]
+      properties: { title: { type: string, maxLength: 512 }, summary: { type: string, maxLength: 2000 }, body: { type: string, maxLength: 8000 } }
+    TemplateRelease:
+      type: object
+      additionalProperties: true
+      required: [templateKey,version,titleTemplate,summaryTemplate,bodyTemplate,bodyFormat,contentDigest,publishedAt]
+      properties:
+        templateKey: { $ref: "#/components/schemas/StableId" }
+        version: { type: integer, minimum: 1 }
+        titleTemplate: { type: string, maxLength: 512 }
+        summaryTemplate: { type: string, maxLength: 2000 }
+        bodyTemplate: { type: string, maxLength: 8000 }
+        bodyFormat: { const: restricted-markdown }
+        contentDigest: { type: string, pattern: "^[0-9a-f]{64}$" }
+        publishedAt: { type: string, format: date-time }
+    NotificationTemplateSummary:
+      type: object
+      additionalProperties: false
+      required: [definition,releases]
+      properties:
+        definition: { $ref: "#/components/schemas/TemplateDefinition" }
+        draft: { $ref: "#/components/schemas/TemplateDraft" }
+        releases: { type: array, items: { $ref: "#/components/schemas/TemplateRelease" } }
+        currentVersion: { type: integer, minimum: 1 }

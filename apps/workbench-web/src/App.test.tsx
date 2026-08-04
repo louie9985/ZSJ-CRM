@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { App as AntdApp } from "antd";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, normalizeReturnTo, RouteErrorBoundary } from "./App";
+import { App, applicationsFor, normalizeReturnTo, RouteErrorBoundary } from "./App";
 import { pcLoginUrl } from "./auth-routes";
 import { developmentFixturePort } from "./development-fixture";
 import { WorkforceAdministrationPage } from "./workforce-administration-page";
@@ -69,7 +70,7 @@ function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "
     }),
     load,
   };
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><LocationProbe /><WorkforceAdministrationPage port={resolved} /></MemoryRouter></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><AntdApp><MemoryRouter initialEntries={[entry]}><LocationProbe /><WorkforceAdministrationPage port={resolved} /></MemoryRouter></AntdApp></QueryClientProvider>);
 }
 
 const longText = "synthetic-platform-reference-with-a-deliberately-long-unbroken-value-0123456789";
@@ -104,6 +105,7 @@ type ReadyBootstrap = Extract<BootstrapResult, { kind: "ready" }>;
 const longReady: ReadyBootstrap = {
   kind: "ready",
   fixture: true,
+  applicationIds: ["crm"],
   context: { displayName: longText, assignmentReference: longText },
   counts: { tasks: 1, notifications: 1, forms: 1, files: 1 },
   collections: Object.fromEntries(["tasks", "notifications", "forms", "files"].map((key) => [key, {
@@ -120,6 +122,11 @@ afterEach(() => {
 });
 
 describe("workbench shell", () => {
+  it("shows only authorized applications from the controlled client catalog", () => {
+    expect(applicationsFor(undefined)).toEqual([]);
+    expect(applicationsFor(["unknown.application"])).toEqual([]);
+    expect(applicationsFor(["crm", "unknown.application"]).map(({ id }) => id)).toEqual(["crm"]);
+  });
   it("uses the root route as an authenticated workbench entry", async () => {
     renderApp("/");
 
@@ -330,6 +337,18 @@ describe("workbench shell", () => {
     expect(beginLogin).not.toHaveBeenCalled();
   });
 
+  it("returns to the application selector without ending the current session", async () => {
+    const logout = vi.fn<WorkbenchPort["logout"]>();
+    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: () => Promise.resolve(longReady), logout }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "账号菜单" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "切换应用" }));
+
+    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/applications");
+    expect(logout).not.toHaveBeenCalled();
+  });
+
   it("uses the same guarded logout behavior on the application selector", async () => {
     let resolveLogout: ((value: { kind: "logged-out" }) => void) | undefined;
     const logout = vi.fn(() => new Promise<{ kind: "logged-out" }>((resolve) => { resolveLogout = resolve; }));
@@ -351,9 +370,8 @@ describe("workbench shell", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "退出当前会话" }));
 
     expect(await screen.findByText("退出未完成")).toBeInTheDocument();
-    expect(screen.getByText("当前会话仍保持登录。请重试退出操作。")).toBeInTheDocument();
+    expect(screen.getByText("当前会话仍保持登录，请重试。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "账号菜单" })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: "重试退出" })).toBeInTheDocument();
   });
 
   it("uses the confirmed Demo shell dimensions and work-first home structure", async () => {
@@ -396,6 +414,61 @@ describe("workbench shell", () => {
     fireEvent.click(screen.getByRole("tab", { name: "员工账号" }));
     expect(screen.getByTestId("location")).toHaveTextContent("/crm/workforce-administration");
   });
+
+  it("submits the administrator-entered replacement password from the CRM modal", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    renderWorkforceAdministration({
+      execute,
+      load: () => Promise.resolve({
+        accounts: [{
+          accountId: "10000000-0000-4000-8000-000000000001",
+          allowedActions: ["reset_password"],
+          crmAdministrator: false,
+          legalName: "测试员工",
+          releasablePhones: [],
+          revision: 7,
+          status: "active",
+          username: "employee.one",
+        }],
+        departments: [],
+        positions: [],
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重置密码" }));
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "Replacement-password-2!" } });
+    fireEvent.change(screen.getByLabelText("确认新密码"), { target: { value: "Replacement-password-2!" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, kind: "reset_password", password: "Replacement-password-2!" }); });
+  }, 20_000);
+
+  it("shows the exact password policy in the modal and in a top-level notification after a policy rejection", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockRejectedValue(new Error("workforce_password_policy_violation"));
+    renderWorkforceAdministration({
+      execute,
+      load: () => Promise.resolve({
+        accounts: [{
+          accountId: "10000000-0000-4000-8000-000000000001",
+          allowedActions: ["reset_password"],
+          crmAdministrator: false,
+          legalName: "测试员工",
+          releasablePhones: [],
+          revision: 7,
+          status: "active",
+          username: "employee.one",
+        }],
+        departments: [],
+        positions: [],
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重置密码" }));
+    expect(screen.getByText(/密码要求：8-64 位，仅可使用半角英文字母、数字、空格和英文符号/u)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "Replacement-password-2!" } });
+    fireEvent.change(screen.getByLabelText("确认新密码"), { target: { value: "Replacement-password-2!" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+    await waitFor(() => { expect(document.querySelector(".operation-notification .ant-notification-notice-description")).toHaveTextContent("密码不符合要求。请输入 8-64 位半角英文字母、数字、空格或英文符号。"); });
+  }, 20_000);
 
   it("requires explicit confirmation before releasing a historical phone", async () => {
     const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});

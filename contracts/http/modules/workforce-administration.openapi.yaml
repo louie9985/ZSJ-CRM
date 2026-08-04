@@ -1,5 +1,5 @@
 openapi: 3.1.0
-info: { title: AI-CRM Workforce Administration BFF API, version: 0.1.0 }
+info: { title: AI-CRM Workforce Administration BFF API, version: 0.2.0 }
 paths:
   /workforce-administration:
     get:
@@ -17,7 +17,7 @@ paths:
   /workforce-administration/commands:
     post:
       operationId: executeWorkforceAdministrationCommand
-      description: Executes one reviewed account, department, position or fixed CRM administrator command. Password values are forbidden; credential operations return a Keycloak-hosted ceremony URL.
+      description: Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password that is forwarded to Keycloak and never persisted by CRM; recovery operations may still return a Keycloak-hosted ceremony URL.
       x-ai-crm-audiences: [internal]
       x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:manage, resource: platform.workforce-access.console, action: manage }
       x-ai-crm-csrf: { mode: required, header: X-CSRF-Token }
@@ -30,7 +30,16 @@ paths:
         content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAdministrationCommand" } } }
       responses:
         "200": { description: Durable command result or replay., content: { application/json: { schema: { $ref: "#/components/schemas/WorkforceAdministrationCommandResult" } } } }
-        "400": { description: Invalid command shape. }
+        "400":
+          description: Invalid command shape or password-policy violation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [code]
+                properties:
+                  code: { enum: [workforce_administration_request_invalid,workforce_password_policy_violation] }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: "Revision, identifier, hierarchy, reference or idempotency conflict." }
@@ -135,7 +144,7 @@ components:
         pageSize: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, minimum: 0 }
     WorkforceAdministrationCommand:
-      description: Discriminated command. Each kind has an exact server-side shape; password, token and arbitrary attributes are rejected.
+      description: Discriminated command. Each kind has an exact server-side shape; passwords are accepted only by create_account and reset_password, while tokens and arbitrary attributes are rejected.
       oneOf:
         - { $ref: "#/components/schemas/CreateAccountCommand" }
         - { $ref: "#/components/schemas/UpdateAccountCommand" }
@@ -159,8 +168,8 @@ components:
     CreateAccountCommand:
       type: object
       additionalProperties: false
-      required: [kind,departmentId,legalName,positionId,username]
-      properties: { kind: { const: create_account }, departmentId: { $ref: "#/components/schemas/StableId" }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+      required: [kind,departmentId,initialPassword,legalName,positionId,username]
+      properties: { kind: { const: create_account }, departmentId: { $ref: "#/components/schemas/StableId" }, initialPassword: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Forwarded to Keycloak over the server-side administration boundary and never stored by CRM. Only printable half-width ASCII characters are accepted. }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
     UpdateAccountCommand:
       type: object
       additionalProperties: false
@@ -185,8 +194,8 @@ components:
     ResetPasswordCommand:
       type: object
       additionalProperties: false
-      required: [kind,accountId,expectedRevision]
-      properties: { kind: { const: reset_password }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+      required: [kind,accountId,expectedRevision,password]
+      properties: { kind: { const: reset_password }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, password: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Replaces the Keycloak password; CRM never persists or returns the value. Only printable half-width ASCII characters are accepted. } }
     CompleteCredentialCeremonyCommand:
       type: object
       additionalProperties: false

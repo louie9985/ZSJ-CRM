@@ -25,6 +25,23 @@ interface KeycloakUserRepresentation {
 const ID = /^[A-Za-z0-9_-]{1,128}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+function inputInvalid(): Error {
+  return Object.assign(new Error("keycloak_password_rejected"), { code: "input_invalid" });
+}
+
+function passwordPolicyViolation(): Error {
+  return Object.assign(new Error("keycloak_password_policy_violation"), { code: "password_policy_violation" });
+}
+
+function validPassword(value: string): boolean {
+  if (value.length < 8 || value.length > 64) return false;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint < 0x20 || codePoint > 0x7e) return false;
+  }
+  return true;
+}
+
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("keycloak_response_invalid");
   return value as Record<string, unknown>;
@@ -138,6 +155,18 @@ export function createKeycloakAdministrationPorts(options: KeycloakAdministratio
     async revokeSessions(input: Parameters<IdentityAdministrationPort["revokeSessions"]>[0]) {
       const response = await authorized(`/users/${encodeURIComponent(input.keycloakUserId)}/logout`, { method: "POST" });
       if (!response.ok && response.status !== 204) throw new Error("keycloak_administration_unavailable");
+    },
+    async setPasswordAndEnable(input: Parameters<IdentityAdministrationPort["setPasswordAndEnable"]>[0]) {
+      if (!ID.test(input.keycloakUserId)) throw inputInvalid();
+      if (!validPassword(input.password)) throw passwordPolicyViolation();
+      const response = await authorized(`/users/${encodeURIComponent(input.keycloakUserId)}/reset-password`, {
+        body: JSON.stringify({ temporary: false, type: "password", value: input.password }),
+        headers: { "Content-Type": "application/json" },
+        method: "PUT",
+      });
+      if (!response.ok) throw response.status === 400 ? passwordPolicyViolation() : new Error("keycloak_administration_unavailable");
+      const existing = await user(input.keycloakUserId);
+      if (existing.enabled !== true) await update(input.keycloakUserId, { ...existing, enabled: true });
     },
     async synchronizeLoginIdentifiers(input: Parameters<IdentityAdministrationPort["synchronizeLoginIdentifiers"]>[0]) {
       const existing = await user(input.keycloakUserId);

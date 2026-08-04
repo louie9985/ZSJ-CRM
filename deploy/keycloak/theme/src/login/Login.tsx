@@ -1,8 +1,9 @@
-import { Alert, Button, Form, Input } from "antd";
+import { Button, Form, Input } from "antd";
 import type { PageProps } from "keycloakify/login/pages/PageProps";
 import type { KcContext } from "./KcContext";
 import type { I18n } from "./i18n";
 import { AuthShell } from "./AuthShell";
+import { AuthNotification } from "./AuthNotification";
 
 export default function Login(props: PageProps<Extract<KcContext, { pageId: "login.ftl" }>, I18n>) {
     const { kcContext, i18n } = props;
@@ -12,12 +13,7 @@ export default function Login(props: PageProps<Extract<KcContext, { pageId: "log
     return (
         <AuthShell title="登录">
             {kcContext.message && kcContext.message.type !== "success" ? (
-                <Alert
-                    className="auth-alert"
-                    type="error"
-                    showIcon
-                    message="用户名/手机号或密码错误，请重新输入"
-                />
+                <AuthNotification notificationKey="login-error" title="登录未完成" description="用户名/手机号或密码错误，请重新输入。" />
             ) : null}
             <form action={kcContext.url.loginAction} method="post">
                 <Form component={false} layout="vertical">

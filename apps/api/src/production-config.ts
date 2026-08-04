@@ -57,6 +57,9 @@ const schema = {
   oidcClockToleranceSeconds: configuration.integer("AI_CRM_OIDC_CLOCK_TOLERANCE_SECONDS", {
     default: 30, maximum: 300, minimum: 1,
   }),
+  realtimeEnabled: configuration.boolean("AI_CRM_REALTIME_ENABLED", { default: false }),
+  realtimeMaximumConnectionsPerSession: configuration.integer("AI_CRM_REALTIME_MAX_CONNECTIONS_PER_SESSION", { default: 8, maximum: 32, minimum: 1 }),
+  realtimeRabbitUrl: configuration.optionalSecretFile("AI_CRM_REALTIME_RABBIT_URL_FILE"),
 } as const;
 
 export interface ProductionApiConfiguration {
@@ -104,6 +107,11 @@ export interface ProductionApiConfiguration {
     readonly jwksUri: string;
   }>;
   readonly pcBff: Readonly<PcBffConfiguration>;
+  readonly realtime: Readonly<{
+    readonly enabled: boolean;
+    readonly maximumConnectionsPerSession: number;
+    readonly rabbitUrl?: string;
+  }>;
 }
 
 const migrationDirectories = [
@@ -148,6 +156,11 @@ export async function loadProductionApiConfiguration(
   if (raw.fileStorageProvider === "cos" && raw.cosSecretId === raw.cosSecretKey) throw new Error("api_cos_credentials_not_separated");
   if (raw.keycloakAdministrationClientSecret === pcBff.keycloakClientSecret) throw new Error("api_keycloak_credentials_not_separated");
   if (raw.fileCenterMaximumScanBytes > raw.fileCenterMaximumUploadBytes) throw new Error("api_file_center_size_window_invalid");
+  if (raw.realtimeEnabled && raw.realtimeRabbitUrl === undefined) throw new Error("api_realtime_rabbit_configuration_required");
+  if (raw.realtimeRabbitUrl !== undefined) {
+    const rabbit = new URL(raw.realtimeRabbitUrl);
+    if (rabbit.protocol !== "amqps:") throw new Error("api_realtime_rabbit_tls_required");
+  }
   const storage: ProductionApiConfiguration["fileCenter"]["storage"] = raw.fileStorageProvider === "cos"
     ? (() => {
       if (raw.cosBucket === undefined || raw.cosRegion === undefined || raw.cosSecretId === undefined || raw.cosSecretKey === undefined) {
@@ -208,5 +221,6 @@ export async function loadProductionApiConfiguration(
       jwksUri: raw.jwksUri,
     }),
     pcBff,
+    realtime: Object.freeze({ enabled: raw.realtimeEnabled, maximumConnectionsPerSession: raw.realtimeMaximumConnectionsPerSession, ...(raw.realtimeRabbitUrl === undefined ? {} : { rabbitUrl: raw.realtimeRabbitUrl }) }),
   });
 }

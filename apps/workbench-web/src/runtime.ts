@@ -1,13 +1,36 @@
 import type { WorkbenchPort } from "./workbench-port";
 import { createSameSiteCollectionPollingPort } from "./same-site-collection-port";
 import { createSameSiteSyntheticFormEvidencePort } from "./same-site-synthetic-form-evidence-port";
-import { createSameSiteWorkforceAdministrationPort } from "./same-site-workforce-administration-port";
 import { createSameSiteWorkbenchPort } from "./same-site-workbench-port";
+import type { NotificationTemplatePort } from "./notification-template-port";
+import type { SessionPolicyPort } from "./session-policy-port";
+import type { WorkforceAdministrationPort } from "./workbench-port";
+
+const notificationTemplates: NotificationTemplatePort = {
+  activate: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().activate(...input),
+  get: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().get(...input),
+  list: async () => (await import("./notification-template-port")).createNotificationTemplatePort().list(),
+  preview: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().preview(...input),
+  publish: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().publish(...input),
+  save: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().save(...input),
+};
+const sessionPolicy: SessionPolicyPort = {
+  get: async () => (await import("./session-policy-port")).createSessionPolicyPort().get(),
+  update: async (...input) => (await import("./session-policy-port")).createSessionPolicyPort().update(...input),
+};
+const workforceAdministration: WorkforceAdministrationPort = {
+  beginSystemAccountReauthentication: async () => { await (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().beginSystemAccountReauthentication?.(); },
+  execute: async (...input) => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().execute(...input),
+  listAccounts: async (...input) => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().listAccounts(...input),
+  load: async () => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().load(),
+};
 
 const connectedPort: WorkbenchPort = {
   ...createSameSiteWorkbenchPort(),
   ...createSameSiteCollectionPollingPort(),
-  workforceAdministration: createSameSiteWorkforceAdministrationPort(),
+  notificationTemplates,
+  sessionPolicy,
+  workforceAdministration,
 };
 
 const unavailableProductionPort: WorkbenchPort = {
@@ -56,12 +79,19 @@ function e2ePort(): WorkbenchPort {
     : {};
   const fileReferenceJson = environment["VITE_AI_CRM_E2E_FILE_REFERENCE_JSON"];
   const traceparent = environment["VITE_AI_CRM_E2E_TRACEPARENT"];
+  const workspaceProfileId = environment["VITE_AI_CRM_E2E_WORKSPACE_PROFILE_ID"];
   const syntheticFormEvidence = createSameSiteSyntheticFormEvidencePort({
     ...(typeof fileReferenceJson === "string" ? { fileReferenceJson } : {}),
     ...(typeof traceparent === "string" ? { traceparent } : {}),
   });
   return {
     ...lazyDevelopmentPort,
+    bootstrap: async () => {
+      const result = await lazyDevelopmentPort.bootstrap();
+      return result.kind === "ready" && typeof workspaceProfileId === "string"
+        ? { ...result, workspaceProfileId }
+        : result;
+    },
     pollCollections: () => polling.pollCollections(),
     ...(syntheticFormEvidence === undefined ? {} : { syntheticFormEvidence }),
   };

@@ -40,6 +40,8 @@ Workflow remains uncomposed: the repository has no production durable Workflow c
 
 The reviewed PC BFF routes (`/auth/pc/login`, `/auth/pc/callback`, `/auth/pc/session`, `/auth/pc/refresh`, and `/auth/pc/logout`) delegate to the IAM-01 HTTP adapter. Cookie, Origin, Referer, and CSRF values are bounded and rejected when repeated before being passed to that adapter; their values are never logged.
 
+The callback resolves fallible session-policy dependencies before atomically consuming the one-time Redis login transaction or exchanging the Keycloak authorization code. A pre-consumption `503 authentication_dependency_unavailable` therefore leaves that callback retryable after the dependency recovers; operators may retry the same callback URL within the login-transaction and authorization-code lifetimes. Once consumption or code exchange starts, callback replay still fails closed as invalid and the user must begin a new login.
+
 PC logout sends the server-held Refresh Token directly to Keycloak's end-session endpoint before revoking the current local session, then clears the browser Cookie and redirects to the same-origin login entry. No Keycloak Token is exposed to browser code or URLs. If the identity provider is unavailable on the current-session path, logout fails closed and preserves the local session so the user can retry instead of reporting a false success.
 
 Database startup uses an application-owned bounded runtime and an explicit semantic `applicationSchemaVersion`; the schema version is not `AI_CRM_RELEASE`. The compatibility query is read-only and bounded by the PostgreSQL statement timeout. Startup never runs migrations or schema synchronization.

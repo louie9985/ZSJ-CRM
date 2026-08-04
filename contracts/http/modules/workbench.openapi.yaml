@@ -4,7 +4,7 @@ paths:
   /workbench/bootstrap:
     get:
       operationId: getWorkbenchBootstrap
-      description: Resolves the current opaque BFF session, workforce context and authorized navigation without exposing provider tokens or requiring an Assignment.
+      description: Resolves the current opaque BFF session, unique workforce context, authorized applications and navigation without exposing provider tokens. Concurrent active Assignments fail closed.
       x-ai-crm-audiences: [internal]
       x-ai-crm-permission: { version: 1, owner: platform.workbench, code: platform.workbench.shell:read, resource: platform.workbench.shell, action: read }
       x-ai-crm-csrf: { mode: not-required, reason: read-only }
@@ -23,6 +23,8 @@ components:
       properties:
         kind: { const: ready }
         fixture: { const: false }
+        applicationIds: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, pattern: "^[a-z][a-z0-9_.-]{0,127}$" } }
+        workspaceProfileId: { type: string, pattern: "^[a-z][a-z0-9_.-]{0,127}$" }
         context:
           type: object
           additionalProperties: false

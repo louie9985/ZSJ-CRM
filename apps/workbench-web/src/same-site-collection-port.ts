@@ -65,12 +65,26 @@ function notificationItem(value: unknown): PlatformItem {
   const sourceId = reference(notification["sourceId"], "workbench_notification_source_invalid");
   const archived = typeof notification["archivedAt"] === "string";
   const read = typeof notification["readAt"] === "string";
+  const summary = typeof notification["summary"] === "string" ? text(notification["summary"], "workbench_notification_summary_invalid", 2_000) : `来源 ${sourceType}:${sourceId}`;
+  const stateVersion = typeof notification["stateVersion"] === "number" ? positiveInteger(notification["stateVersion"], "workbench_notification_version_invalid") : 1;
+  const deepLinkValue = notification["deepLink"];
+  const deepLink = typeof deepLinkValue === "object" && deepLinkValue !== null && !Array.isArray(deepLinkValue) ? object(deepLinkValue, "workbench_notification_deep_link_invalid") : undefined;
   return {
     id: notificationId,
     status: archived ? "已归档" : read ? "已读" : "未读",
-    summary: `来源 ${sourceType}:${sourceId}`,
+    summary,
     tab: archived ? "history" : "active",
     title: text(notification["title"], "workbench_notification_title_invalid", 512),
+    stateVersion,
+    ...(typeof notification["body"] === "string" ? { bodyMarkdown: text(notification["body"], "workbench_notification_body_invalid", 8_000) } : {}),
+    ...(notification["bodyFormat"] === "plain-text" || notification["bodyFormat"] === "restricted-markdown" ? { bodyFormat: notification["bodyFormat"] } : {}),
+    ...(typeof notification["createdAt"] === "string" ? { createdAt: notification["createdAt"] } : {}),
+    ...(deepLink === undefined ? {} : { deepLink: {
+      applicationId: reference(deepLink["applicationId"], "workbench_notification_deep_link_invalid"),
+      routeId: reference(deepLink["routeId"], "workbench_notification_deep_link_invalid"),
+      resourceType: reference(deepLink["resourceType"], "workbench_notification_deep_link_invalid"),
+      resourceId: reference(deepLink["resourceId"], "workbench_notification_deep_link_invalid"),
+    } }),
   };
 }
 

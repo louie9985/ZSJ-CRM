@@ -33,9 +33,16 @@ function parseReady(value: unknown): Extract<BootstrapResult, { kind: "ready" }>
   if (!Array.isArray(navigationIds) || navigationIds.length > 128 || navigationIds.some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(item)) || new Set(navigationIds).size !== navigationIds.length) throw new Error("workbench_navigation_invalid");
   const safeNavigationIds: string[] = [];
   for (const item of navigationIds) if (typeof item === "string") safeNavigationIds.push(item);
+  const applicationIds = body["applicationIds"];
+  if (applicationIds !== undefined && (!Array.isArray(applicationIds) || applicationIds.length > 32 || applicationIds.some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(item)) || new Set(applicationIds).size !== applicationIds.length)) throw new Error("workbench_application_ids_invalid");
+  const safeApplicationIds: string[] = [];
+  if (Array.isArray(applicationIds)) for (const item of applicationIds) if (typeof item === "string") safeApplicationIds.push(item);
+  const workspaceProfileId = body["workspaceProfileId"];
+  if (workspaceProfileId !== undefined && (typeof workspaceProfileId !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(workspaceProfileId))) throw new Error("workbench_workspace_profile_invalid");
   const counts = record(body["counts"], "workbench_counts_invalid");
   return Object.freeze({
     kind: "ready",
+    ...(applicationIds === undefined ? {} : { applicationIds: Object.freeze(safeApplicationIds) }),
     fixture: false,
     context: Object.freeze({
       accountKind,
@@ -46,6 +53,7 @@ function parseReady(value: unknown): Extract<BootstrapResult, { kind: "ready" }>
     counts: Object.freeze({ files: count(counts["files"]), forms: count(counts["forms"]), notifications: count(counts["notifications"]), tasks: count(counts["tasks"]) }),
     collections: Object.freeze({ files: emptyCollection("文件"), forms: emptyCollection("表单"), notifications: emptyCollection("通知"), tasks: emptyCollection("任务") }),
     navigationIds: Object.freeze(safeNavigationIds),
+    ...(typeof workspaceProfileId === "string" ? { workspaceProfileId } : {}),
   });
 }
 

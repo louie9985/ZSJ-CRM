@@ -24,7 +24,21 @@ test("Workforce Administration commands are a closed discriminated union", () =>
     "reactivate_department", "reactivate_position", "release_phone", "reset_password", "retry_identity_sync",
     "set_crm_administrator", "update_account", "update_department", "update_position", "update_system_account",
   ]);
-  assert.equal(variants.every((variant) => variant.properties.password === undefined && variant.properties.token === undefined), true);
+  assert.equal(variants.every((variant) => variant.properties.token === undefined), true);
+  const create = variants.find((variant) => variant.properties.kind.const === "create_account");
+  const reset = variants.find((variant) => variant.properties.kind.const === "reset_password");
+  assert.equal(create.properties.initialPassword.writeOnly, true);
+  assert.equal(reset.properties.password.writeOnly, true);
+  for (const schema of [create.properties.initialPassword, reset.properties.password]) {
+    assert.equal(schema.minLength, 8);
+    assert.equal(schema.maxLength, 64);
+    assert.equal(schema.pattern, "^[\\x20-\\x7E]{8,64}$");
+  }
+  assert.deepEqual(
+    contract.paths["/workforce-administration/commands"].post.responses["400"].content["application/json"].schema.properties.code.enum,
+    ["workforce_administration_request_invalid", "workforce_password_policy_violation"],
+  );
+  assert.equal(variants.filter((variant) => variant.properties.initialPassword !== undefined || variant.properties.password !== undefined).length, 2);
   const systemUpdate = variants.find((variant) => variant.properties.kind.const === "update_system_account");
   assert.deepEqual(Object.keys(systemUpdate.properties).sort(), ["accountId", "expectedRevision", "kind", "legalName", "phone", "username"]);
   assert.deepEqual(systemUpdate.required.sort(), ["accountId", "expectedRevision", "kind", "legalName", "username"]);

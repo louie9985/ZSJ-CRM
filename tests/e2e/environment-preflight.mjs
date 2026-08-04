@@ -102,7 +102,10 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
   ]);
   if (!apiReadme.includes("Workflow remains uncomposed")) throw new Error("e2e_environment_preflight_workflow_boundary_changed");
   if (!apiComposition.includes("task_source_router_unavailable")) throw new Error("e2e_environment_preflight_task_boundary_changed");
-  if (!asyncApi.includes("taskProjectionLifecycleQueue") || /notification/i.test(asyncApi)) {
+  if (!asyncApi.includes("taskProjectionLifecycleQueue")
+    || !asyncApi.includes("realtimeNodeQueue")
+    || asyncApi.includes("notification-intent-submit")
+    || asyncApi.includes("walking-skeleton")) {
     throw new Error("e2e_environment_preflight_async_contract_changed");
   }
   if (!walkingSkeletonAsyncApi.includes("productionActivation: forbidden")

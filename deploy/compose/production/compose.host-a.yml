@@ -194,7 +194,9 @@ services:
       AI_CRM_PC_OIDC_TIMEOUT_SECONDS: ${AI_CRM_PC_OIDC_TIMEOUT_SECONDS:?required}
       AI_CRM_PC_REFRESH_LEASE_TTL_MS: ${AI_CRM_PC_REFRESH_LEASE_TTL_MS:?required}
       AI_CRM_REDIS_CONNECT_TIMEOUT_MS: ${AI_CRM_REDIS_CONNECT_TIMEOUT_MS:?required}
-    secrets: [api_postgres_url, api_cos_secret_id, api_cos_secret_key, pc_oidc_client_secret, redis_password, pc_session_encryption_key, pc_session_index_key]
+      AI_CRM_REALTIME_ENABLED: ${AI_CRM_REALTIME_ENABLED:?explicit realtime enablement is required}
+      AI_CRM_REALTIME_RABBIT_URL_FILE: /run/secrets/realtime_rabbit_url
+    secrets: [api_postgres_url, api_cos_secret_id, api_cos_secret_key, pc_oidc_client_secret, redis_password, pc_session_encryption_key, pc_session_index_key, realtime_rabbit_url]
     ports: ["${AI_CRM_PRIVATE_BIND_ADDRESS:?private bind address is required}:${AI_CRM_API_PORT_A:?host A API port is required}:3000"]
     networks: [app]
     healthcheck:
@@ -271,5 +273,6 @@ secrets:
   pc_oidc_client_secret: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/pc_oidc_client_secret" }
   pc_session_encryption_key: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/pc_session_encryption_key" }
   pc_session_index_key: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/pc_session_index_key" }
+  realtime_rabbit_url: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/realtime_rabbit_url" }
   tls_certificate: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/tls_certificate" }
   tls_private_key: { file: "${AI_CRM_SECRET_ROOT:?secret root is required}/tls_private_key" }

@@ -13,12 +13,17 @@ export interface StoredBrowserSession {
   readonly reauthenticatedUntilMs?: number;
   readonly revision: number;
   readonly tokens: Readonly<EncryptedSessionTokenSet>;
+  readonly clientType?: "pc-web";
+  readonly schemaVersion?: 2;
+  readonly subjectIndex?: string;
 }
 
 export interface BrowserSessionStore {
   acquireRefreshLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
   consumeLoginTransaction(stateIndex: string): Promise<Readonly<LoginTransaction> | undefined>;
   createSession(sessionIndex: string, session: StoredBrowserSession, ttlMs: number): Promise<void>;
+  createConcurrentSession?(sessionIndex: string, session: StoredBrowserSession, ttlMs: number, limit: number): Promise<readonly string[]>;
+  enforceConcurrentLimit?(limit: number): Promise<readonly string[]>;
   deleteSession(sessionIndex: string): Promise<Readonly<StoredBrowserSession> | undefined>;
   getSession(sessionIndex: string, idleTtlMs: number, nowMs: number): Promise<Readonly<StoredBrowserSession> | undefined>;
   revokeSession(sessionIndex: string, sessionId: string): Promise<Readonly<StoredBrowserSession> | undefined>;
@@ -63,6 +68,7 @@ const touchScript = [
   "if remaining <= 0 then",
   "  redis.call('DEL', KEYS[1])",
   "  if redis.call('GET', familyKey) == ARGV[3] then redis.call('DEL', familyKey) end",
+  "  if record.subjectIndex then redis.call('ZREM', 'ai-crm:auth:pc:subject:' .. record.subjectIndex, ARGV[3]) end",
   "  return false",
   "end",
   "local ttl = math.min(tonumber(ARGV[1]), remaining)",
@@ -79,12 +85,66 @@ const createScript = [
   "return 1",
 ].join("\n");
 
+const createConcurrentScript = [
+  "if redis.call('EXISTS', KEYS[1]) == 1 or redis.call('EXISTS', KEYS[2]) == 1 then return redis.error_reply('session_exists') end",
+  "local existing = redis.call('ZRANGE', KEYS[3], 0, -1)",
+  "for _, member in ipairs(existing) do",
+  "  if redis.call('EXISTS', 'ai-crm:auth:pc:session:' .. member) == 0 then redis.call('ZREM', KEYS[3], member) end",
+  "end",
+  "redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])",
+  "redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])",
+  "redis.call('ZADD', KEYS[3], ARGV[4], ARGV[2])",
+  "redis.call('SADD', KEYS[4], ARGV[6])",
+  "redis.call('PEXPIRE', KEYS[3], ARGV[3])",
+  "local revoked = {}",
+  "while redis.call('ZCARD', KEYS[3]) > tonumber(ARGV[5]) do",
+  "  local oldest = redis.call('ZPOPMIN', KEYS[3], 1)",
+  "  local oldIndex = oldest[1]",
+  "  local oldKey = 'ai-crm:auth:pc:session:' .. oldIndex",
+  "  local oldValue = redis.call('GET', oldKey)",
+  "  if oldValue then",
+  "    local oldRecord = cjson.decode(oldValue)",
+  "    local oldFamily = 'ai-crm:auth:pc:family:' .. oldRecord.id",
+  "    if redis.call('GET', oldFamily) == oldIndex then redis.call('DEL', oldFamily) end",
+  "    redis.call('DEL', oldKey)",
+  "    table.insert(revoked, oldRecord.id)",
+  "  end",
+  "end",
+  "return cjson.encode(revoked)",
+].join("\n");
+
+const enforceConcurrentLimitScript = [
+  "local subjects = redis.call('SMEMBERS', KEYS[1])",
+  "local revoked = {}",
+  "for _, subjectIndex in ipairs(subjects) do",
+  "  local subjectKey = 'ai-crm:auth:pc:subject:' .. subjectIndex",
+  "  local existing = redis.call('ZRANGE', subjectKey, 0, -1)",
+  "  for _, member in ipairs(existing) do if redis.call('EXISTS', 'ai-crm:auth:pc:session:' .. member) == 0 then redis.call('ZREM', subjectKey, member) end end",
+  "  while redis.call('ZCARD', subjectKey) > tonumber(ARGV[1]) do",
+  "    local oldest = redis.call('ZPOPMIN', subjectKey, 1)",
+  "    local oldIndex = oldest[1]",
+  "    local oldKey = 'ai-crm:auth:pc:session:' .. oldIndex",
+  "    local oldValue = redis.call('GET', oldKey)",
+  "    if oldValue then",
+  "      local oldRecord = cjson.decode(oldValue)",
+  "      local oldFamily = 'ai-crm:auth:pc:family:' .. oldRecord.id",
+  "      if redis.call('GET', oldFamily) == oldIndex then redis.call('DEL', oldFamily) end",
+  "      redis.call('DEL', oldKey)",
+  "      table.insert(revoked, oldRecord.id)",
+  "    end",
+  "  end",
+  "  if redis.call('ZCARD', subjectKey) == 0 then redis.call('SREM', KEYS[1], subjectIndex) end",
+  "end",
+  "return cjson.encode(revoked)",
+].join("\n");
+
 const deleteScript = [
   "local value = redis.call('GET', KEYS[1])",
   "if not value then return false end",
   "local record = cjson.decode(value)",
   "local familyKey = 'ai-crm:auth:pc:family:' .. record.id",
   "if redis.call('GET', familyKey) == ARGV[1] then redis.call('DEL', familyKey) end",
+  "if record.subjectIndex then redis.call('ZREM', 'ai-crm:auth:pc:subject:' .. record.subjectIndex, ARGV[1]) end",
   "redis.call('DEL', KEYS[1])",
   "return value",
 ].join("\n");
@@ -102,6 +162,12 @@ const rotateScript = [
   "redis.call('DEL', KEYS[1])",
   "redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3], 'NX')",
   "redis.call('SET', familyKey, ARGV[5], 'PX', ARGV[3])",
+  "if nextRecord.subjectIndex then",
+  "  local subjectKey = 'ai-crm:auth:pc:subject:' .. nextRecord.subjectIndex",
+  "  redis.call('ZREM', subjectKey, ARGV[4])",
+  "  redis.call('ZADD', subjectKey, nextRecord.createdAtMs, ARGV[5])",
+  "  redis.call('PEXPIRE', subjectKey, ARGV[3])",
+  "end",
   "return 1",
 ].join("\n");
 
@@ -113,6 +179,7 @@ const revokeScript = [
   "if not value then redis.call('DEL', KEYS[2]); return false end",
   "local record = cjson.decode(value)",
   "if record.id ~= ARGV[1] then return false end",
+  "if record.subjectIndex then redis.call('ZREM', 'ai-crm:auth:pc:subject:' .. record.subjectIndex, currentIndex) end",
   "redis.call('DEL', currentKey)",
   "redis.call('DEL', KEYS[2])",
   "return value or false",
@@ -136,6 +203,11 @@ function leaseKey(sessionId: string): string {
 function familyKey(sessionId: string): string {
   if (!RANDOM_ID.test(sessionId)) throw new BrowserSessionFailure("authentication_session_invalid");
   return `ai-crm:auth:pc:family:${sessionId}`;
+}
+
+function subjectKey(subjectIndex: string): string {
+  if (!SESSION_INDEX.test(subjectIndex)) throw new BrowserSessionFailure("authentication_session_invalid");
+  return `ai-crm:auth:pc:subject:${subjectIndex}`;
 }
 
 function positiveMilliseconds(value: number): string {
@@ -202,6 +274,9 @@ function parseStoredSession(value: unknown): Readonly<StoredBrowserSession> {
     typeof parsed["csrfToken"] !== "string" || !RANDOM_ID.test(parsed["csrfToken"]) ||
     typeof parsed["id"] !== "string" || !RANDOM_ID.test(parsed["id"]) ||
     !safeInteger(parsed["revision"]) ||
+    (parsed["schemaVersion"] !== undefined && parsed["schemaVersion"] !== 2) ||
+    (parsed["clientType"] !== undefined && parsed["clientType"] !== "pc-web") ||
+    (parsed["subjectIndex"] !== undefined && (typeof parsed["subjectIndex"] !== "string" || !SESSION_INDEX.test(parsed["subjectIndex"]))) ||
     (parsed["reauthenticatedUntilMs"] !== undefined && !safeInteger(parsed["reauthenticatedUntilMs"])) ||
     !isRecord(parsed["tokens"])) {
     throw new BrowserSessionFailure("authentication_session_invalid");
@@ -222,6 +297,9 @@ function parseStoredSession(value: unknown): Readonly<StoredBrowserSession> {
       reauthenticatedUntilMs: parsed["reauthenticatedUntilMs"],
     }),
     revision: parsed["revision"],
+    ...(parsed["schemaVersion"] === 2 ? { schemaVersion: 2 as const } : {}),
+    ...(parsed["clientType"] === "pc-web" ? { clientType: "pc-web" as const } : {}),
+    ...(typeof parsed["subjectIndex"] === "string" ? { subjectIndex: parsed["subjectIndex"] } : {}),
     tokens: Object.freeze({
       algorithm: "A256GCM",
       ciphertext: tokens["ciphertext"],
@@ -272,6 +350,27 @@ export function createRedisBrowserSessionStore(
         positiveMilliseconds(ttlMs),
       ]);
       if (!commandSucceeded(result)) throw new BrowserSessionFailure("authentication_session_invalid");
+    },
+
+    async createConcurrentSession(sessionIndex: string, session: StoredBrowserSession, ttlMs: number, limit: number): Promise<readonly string[]> {
+      if (session.schemaVersion !== 2 || session.clientType !== "pc-web" || session.subjectIndex === undefined || !Number.isSafeInteger(limit) || limit < 1 || limit > 5) throw new BrowserSessionFailure("authentication_session_invalid");
+      const result = await executor.sendCommand([
+        "EVAL", createConcurrentScript, "4", key("session", sessionIndex), familyKey(session.id), subjectKey(session.subjectIndex), "ai-crm:auth:pc:subjects",
+        JSON.stringify(session), sessionIndex, positiveMilliseconds(ttlMs), String(session.createdAtMs), String(limit), session.subjectIndex,
+      ]);
+      if (typeof result !== "string") throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      const parsed = parseJson(result);
+      if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string" || !RANDOM_ID.test(item))) throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      return parsed as readonly string[];
+    },
+
+    async enforceConcurrentLimit(limit: number): Promise<readonly string[]> {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5) throw new BrowserSessionFailure("authentication_session_invalid");
+      const result = await executor.sendCommand(["EVAL", enforceConcurrentLimitScript, "1", "ai-crm:auth:pc:subjects", String(limit)]);
+      if (typeof result !== "string") throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      const parsed = parseJson(result);
+      if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string" || !RANDOM_ID.test(item))) throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      return parsed as readonly string[];
     },
 
     async deleteSession(sessionIndex: string): Promise<Readonly<StoredBrowserSession> | undefined> {

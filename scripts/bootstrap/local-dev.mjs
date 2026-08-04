@@ -32,6 +32,7 @@ const localApiBuildProjects = [
   "packages/platform-modules/audit/tsconfig.json",
   "packages/platform-modules/auth-context/tsconfig.json",
   "packages/platform-modules/authorization/tsconfig.json",
+  "packages/platform-modules/business-configuration/tsconfig.json",
   "packages/platform-modules/eventing-outbox/tsconfig.json",
   "packages/platform-modules/file-center/tsconfig.json",
   "packages/platform-modules/form-schema/tsconfig.json",

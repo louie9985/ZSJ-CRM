@@ -16,6 +16,7 @@ const protectedDocuments = [
   "contracts/http/modules/file-center.openapi.yaml",
   "contracts/http/modules/form-schema.openapi.yaml",
   "contracts/http/modules/notifications.openapi.yaml",
+  "contracts/http/modules/session-policy.openapi.yaml",
   "contracts/http/modules/task-center.openapi.yaml",
   "contracts/http/modules/workbench.openapi.yaml",
   "contracts/http/modules/workforce-administration.openapi.yaml",

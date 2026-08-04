@@ -13,6 +13,8 @@ export interface TaskProjection extends TaskProjectionKey {
   readonly projectionId: string;
   readonly sourceVersion: number;
   readonly status: TaskProjectionStatus;
+  readonly title: string;
+  readonly summary: string;
   readonly deepLink: TaskDeepLink;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -25,6 +27,8 @@ export interface TaskLifecycleEvent extends TaskProjectionKey {
   readonly sourceVersion: number;
   readonly occurredAt: string;
   readonly status: TaskProjectionStatus;
+  /** Required by lifecycle v2; absent only for compatibility with v1 event replay. */
+  readonly display?: Readonly<{ readonly title: string; readonly summary: string }>;
   readonly deepLink: TaskDeepLink;
   readonly assigneeReference?: string;
   readonly candidateScopeReference?: string;
@@ -59,6 +63,7 @@ export interface TaskCenterStore {
   apply(event: TaskLifecycleEvent, signal?: AbortSignal): Promise<ProjectionApplyResult>;
   reconcile(event: TaskLifecycleEvent): Promise<ProjectionApplyResult>;
   get(key: TaskProjectionKey): Promise<TaskProjection | undefined>;
+  getByProjectionId?(projectionId: string): Promise<TaskProjection | undefined>;
   list(input: { readonly status?: TaskProjectionStatus; readonly limit: number; readonly cursor?: string }): Promise<TaskPage>;
   claimCommand(input: { readonly idempotencyKey: string; readonly fingerprint: string; readonly leaseToken: string; readonly now: Date; readonly leaseExpiresAt: Date }): Promise<TaskCommandClaim>;
   acceptCommand(input: { readonly idempotencyKey: string; readonly leaseToken: string; readonly result: TaskCommandResult }): Promise<boolean>;
@@ -68,6 +73,7 @@ export interface TaskCenter {
   apply(event: TaskLifecycleEvent, signal?: AbortSignal): Promise<ProjectionApplyResult>;
   complete(command: CompleteTaskCommand): Promise<TaskCommandResult>;
   get(actor: TaskActor, key: TaskProjectionKey): Promise<TaskProjection>;
+  getByProjectionId(actor: TaskActor, projectionId: string): Promise<TaskProjection>;
   list(query: TaskQuery): Promise<TaskPage>;
   reconcile(actor: TaskActor, key: TaskProjectionKey): Promise<ReconciliationResult>;
 }

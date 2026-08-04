@@ -77,8 +77,12 @@ export interface AdministrationAuthorizerPort {
 }
 
 export interface CrmAdministratorGrantPort {
+  backfillApplicationGrants(input: Readonly<{ accounts: readonly Readonly<{ accountId: string; workforcePersonId: string }>[]; operationId: string }>): Promise<Readonly<{ grantedAccountIds: readonly string[] }>>;
+  hasApplicationGrant(workforcePersonId: string): Promise<boolean>;
   hasGrant(workforcePersonId: string): Promise<boolean>;
   isSuperAdministrator(workforcePersonId: string): Promise<boolean>;
+  moveApplicationGrant(input: Readonly<{ assignmentId: string; closeAssignmentIds: readonly string[]; operationId: string; workforcePersonId: string }>): Promise<void>;
+  setApplicationGrant(input: Readonly<{ assignmentId: string; enabled: boolean; operationId: string; workforcePersonId: string }>): Promise<void>;
   setGrant(input: Readonly<{ actor: ActorReference; assignmentId: string; enabled: boolean; operationId: string; traceId: string; workforcePersonId: string }>): Promise<void>;
 }
 
@@ -86,6 +90,7 @@ export interface IdentityAdministrationPort {
   createDisabledAccount(input: Readonly<{ accountId: string; operationId: string; phone?: string; traceId: string; username: string }>): Promise<Readonly<{ keycloakUserId: string }>>;
   disableAccount(input: Readonly<{ accountId: string; keycloakUserId: string; operationId: string; retryOfOperationId?: string; traceId: string }>): Promise<void>;
   revokeSessions(input: Readonly<{ accountId: string; keycloakUserId: string; operationId: string; retryOfOperationId?: string; traceId: string }>): Promise<void>;
+  setPasswordAndEnable(input: Readonly<{ accountId: string; keycloakUserId: string; operationId: string; password: string; traceId: string }>): Promise<void>;
   synchronizeLoginIdentifiers(input: Readonly<{ accountId: string; keycloakUserId: string; operationId: string; phone?: string; retryOfOperationId?: string; traceId: string; username: string }>): Promise<void>;
 }
 

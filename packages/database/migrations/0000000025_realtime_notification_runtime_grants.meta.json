@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "database",
+  "purpose": "Grant the API exact notification-template and notification-state persistence privileges, and let the Task Center worker append projection-change Outbox events.",
+  "applicationCompatibility": { "minimumInclusive": "0.0.0" },
+  "lockImpact": "Catalog-only grants take short permission metadata locks and do not rewrite application rows.",
+  "dataImpact": "No rows are changed. Existing runtime roles gain only the table operations required by the reviewed realtime and notification-template paths.",
+  "backfill": "Not required.",
+  "destructive": false,
+  "recovery": "Retain privileges during application rollback; append a reviewed revocation migration only after all corresponding API and worker paths are withdrawn.",
+  "forwardFix": "Append a later globally numbered migration to narrow or revoke privileges. Never rewrite this migration after application."
+}

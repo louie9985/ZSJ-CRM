@@ -4,7 +4,7 @@ import {
   type TokenVerifier,
 } from "@ai-crm/platform-auth-context";
 import { createTraceContext } from "@ai-crm/observability";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import { BrowserSessionFailure } from "./errors.js";
 import type { OidcClientPort } from "./oidc.js";
@@ -23,7 +23,8 @@ export type AuthenticationAuditAction =
   | "reauthentication_started"
   | "reauthentication_completed"
   | "session_refreshed"
-  | "session_logout_requested";
+  | "session_logout_requested"
+  | "session_revoked_concurrent_limit";
 
 export interface AuthenticationAuditEvent {
   readonly action: AuthenticationAuditAction;
@@ -49,6 +50,9 @@ export interface PcBffSessionServiceOptions {
   readonly reauthenticationMarkerTtlSeconds?: number;
   readonly sessionAbsoluteTtlSeconds: number;
   readonly sessionIdleTtlSeconds: number;
+  readonly concurrentSessionLimit?: number | (() => Promise<number>);
+  readonly sessionRevocationPublisher?: (input: { readonly principalIndex: string; readonly reason: "concurrent-limit"; readonly sessionReference: string; readonly subjectId: string; readonly subjectIssuer: string }) => Promise<void>;
+  readonly requireSessionSchemaVersion2?: boolean;
   readonly store: BrowserSessionStore;
   readonly tokenVerifier: TokenVerifier;
 }
@@ -236,9 +240,21 @@ export function createPcBffSessionService(
   const idleTtlMs = secondsToMilliseconds(options.sessionIdleTtlSeconds);
   const absoluteTtlMs = secondsToMilliseconds(options.sessionAbsoluteTtlSeconds);
   const reauthenticationTtlMs = secondsToMilliseconds(options.reauthenticationMarkerTtlSeconds ?? 300);
+  const configuredConcurrentSessionLimit = options.concurrentSessionLimit ?? 1;
   if (absoluteTtlMs < idleTtlMs || options.refreshLeaseTtlMs <= 0) {
     throw new BrowserSessionFailure("authentication_session_invalid");
   }
+  if (typeof configuredConcurrentSessionLimit !== "function" && (!Number.isSafeInteger(configuredConcurrentSessionLimit) || configuredConcurrentSessionLimit < 1 || configuredConcurrentSessionLimit > 5)) throw new BrowserSessionFailure("authentication_session_invalid");
+  const concurrentSessionLimit = async (): Promise<number> => {
+    try {
+      const value = typeof configuredConcurrentSessionLimit === "function" ? await configuredConcurrentSessionLimit() : configuredConcurrentSessionLimit;
+      if (!Number.isSafeInteger(value) || value < 1 || value > 5) throw new BrowserSessionFailure("authentication_dependency_unavailable");
+      return value;
+    } catch (error) {
+      if (error instanceof BrowserSessionFailure) throw error;
+      throw new BrowserSessionFailure("authentication_dependency_unavailable");
+    }
+  };
 
   async function loadVerifiedSession(credential: string): Promise<{
     readonly principal: Readonly<AuthenticatedPrincipal>;
@@ -250,6 +266,7 @@ export function createPcBffSessionService(
     if (!session || session.absoluteExpiresAtMs <= timestamp) {
       throw new BrowserSessionFailure("authentication_session_invalid");
     }
+    if (options.requireSessionSchemaVersion2 === true && (session.schemaVersion !== 2 || session.clientType !== "pc-web" || session.subjectIndex === undefined)) throw new BrowserSessionFailure("authentication_session_invalid");
     try {
       const tokens = decryptSessionTokens(session.tokens, securityKeys.decryptionKeys, session.id);
       const principal = await options.tokenVerifier.verify(tokens.accessToken);
@@ -331,6 +348,9 @@ export function createPcBffSessionService(
       } catch {
         throw new BrowserSessionFailure("authentication_callback_invalid");
       }
+      // Resolve fallible policy dependencies before consuming the one-time login transaction.
+      // A transient failure can then be retried with the same callback instead of burning its state and code.
+      const resolvedConcurrentSessionLimit = await concurrentSessionLimit();
       const transaction = await options.store.consumeLoginTransaction(stateIndex);
       if (!transaction) throw new BrowserSessionFailure("authentication_callback_invalid");
       const tokenResult = await options.oidc.exchangeCallback(callbackUrl, transaction);
@@ -384,6 +404,8 @@ export function createPcBffSessionService(
       const newCredential = createOpaqueCredential();
       const sessionIndex = createSessionIndex(newCredential, securityKeys.indexingKey);
       const sessionReference = createOpaqueCredential();
+      const subject = callbackPrincipal.authenticationSubject;
+      const subjectIndex = createHmac("sha256", securityKeys.indexingKey).update(`${subject.issuer}\u0000${subject.subject}`).digest("base64url");
       const session: StoredBrowserSession = Object.freeze({
         absoluteExpiresAtMs: timestamp + absoluteTtlMs,
         authenticatedAtMs: tokenResult.authenticatedAtMs,
@@ -392,11 +414,20 @@ export function createPcBffSessionService(
         id: sessionReference,
         revision: 0,
         tokens: encryptSessionTokens(tokenResult.tokens, securityKeys.encryptionKey, sessionReference),
+        clientType: "pc-web",
+        schemaVersion: 2,
+        subjectIndex,
       });
-      await options.store.createSession(sessionIndex, session, idleTtlMs);
+      const revoked = options.store.createConcurrentSession === undefined
+        ? (await options.store.createSession(sessionIndex, session, idleTtlMs), [] as readonly string[])
+        : await options.store.createConcurrentSession(sessionIndex, session, idleTtlMs, resolvedConcurrentSessionLimit);
       try {
         await auditOrFail(options.audit,
           authenticationAuditEvent("login_completed", session.id, traceId, session.id));
+        for (const revokedSessionReference of revoked) {
+          await auditOrFail(options.audit, authenticationAuditEvent("session_revoked_concurrent_limit", revokedSessionReference, traceId, revokedSessionReference));
+          await options.sessionRevocationPublisher?.({ principalIndex: subjectIndex, reason: "concurrent-limit", sessionReference: revokedSessionReference, subjectId: subject.subject, subjectIssuer: subject.issuer });
+        }
       } catch (error) {
         await options.store.deleteSession(sessionIndex);
         throw error;

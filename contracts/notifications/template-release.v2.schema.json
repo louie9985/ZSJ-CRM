@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-crm.local/contracts/notifications/v2/template-release.schema.json",
+  "title": "Notification Template Release v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["templateKey","version","ownerReference","notificationType","variableSchema","variableCatalogVersion","titleTemplate","summaryTemplate","bodyTemplate","bodyFormat","contentDigest","publishedAt"],
+  "properties": {
+    "templateKey": { "$ref": "#/$defs/stableId" }, "version": { "type": "integer", "minimum": 1 }, "ownerReference": { "$ref": "#/$defs/stableId" }, "notificationType": { "$ref": "#/$defs/stableId" }, "variableSchema": { "type": "object" }, "variableCatalogVersion": { "type": "integer", "minimum": 1 },
+    "titleTemplate": { "type": "string", "minLength": 1, "maxLength": 512 }, "summaryTemplate": { "type": "string", "minLength": 1, "maxLength": 2000 }, "bodyTemplate": { "type": "string", "minLength": 1, "maxLength": 8000 }, "bodyFormat": { "const": "restricted-markdown" }, "contentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "publishedAt": { "$ref": "#/$defs/time" }
+  },
+  "$defs": { "stableId": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,254}$" }, "time": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$" } }
+}

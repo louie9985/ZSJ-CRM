@@ -8,7 +8,9 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { createZsjCrmLocalBootstrapPorts } from "./zsj-crm-local-adapter.mjs";
 import { ZSJ_CRM_LOCAL_IDS } from "./zsj-crm-local.mjs";
 
-test("adapter publishes the two-step v2 policy, registers the workforce entry, and closes its runtime", async () => {
+const PASSWORD_POLICY = JSON.parse(await readFile(new URL("../../deploy/keycloak/realm-dev.json", import.meta.url), "utf8")).passwordPolicy;
+
+test("adapter publishes the two-step v4 policy, registers CRM and administrator entries, and closes its runtime", async () => {
   const fixture = await adapterFixture(); const calls = { policies: [], registry: [], closed: 0 };
   try {
     const modules = fakeModules(calls);
@@ -21,13 +23,20 @@ test("adapter publishes the two-step v2 policy, registers the workforce entry, a
     assert.equal(final.superAdministratorGrants[0].workforcePersonId, ZSJ_CRM_LOCAL_IDS.zsjAdministratorPersonId);
     assert.equal(final.grants[0].subject.assignmentId, ZSJ_CRM_LOCAL_IDS.crmAdministratorAssignmentId);
     assert.equal(final.roles[0].roleKey, "crm.system-administrator");
+    assert.equal(final.roles[1].roleKey, "crm.application-user");
+    assert.deepEqual(final.roles[1].permissions.map(({ permissionCode }) => permissionCode), ["crm.application:access", "platform.workbench.shell:read"]);
+    assert.ok(final.grants.some(({ roleId, subject }) => roleId === ZSJ_CRM_LOCAL_IDS.crmApplicationUserRoleId && subject.assignmentId === ZSJ_CRM_LOCAL_IDS.crmAdministratorAssignmentId));
+    assert.ok(final.permissions.some(({ code }) => code === "crm.application:access"));
     assert.ok(final.permissions.some(({ code }) => code === "crm.workforce-administration:view"));
+    assert.ok(final.permissions.some(({ code }) => code === "platform.notifications.template:publish"));
+    assert.ok(!final.roles[0].permissions.some(({ permissionCode }) => permissionCode === "platform.authentication.session-policy:manage"));
     const policySchema = JSON.parse(await readFile(new URL("../../contracts/permissions/authorization-policy.v2.schema.json", import.meta.url), "utf8"));
     const validatePolicy = new Ajv2020({ allErrors: true, strict: true }).compile(policySchema);
     for (const policy of calls.policies) assert.equal(validatePolicy(policy.snapshot), true, JSON.stringify(validatePolicy.errors));
     assert.deepEqual(await ports.registry.ensureWorkforceAdministration({ operationId: ZSJ_CRM_LOCAL_IDS.operations.workforceAdministrationRegistry }), { status: "created" });
-    assert.deepEqual(calls.registry.map(({ kind }) => kind), ["register_application", "register_route", "register_navigation"]);
-    assert.equal(calls.registry[0].application.applicationId, "crm.workforce-administration");
+    assert.deepEqual(calls.registry.filter(({ kind }) => kind === "register_application").map(({ application }) => application.applicationId), ["crm", "crm.workforce-administration", "crm.notification-templates", "crm.session-policy"]);
+    assert.ok(calls.registry.some(({ kind, route }) => kind === "register_route" && route.applicationId === "crm" && route.path === "/crm/workspace"));
+    assert.ok(calls.registry.some(({ kind, navigation }) => kind === "register_navigation" && navigation.navigationId === "crm.workspace.unconfigured"));
     assert.deepEqual(await ports.registry.ensureWorkforceAdministration({ operationId: ZSJ_CRM_LOCAL_IDS.operations.workforceAdministrationRegistry }), { status: "existing" });
     await ports.close(); assert.equal(calls.closed, 1);
   } finally { await fixture.cleanup(); }
@@ -38,6 +47,8 @@ test("adapter creates a minimal temporary-password Keycloak user and replays by 
   const fetchImpl = async (url, init) => {
     requests.push({ init, url: String(url) });
     if (String(url).includes("openid-connect/token")) return response(200, { access_token: "synthetic-access-token" });
+    if (String(url).endsWith("/admin/realms/ai-crm-dev") && init?.method === undefined) return response(200, { passwordPolicy: "length(6)" });
+    if (String(url).endsWith("/admin/realms/ai-crm-dev") && init?.method === "PUT") return response(204, undefined);
     if (init?.method === "PUT" && String(url).endsWith("/users/profile")) return response(200, {});
     if (init?.method === "POST" && String(url).endsWith("/users")) return response(201, undefined);
     searches += 1;
@@ -55,10 +66,12 @@ test("adapter creates a minimal temporary-password Keycloak user and replays by 
     assert.equal(payload.email, undefined); assert.equal(payload.firstName, undefined); assert.equal(payload.lastName, undefined);
     const profileUpdate = requests.find(({ init, url }) => init?.method === "PUT" && url.endsWith("/users/profile"));
     assert.ok(profileUpdate); assert.ok(JSON.parse(profileUpdate.init.body).attributes.some(({ name }) => name === "phone_login_key"));
+    const policyUpdate = requests.find(({ init, url }) => init?.method === "PUT" && url.endsWith("/admin/realms/ai-crm-dev"));
+    assert.deepEqual(JSON.parse(policyUpdate.init.body), { passwordPolicy: PASSWORD_POLICY });
     assert.deepEqual(calls.workforceStatuses, ["credential_pending"]);
     assert.deepEqual(await ports.identity.activateAccount({ accountId: ZSJ_CRM_LOCAL_IDS.zsjAdministratorAccountId, operationId: ZSJ_CRM_LOCAL_IDS.operations.zsjAdministratorActivation, phone: "+861380000001", username: "zsj.admin" }), { status: "created" });
     assert.deepEqual(calls.workforceStatuses, ["credential_pending", "active"]);
-    const enable = requests.find(({ init, url }) => init?.method === "PUT" && !url.endsWith("/users/profile"));
+    const enable = requests.find(({ init, url }) => init?.method === "PUT" && url.includes("/users/") && !url.endsWith("/users/profile"));
     assert.deepEqual(JSON.parse(enable.init.body), { enabled: true });
     assert.ok(enable.url.endsWith("/admin/realms/ai-crm-dev/users/00000000-0000-4000-8000-000000000099"));
     assert.ok(requests.every(({ url }) => !url.includes("temporary-password") && !url.includes("synthetic-access-token")));
@@ -71,6 +84,7 @@ test("adapter leaves Keycloak disabled when enablement fails and completes witho
   const user = { attributes: { ai_crm_account_id: [ZSJ_CRM_LOCAL_IDS.zsjAdministratorAccountId], phone_login_key: ["+861380000001"] }, enabled: false, id: "00000000-0000-4000-8000-000000000099", requiredActions: ["UPDATE_PASSWORD"], username: "zsj.admin" };
   const fetchImpl = async (url, init) => {
     if (String(url).includes("openid-connect/token")) return response(200, { access_token: "synthetic-access-token" });
+    if (String(url).endsWith("/admin/realms/ai-crm-dev")) return response(200, { passwordPolicy: PASSWORD_POLICY });
     if (init?.method === "PUT" && String(url).endsWith("/users/profile")) return response(200, {});
     if (init?.method === "PUT") { putAttempts += 1; return response(putAttempts === 1 ? 503 : 204, undefined); }
     return response(200, [user]);
@@ -93,6 +107,7 @@ test("adapter refuses activation before Keycloak confirms the first-login passwo
   const user = { attributes: { ai_crm_account_id: [ZSJ_CRM_LOCAL_IDS.zsjAdministratorAccountId], phone_login_key: ["+861380000001"] }, enabled: false, id: "00000000-0000-4000-8000-000000000099", requiredActions: [], username: "zsj.admin" };
   const fetchImpl = async (url, init) => {
     if (String(url).includes("openid-connect/token")) return response(200, { access_token: "synthetic-access-token" });
+    if (String(url).endsWith("/admin/realms/ai-crm-dev")) return response(200, { passwordPolicy: PASSWORD_POLICY });
     if (init?.method === "PUT" && String(url).endsWith("/users/profile")) return response(200, {});
     if (init?.method === "PUT") { putAttempts += 1; return response(204, undefined); }
     return response(200, [user]);
@@ -121,7 +136,7 @@ function fakeModules(calls) {
   class Workforce {
     constructor() { this.account = undefined; }
     async createAccount(command) { this.account ??= { ...command, revision: 0, status: "provisioning" }; return this.account; }
-    async getAccount(accountId) { if (!this.account || this.account.accountId !== accountId) throw new Error("not found"); return this.account; }
+    async getAccount(accountId) { if (!this.account || this.account.accountId !== accountId) throw Object.assign(new Error("not found"), { code: "entity_not_found" }); return this.account; }
     async linkKeycloakUser(command) { this.account = { ...this.account, keycloakUserId: command.keycloakUserId, revision: this.account.revision + 1 }; return this.account; }
     async setStatus(command) { calls.workforceStatuses?.push(command.status); this.account = { ...this.account, revision: this.account.revision + 1, status: command.status }; return this.account; }
   }

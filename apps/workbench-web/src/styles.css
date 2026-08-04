@@ -625,6 +625,13 @@ body {
   overflow: auto;
 }
 
+.unconfigured-workspace {
+  min-height: min(520px, calc(100vh - 128px));
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
 .workspace-home {
   display: flex;
   min-width: 0;
@@ -952,4 +959,53 @@ body {
   .stable-descriptions .ant-descriptions-item-content {
     padding-inline: 8px !important;
   }
+}
+.realtime-notification-toast {
+  cursor: pointer;
+}
+
+.realtime-notification-toast .ant-notification-notice-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Operation results must remain visible above modals, drawers, and other popup layers. */
+.ant-notification {
+  z-index: 10000 !important;
+}
+
+.template-workspace {
+  align-items: flex-start;
+}
+
+.template-selector {
+  display: grid;
+  flex: 0 0 260px;
+  gap: 16px;
+}
+
+.template-editor {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 16px;
+  min-width: 0;
+}
+
+.template-editor label {
+  display: grid;
+  gap: 6px;
+}
+
+.template-toast-preview,
+.template-detail-preview {
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+@media (max-width: 760px) {
+  .template-workspace { flex-direction: column; }
+  .template-selector { width: 100%; }
 }

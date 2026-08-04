@@ -43,3 +43,7 @@
 ## 非目标与替换条件
 
 本 ADR 不定义更多系统管理员、通用角色编辑器、Keycloak 管理角色、CRM 业务模块权限或生产部署。若需要多个超级管理员、临时提权审批、Break-glass 生产流程或跨应用管理员层级，必须以新 ADR 替换或扩展本决策。
+
+## 后续扩展
+
+ADR-0033 在不改变本 ADR 的 ZSJ 与 CRM 管理员边界前提下，新增独立的 `crm.application-user` 基础访问角色、Assignment 绑定 Grant、账号生命周期收敛、顶层 CRM 应用注册和代码级 Workspace profile 解析。管理员 Grant 与基础访问 Grant 始终是两个独立事实。

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "permissions": [
+    {
+      "owner": "crm.application",
+      "code": "crm.application:access",
+      "resource": "crm.application",
+      "action": "access",
+      "scopeDimensions": []
+    }
+  ]
+}

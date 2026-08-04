@@ -110,8 +110,14 @@ function position(value: unknown): PositionView {
 }
 
 async function json(response: Response, code: string): Promise<unknown> {
-  if (!response.ok) throw new Error(`${code}_${String(response.status)}`);
-  return response.json();
+  const body: unknown = await response.json().catch(() => undefined);
+  if (!response.ok) {
+    if (response.status === 400 && typeof body === "object" && body !== null && !Array.isArray(body) && (body as Record<string, unknown>)["code"] === "workforce_password_policy_violation") {
+      throw new Error("workforce_password_policy_violation");
+    }
+    throw new Error(`${code}_${String(response.status)}`);
+  }
+  return body;
 }
 
 export function createSameSiteWorkforceAdministrationPort(

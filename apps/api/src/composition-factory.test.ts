@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createProductionApiPlatformBindings,
+  pcSessionPolicySystemAuthorization,
+  pcSessionRevokedEvent,
   type ProductionApiBindingDependencies,
 } from "./composition-factory.js";
 import type { ProductionApiConfiguration } from "./production-config.js";
@@ -66,7 +68,10 @@ const configuration: ProductionApiConfiguration = {
     sessionEncryptionKey: { id: "current", value: Buffer.alloc(32, 7) },
     sessionIdleTtlSeconds: 1_800,
     sessionIndexingKey: Buffer.alloc(32, 9),
+    sessionConcurrentLimit: 1,
+    sessionRevocationTargetSeconds: 5,
   },
+  realtime: { enabled: false, maximumConnectionsPerSession: 8 },
 };
 
 function dependencies(compatible = true): {
@@ -178,6 +183,28 @@ const formSchemaCapabilities = Object.freeze({
 });
 
 describe("production API platform binding factory", () => {
+  it("builds valid stable session-policy decisions and revocation event metadata", () => {
+    const read = pcSessionPolicySystemAuthorization("configuration:read");
+    expect(read.allowed).toBe(true);
+    expect(read.decisionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+    expect(pcSessionPolicySystemAuthorization("configuration:manage")).toEqual({ allowed: false, decisionId: read.decisionId });
+
+    const event = pcSessionRevokedEvent({
+      eventId: "018f3f7a-9ec6-7c65-8e6e-6c9e43043112",
+      occurredAt: "2026-08-03T00:00:00.000Z",
+      reason: "concurrent-limit",
+      sessionReference: "synthetic-session-reference",
+      subjectId: "synthetic-subject",
+      subjectIssuer: "https://identity.example.test/realms/synthetic",
+    });
+    expect(event).toMatchObject({
+      dataschema: "urn:ai-crm:events:authentication-pc-session-revoked:v1",
+      type: "authentication.pc-session-revoked.v1",
+      data: { reason: "concurrent-limit", sessionReference: "synthetic-session-reference" },
+    });
+    expect(event["dataschema"]).toMatch(/^urn:ai-crm:(events|models):[a-z0-9:-]+:v[1-9][0-9]*$/u);
+  });
+
   it("closes acquired resources when composition after connection fails", async () => {
     const fixture = dependencies();
     const failure = new Error("synthetic storage composition failure");
@@ -204,6 +231,7 @@ describe("production API platform binding factory", () => {
       { healthy: false, name: "task-query", required: true },
       { healthy: false, name: "notification-query", required: true },
       { healthy: false, name: "file-center-provider", required: true },
+      { healthy: true, name: "realtime-rabbit-consumer", required: false },
     ]);
     await bindings.databaseCompatibility.assertCompatible(signal);
     expect(bindings.readiness()[0]).toMatchObject({ healthy: true });
@@ -314,7 +342,8 @@ describe("production API platform binding factory", () => {
     const bindings = await createProductionApiPlatformBindings(fixture.value);
     await bindings.databaseCompatibility.assertCompatible(new AbortController().signal);
     expect(bindings.readiness().slice(0, 9).every(({ healthy }) => healthy)).toBe(true);
-    expect(bindings.readiness().slice(9).every(({ healthy }) => !healthy)).toBe(true);
+    expect(bindings.readiness()[9]).toMatchObject({ healthy: false, name: "file-center-provider" });
+    expect(bindings.readiness()[10]).toMatchObject({ healthy: true, name: "realtime-rabbit-consumer", required: false });
     const traceId = "abcdefabcdefabcdefabcdefabcdefab";
     await expect(bindings.authorizationTrace.run(traceId, () => bindings.authorization.check({
       activeAssignmentIds: [],
@@ -612,7 +641,7 @@ describe("production API platform binding factory", () => {
       controller.abort();
 
       await expect(checking).rejects.toThrow("api_start_cancelled");
-      expect(bindings.readiness().filter(({ name }) => name !== "session-store")
+      expect(bindings.readiness().filter(({ name }) => name !== "session-store" && name !== "realtime-rabbit-consumer")
         .every(({ healthy }) => !healthy)).toBe(true);
       const healthCallsAtAbort = fixture.healthCheck.mock.calls.length;
       await vi.advanceTimersByTimeAsync(configuration.databaseHealthProbe.intervalMs * 2);

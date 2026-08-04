@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import "reflect-metadata";
-import { Controller, Get, Inject, Injectable, Module, Post, Req, Res, type OnApplicationShutdown } from "@nestjs/common";
+import { Controller, Get, Inject, Injectable, Module, Post, Put, Req, Res, type OnApplicationShutdown } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { DynamicModule, INestApplication } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 import { evaluateHealth, extractTraceContext, injectTraceContext, type ApplicationLogger, type HealthDependency, type HealthResult, type TraceContext } from "@ai-crm/observability";
 import type { PermissionRequest } from "@ai-crm/platform-authorization";
+import type { RealtimeServer } from "./realtime/realtime-server.js";
 import { BrowserSessionFailure } from "./auth/errors.js";
 import { parsePcSessionCredential, type AuthenticationHttpResponse, type BrowserRequestContext, type PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
 import { clearPcSessionCookie } from "./auth/session-security.js";
@@ -26,6 +27,7 @@ export { createFormSchemaHttpAdapter, type FormSchemaHttpAdapter } from "./platf
 export { createWorkbenchBootstrapFacade, type WorkbenchFacadeDependencies } from "./workbench/facade.js";
 export { createWorkbenchHttpAdapter, type WorkbenchBootstrapFacade } from "./platform-http/workbench-http.js";
 export { createWorkforceAdministrationHttpAdapter, type WorkforceAdministrationFacade } from "./platform-http/workforce-administration-http.js";
+export { createRabbitRealtimeEventSource, createRealtimeServer, REALTIME_MAX_FRAME_BYTES, REALTIME_PATH, REALTIME_PROTOCOL, type RabbitRealtimeEventSource, type RealtimeEventSource, type RealtimeIdentity, type RealtimeReferenceEvent, type RealtimeServer, type RealtimeSnapshotReader } from "./realtime/index.js";
 
 export const applicationId = "@ai-crm/api" as const;
 const API_COMPOSITION = Symbol("api-composition");
@@ -41,6 +43,7 @@ export interface ApiComposition {
   readonly onStart?: (signal: AbortSignal) => void | Promise<void>;
   readonly onStop?: () => void | Promise<void>;
   readonly platformHttp?: Readonly<ApiPlatformHttpComposition>;
+  readonly realtime?: RealtimeServer;
   readonly revokeBrowserSession?: (credential: string, traceId: string) => Promise<void>;
   readonly workbenchHttp?: Readonly<{
     bootstrap(input: Readonly<{ credential: string; traceId: string }>): Promise<PlatformHttpResponse>;
@@ -317,6 +320,59 @@ class PcAuthenticationController {
   }
 }
 
+@Controller("authentication/session-policy")
+class PcSessionPolicyController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get()
+  async get(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const credential = credentialFromRequest(request);
+      const http = this.composition.platformHttp;
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      if (http?.sessionPolicy === undefined) throw new Error("session_policy_unavailable");
+      const traceId = requestTraceContext(request).traceId;
+      const context = await http.authorize({ at: new Date().toISOString(), credential, permission: { action: "read", resource: "platform.authentication.session-policy" }, traceId });
+      const assignmentId = context.workforce.assignments[0]?.assignmentId;
+      const policy = await http.sessionPolicy.get({ actor: { actorId: context.workforce.workforcePersonId, actorType: "authenticated_subject", ...(assignmentId === undefined ? {} : { assignmentId }) } });
+      sendPlatformResponse(response, { body: policy, headers: { "Cache-Control": "no-store" }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, sessionPolicyError(error)); }
+  }
+
+  @Put()
+  async update(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const credential = credentialFromRequest(request);
+      const http = this.composition.platformHttp;
+      const operation = singleHeader(request, "idempotency-key", 128, 36);
+      const csrf = singleHeader(request, "x-csrf-token", 512, 32);
+      const origin = singleHeader(request, "origin", 512, 1);
+      const referer = singleHeader(request, "referer", 2048, 1);
+      const body = request.body as unknown;
+      const validBody = typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 2 && Number.isSafeInteger(Reflect.get(body, "concurrentLimit")) && Number.isSafeInteger(Reflect.get(body, "revocationTargetSeconds"));
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      if (!operation.valid || operation.value === undefined || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(operation.value) || !csrf.valid || !origin.valid || !referer.valid || !validBody) throw Object.assign(new Error("session_policy_invalid"), { code: "session_policy_invalid" });
+      if (http?.sessionPolicy === undefined || http.validateNotificationMutation === undefined) throw new Error("session_policy_unavailable");
+      const traceId = requestTraceContext(request).traceId;
+      await http.validateNotificationMutation({ credential, ...(csrf.value === undefined ? {} : { csrfToken: csrf.value }), ...(origin.value === undefined ? {} : { origin: origin.value }), ...(referer.value === undefined ? {} : { referer: referer.value }) });
+      const context = await http.authorize({ at: new Date().toISOString(), credential, permission: { action: "manage", resource: "platform.authentication.session-policy" }, traceId });
+      const assignmentId = context.workforce.assignments[0]?.assignmentId;
+      const policy = await http.sessionPolicy.update({ actor: { actorId: context.workforce.workforcePersonId, actorType: "authenticated_subject", ...(assignmentId === undefined ? {} : { assignmentId }) }, concurrentLimit: Reflect.get(body, "concurrentLimit") as number, operationId: operation.value, reason: "pc_session_policy_updated", revocationTargetSeconds: Reflect.get(body, "revocationTargetSeconds") as number, traceId });
+      sendPlatformResponse(response, { body: policy, headers: { "Cache-Control": "no-store" }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, sessionPolicyError(error)); }
+  }
+}
+
+function sessionPolicyError(error: unknown): PlatformHttpResponse {
+  const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? Reflect.get(error, "message") ?? "") : "";
+  const name: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "name") as unknown : undefined;
+  const status = error instanceof BrowserSessionFailure ? 401
+    : code === "authentication_csrf_rejected" || code === "configuration_denied" || code === "AUTHORIZATION_DENIED" || name === "AuthorizationDeniedError" ? 403
+      : code === "session_policy_invalid" || code === "configuration_invalid_input" ? 400
+        : code === "configuration_operation_conflict" || code === "configuration_overlap" ? 409 : 503;
+  return Object.freeze({ body: Object.freeze({ code: code || "session_policy_unavailable" }), headers: Object.freeze({ "Cache-Control": "no-store" }), status });
+}
+
 function unavailablePlatformResponse(code: string): PlatformHttpResponse {
   return Object.freeze({ body: Object.freeze({ code }), headers: Object.freeze({ "Cache-Control": "no-store" }), status: 503 });
 }
@@ -588,6 +644,14 @@ class FileCenterController {
 
 const TASK_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$/u;
 const TASK_IDEMPOTENCY = TASK_REF;
+const UUID_VALUE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function operationUuid(value: string): string {
+  const bytes = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
+  bytes[12] = "5";
+  bytes[16] = ((Number.parseInt(bytes[16] ?? "0", 16) & 3) | 8).toString(16);
+  return `${bytes.slice(0, 8).join("")}-${bytes.slice(8, 12).join("")}-${bytes.slice(12, 16).join("")}-${bytes.slice(16, 20).join("")}-${bytes.slice(20).join("")}`;
+}
 
 function taskResponseError(error: unknown): PlatformHttpResponse {
   const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? "") : "";
@@ -729,6 +793,158 @@ class NotificationController {
       sendPlatformResponse(response, { body, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
     } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
   }
+
+  @Get("unread-count")
+  async unreadCount(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "list", resource: "platform.notifications.in-app-notification" });
+      const unreadCount = platform(this.composition).notifications?.unreadCount;
+      if (typeof unreadCount !== "function") throw new Error("notification_unread_count_binding_missing");
+      sendPlatformResponse(response, { body: { count: await unreadCount(notificationActor) }, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+
+  @Get(":notificationId")
+  async get(@Req() request: Request, @Res() response: Response): Promise<void> {
+    try {
+      const notificationId = request.params["notificationId"];
+      if (typeof notificationId !== "string" || !UUID_VALUE.test(notificationId)) throw new Error("NOTIFICATION_INPUT_INVALID");
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "read", resource: "platform.notifications.in-app-notification" });
+      const get = platform(this.composition).notifications?.get;
+      if (typeof get !== "function") throw new Error("notification_get_binding_missing");
+      sendPlatformResponse(response, { body: await get(notificationActor, notificationId), headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+
+  @Post(":notificationId/read")
+  async markRead(@Req() request: Request, @Res() response: Response): Promise<void> { await this.changeState(request, response, "mark-read"); }
+
+  @Post(":notificationId/archive")
+  async archive(@Req() request: Request, @Res() response: Response): Promise<void> { await this.changeState(request, response, "archive"); }
+
+  private async changeState(request: Request, response: Response, action: "archive" | "mark-read"): Promise<void> {
+    try {
+      const notificationId = request.params["notificationId"];
+      if (typeof notificationId !== "string" || !UUID_VALUE.test(notificationId)) throw new Error("NOTIFICATION_INPUT_INVALID");
+      const credential = credentialFromRequest(request);
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      await platform(this.composition).validateNotificationMutation?.({ credential, ...this.mutationHeaders(request) });
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action, resource: "platform.notifications.in-app-notification" });
+      const operation = action === "archive" ? platform(this.composition).notifications?.archive : platform(this.composition).notifications?.markRead;
+      if (typeof operation !== "function") throw new Error("notification_mutation_binding_missing");
+      sendPlatformResponse(response, { body: await operation({ actor: notificationActor, notificationId }), headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+
+  private mutationHeaders(request: Request): { readonly csrfToken?: string; readonly origin?: string; readonly referer?: string } {
+    const csrfToken = singleHeader(request, "x-csrf-token", 512, 32);
+    const origin = singleHeader(request, "origin", 512, 1);
+    const referer = singleHeader(request, "referer", 2048, 1);
+    if (!csrfToken.valid || !origin.valid || !referer.valid) throw new BrowserSessionFailure("authentication_csrf_rejected");
+    return { ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }), ...(origin.value === undefined ? {} : { origin: origin.value }), ...(referer.value === undefined ? {} : { referer: referer.value }) };
+  }
+
+  private async authorizedActor(request: Request, permission: PermissionRequest): Promise<{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string; readonly activeAssignmentIds: readonly string[] }; readonly traceId: string }> {
+    const credential = credentialFromRequest(request);
+    if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+    const traceId = requestTraceContext(request).traceId;
+    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential, traceId, permission });
+    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) }, traceId };
+  }
+}
+
+@Controller("notification-templates")
+class NotificationTemplateController {
+  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+
+  @Get()
+  async list(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.read(request, response, undefined);
+  }
+
+  @Get(":templateKey")
+  async get(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.read(request, response, request.params["templateKey"]);
+  }
+
+  @Put(":templateKey/draft")
+  async saveDraft(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.write(request, response, "manage");
+  }
+
+  @Post(":templateKey/preview")
+  async preview(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.write(request, response, "preview");
+  }
+
+  @Post(":templateKey/publish")
+  async publish(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.write(request, response, "publish");
+  }
+
+  @Post(":templateKey/activate")
+  async activate(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.write(request, response, "activate");
+  }
+
+  private async read(request: Request, response: Response, key: unknown): Promise<void> {
+    try {
+      if (key !== undefined && (typeof key !== "string" || !TASK_REF.test(key))) throw new Error("NOTIFICATION_INPUT_INVALID");
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, "read");
+      const notifications = platform(this.composition).notifications;
+      const body = key === undefined ? await notifications?.listTemplateDefinitions?.(notificationActor) : await notifications?.getTemplateAdministration?.(notificationActor, key);
+      if (body === undefined) throw new Error("notification_template_binding_missing");
+      sendPlatformResponse(response, { body, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+
+  private async write(request: Request, response: Response, operation: "activate" | "manage" | "preview" | "publish"): Promise<void> {
+    try {
+      const templateKey = request.params["templateKey"];
+      if (typeof templateKey !== "string" || !TASK_REF.test(templateKey)) throw new Error("NOTIFICATION_INPUT_INVALID");
+      const credential = credentialFromRequest(request);
+      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const security = this.mutationHeaders(request);
+      await platform(this.composition).validateNotificationMutation?.({ credential, ...security });
+      const requiredAction = operation === "preview" ? "manage" : operation;
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, requiredAction);
+      const body = typeof request.body === "object" && request.body !== null && !Array.isArray(request.body) ? request.body as Record<string, unknown> : {};
+      const notifications = platform(this.composition).notifications;
+      let result: unknown;
+      if (operation === "manage") {
+        const idempotency = singleHeader(request, "idempotency-key", 255, 1);
+        if (!idempotency.valid || idempotency.value === undefined || !TASK_IDEMPOTENCY.test(idempotency.value)) throw new Error("NOTIFICATION_INPUT_INVALID");
+        if (typeof body["expectedRevision"] !== "number" || typeof body["titleTemplate"] !== "string" || typeof body["summaryTemplate"] !== "string" || typeof body["bodyTemplate"] !== "string") throw new Error("NOTIFICATION_INPUT_INVALID");
+        result = await notifications?.saveTemplateDraft?.({ actor: notificationActor, templateKey, expectedRevision: body["expectedRevision"], operationId: operationUuid(`draft:${templateKey}:${idempotency.value}`), titleTemplate: body["titleTemplate"], summaryTemplate: body["summaryTemplate"], bodyTemplate: body["bodyTemplate"], updatedAt: new Date().toISOString() });
+      } else if (operation === "preview") {
+        if (typeof body["titleTemplate"] !== "string" || typeof body["summaryTemplate"] !== "string" || typeof body["bodyTemplate"] !== "string") throw new Error("NOTIFICATION_INPUT_INVALID");
+        const exampleVariables = typeof body["exampleVariables"] === "object" && body["exampleVariables"] !== null && !Array.isArray(body["exampleVariables"]) ? body["exampleVariables"] as Record<string, string | number | boolean | null> : undefined;
+        result = await notifications?.previewTemplate?.({ actor: notificationActor, templateKey, titleTemplate: body["titleTemplate"], summaryTemplate: body["summaryTemplate"], bodyTemplate: body["bodyTemplate"], ...(exampleVariables === undefined ? {} : { exampleVariables }) });
+      } else {
+        const idempotency = singleHeader(request, "idempotency-key", 255, 1);
+        if (!idempotency.valid || idempotency.value === undefined || !TASK_IDEMPOTENCY.test(idempotency.value)) throw new Error("NOTIFICATION_INPUT_INVALID");
+        const activationId = operationUuid(`${operation}:${templateKey}:${idempotency.value}`);
+        result = operation === "publish"
+          ? await notifications?.publishTemplateDraft?.({ actor: notificationActor, templateKey, activationId, publishedAt: new Date().toISOString() })
+          : typeof body["version"] === "number" ? await notifications?.activateTemplate?.({ actor: notificationActor, templateKey, version: body["version"], activationId, activatedAt: new Date().toISOString() }) : (() => { throw new Error("NOTIFICATION_INPUT_INVALID"); })();
+      }
+      if (result === undefined && operation !== "activate") throw new Error("notification_template_binding_missing");
+      sendPlatformResponse(response, { ...(result === undefined ? {} : { body: result }), headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: operation === "publish" ? 201 : 200 });
+    } catch (error) { sendPlatformResponse(response, taskResponseError(error)); }
+  }
+
+  private mutationHeaders(request: Request): { readonly csrfToken?: string; readonly origin?: string; readonly referer?: string } {
+    const csrfToken = singleHeader(request, "x-csrf-token", 512, 32); const origin = singleHeader(request, "origin", 512, 1); const referer = singleHeader(request, "referer", 2048, 1);
+    if (!csrfToken.valid || !origin.valid || !referer.valid) throw new BrowserSessionFailure("authentication_csrf_rejected");
+    return { ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }), ...(origin.value === undefined ? {} : { origin: origin.value }), ...(referer.value === undefined ? {} : { referer: referer.value }) };
+  }
+
+  private async authorizedActor(request: Request, action: "activate" | "manage" | "publish" | "read"): Promise<{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string; readonly activeAssignmentIds: readonly string[] }; readonly traceId: string }> {
+    const credential = credentialFromRequest(request); if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+    const traceId = requestTraceContext(request).traceId;
+    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential, traceId, permission: { action, resource: "platform.notifications.template" } });
+    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) }, traceId };
+  }
 }
 
 const unavailableDependency = Object.freeze([{ name: "dependency-check", required: true, healthy: false }]);
@@ -765,6 +981,7 @@ class ApiLifecycle implements OnApplicationShutdown {
   constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
   async onApplicationShutdown(): Promise<void> {
     try {
+      await this.composition.realtime?.close();
       await this.composition.onStop?.();
       this.composition.logger.log("info", { operation: "api.lifecycle.stop", outcome: "succeeded" });
     } catch (error) {
@@ -780,7 +997,7 @@ class ApiLifecycle implements OnApplicationShutdown {
 class ApiModule {}
 
 const createApiModule = (composition: ApiComposition, state: ApiRuntimeState): DynamicModule => ({
-  controllers: [HealthController, PcAuthenticationController, WorkbenchController, WorkforceAdministrationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController],
+  controllers: [HealthController, PcAuthenticationController, PcSessionPolicyController, WorkbenchController, WorkforceAdministrationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController, NotificationTemplateController],
   module: ApiModule,
   providers: [
     { provide: API_COMPOSITION, useValue: composition },
@@ -863,6 +1080,7 @@ export const createApiApplication = (composition: ApiComposition): ApiApplicatio
           const useMiddleware = Reflect.get(created, "use");
           if (typeof useMiddleware === "function") useMiddleware.call(created, traceBoundary);
           candidate = created;
+          composition.realtime?.attach(created.getHttpServer());
           if (cancelled()) {
             await closeCandidate();
             throw new Error("api_start_cancelled");
