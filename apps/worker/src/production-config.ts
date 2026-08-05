@@ -31,11 +31,6 @@ const schema = {
     default: 15_000, maximum: 300_000, minimum: 100,
   }),
   migrationsRoot: configuration.string("AI_CRM_MIGRATIONS_ROOT", { maxLength: 512 }),
-  keycloakAdminBaseUrl: configuration.string("AI_CRM_KEYCLOAK_ADMIN_BASE_URL", { maxLength: 512 }),
-  keycloakClientId: configuration.string("AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_ID", { maxLength: 255, pattern: /^[A-Za-z0-9._-]+$/u }),
-  keycloakClientSecret: configuration.secretFile("AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_SECRET_FILE"),
-  keycloakRealm: configuration.string("AI_CRM_KEYCLOAK_REALM", { maxLength: 255, pattern: /^[A-Za-z0-9._-]+$/u }),
-  keycloakTimeoutMs: configuration.integer("AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS", { default: 5_000, maximum: 60_000, minimum: 100 }),
   outboxBackoffSeconds: configuration.string("AI_CRM_WORKER_OUTBOX_BACKOFF_SECONDS", { maxLength: 128, pattern: /^(?:none|[1-9]\d*(?:,[1-9]\d*)*)$/u }),
   outboxBatchSize: configuration.integer("AI_CRM_WORKER_OUTBOX_BATCH_SIZE", { maximum: 1000, minimum: 1 }),
   outboxClaimLeaseSeconds: configuration.integer("AI_CRM_WORKER_OUTBOX_CLAIM_LEASE_SECONDS", { maximum: 86_400, minimum: 1 }),
@@ -49,17 +44,16 @@ const schema = {
 
 export const approvedWorkerMigrationRoots = Object.freeze([
   "packages/database/migrations",
-  "packages/platform-modules/app-registry/migrations",
-  "packages/platform-modules/audit/migrations",
-  "packages/platform-modules/authorization/migrations",
-  "packages/platform-modules/business-configuration/migrations",
-  "packages/platform-modules/eventing-outbox/migrations",
-  "packages/platform-modules/file-center/migrations",
-  "packages/platform-modules/form-schema/migrations",
-  "packages/platform-modules/notifications/migrations",
-  "packages/platform-modules/organization/migrations",
-  "packages/platform-modules/task-center/migrations",
-  "packages/platform-modules/workforce-access/migrations",
+  "packages/crm-modules/audit/migrations",
+  "packages/crm-modules/authorization/migrations",
+  "packages/crm-modules/business-configuration/migrations",
+  "packages/crm-modules/eventing-outbox/migrations",
+  "packages/crm-modules/file-center/migrations",
+  "packages/crm-modules/form-schema/migrations",
+  "packages/crm-modules/notifications/migrations",
+  "packages/crm-modules/organization/migrations",
+  "packages/crm-modules/task-center/migrations",
+  "packages/crm-modules/workforce-access/migrations",
 ] as const);
 
 function normalized(values: readonly string[]): readonly string[] {
@@ -79,10 +73,10 @@ async function discoverMigrationRoots(root: string): Promise<readonly string[]> 
   try {
     await access(resolve(root, "packages/database/migrations"));
     discovered.push("packages/database/migrations");
-    const platformRoot = resolve(root, "packages/platform-modules");
+    const platformRoot = resolve(root, "packages/crm-modules");
     const modules = await readdir(platformRoot, { withFileTypes: true });
     await Promise.all(modules.filter((entry) => entry.isDirectory()).map(async (entry) => {
-      const relative = `packages/platform-modules/${entry.name}/migrations`;
+      const relative = `packages/crm-modules/${entry.name}/migrations`;
       try {
         await access(resolve(root, relative));
         discovered.push(relative);
@@ -107,7 +101,6 @@ export interface ProductionWorkerConfiguration {
   readonly databaseCompatibilityTimeoutMs: number;
   readonly databaseHealthProbe: Readonly<{ readonly intervalMs: number; readonly timeoutMs: number }>;
   readonly migrations: readonly string[];
-  readonly workforceKeycloak: Readonly<{ readonly adminBaseUrl: string; readonly clientId: string; readonly clientSecret: string; readonly realm: string; readonly timeoutMs: number }>;
   readonly outbox: Readonly<{
     readonly backoffSeconds: readonly number[];
     readonly batchSize: number;
@@ -132,8 +125,6 @@ export async function loadProductionWorkerConfiguration(
 ): Promise<Readonly<ProductionWorkerConfiguration>> {
   const raw = await loadConfiguration(schema, options);
   if (!isAbsolute(raw.migrationsRoot)) throw new Error("worker_migrations_root_invalid");
-  const keycloakAdminUrl = new URL(raw.keycloakAdminBaseUrl);
-  if (keycloakAdminUrl.username || keycloakAdminUrl.password || keycloakAdminUrl.hash || (keycloakAdminUrl.protocol !== "https:" && !(keycloakAdminUrl.protocol === "http:" && ["127.0.0.1", "localhost", "keycloak"].includes(keycloakAdminUrl.hostname)))) throw new Error("worker_keycloak_admin_url_invalid");
   if (raw.databaseHealthProbeTimeoutMs >= raw.databaseHealthProbeIntervalMs) {
     throw new Error("worker_database_health_window_invalid");
   }
@@ -163,7 +154,6 @@ export async function loadProductionWorkerConfiguration(
       timeoutMs: raw.databaseHealthProbeTimeoutMs,
     }),
     migrations: Object.freeze(approvedWorkerMigrationRoots.map((directory) => resolve(raw.migrationsRoot, directory))),
-    workforceKeycloak: Object.freeze({ adminBaseUrl: keycloakAdminUrl.href.replace(/\/$/u, ""), clientId: raw.keycloakClientId, clientSecret: raw.keycloakClientSecret, realm: raw.keycloakRealm, timeoutMs: raw.keycloakTimeoutMs }),
     outbox: Object.freeze({
       backoffSeconds: Object.freeze(outboxBackoffSeconds),
       batchSize: raw.outboxBatchSize,

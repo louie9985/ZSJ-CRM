@@ -1,30 +1,24 @@
 import { createHash } from "node:crypto";
 
 import { createTraceContext, extractTraceContext, type HealthDependency } from "@ai-crm/observability";
-import type { AuthenticatedPrincipal } from "@ai-crm/platform-auth-context";
-import type { ApplicationRegistryQueryService } from "@ai-crm/platform-app-registry";
-import type { AuditService } from "@ai-crm/platform-audit";
+import type { AuditService } from "@ai-crm/crm-audit";
 import type {
   AuthorizationDecision,
   AuthorizationService,
   PermissionRequest,
-} from "@ai-crm/platform-authorization";
-import type { FileCenterService } from "@ai-crm/platform-file-center";
-import type { FormSchemaQueryService } from "@ai-crm/platform-form-schema";
-import type { NotificationCenter } from "@ai-crm/platform-notifications";
-import type { OrganizationServiceApi, WorkforceContext } from "@ai-crm/platform-organization";
-import type { TaskCenter } from "@ai-crm/platform-task-center";
+} from "@ai-crm/crm-authorization";
+import type { FileCenterService } from "@ai-crm/crm-file-center";
+import type { FormSchemaQueryService } from "@ai-crm/crm-form-schema";
+import type { NotificationCenter } from "@ai-crm/crm-notifications";
+import type { OrganizationServiceApi, WorkforcePersonContext } from "@ai-crm/crm-organization";
+import type { TaskCenter } from "@ai-crm/crm-task-center";
 
-import type { PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
-import { validateBrowserMutation } from "./auth/session-security.js";
-import type { PcBffSessionService } from "./auth/session-service.js";
+import type { AccountAccessPrincipal } from "./auth/account-access-service.js";
+import type { LocalAuthenticationHttpAdapter } from "./auth/local-http-adapter.js";
+import { validateLocalBrowserMutation } from "./auth/local-http-adapter.js";
+import type { AuthenticationSurface } from "./auth/local-session-store.js";
 import type { ApiComposition } from "./index.js";
 import type { RealtimeServer } from "./realtime/realtime-server.js";
-import type { PcSessionPolicyPort } from "./auth/session-policy.js";
-import {
-  createApplicationRegistryHttpAdapter,
-  type ApplicationRegistryHttpAdapter,
-} from "./platform-http/application-registry-http.js";
 import {
   createFileCenterHttpAdapter,
   type FileCenterHttpAdapter,
@@ -48,17 +42,18 @@ export interface ProtectedOperationInput {
   readonly credential: string;
   readonly permission: PermissionRequest;
   readonly selectedAssignmentId?: string;
+  readonly surface: AuthenticationSurface;
   readonly traceId?: string;
 }
 
 export interface AuthorizedOperationContext {
+  readonly assignmentId?: string;
   readonly decision: Readonly<AuthorizationDecision>;
-  readonly principal: Readonly<AuthenticatedPrincipal>;
-  readonly workforce: Readonly<WorkforceContext>;
+  readonly principal: Readonly<AccountAccessPrincipal>;
+  readonly workforce: Readonly<WorkforcePersonContext>;
 }
 
 export interface ApiQueryBindings {
-  readonly applicationRegistry: ApplicationRegistryQueryService;
   readonly fileCenter: Pick<FileCenterService, "authorizeDownload" | "completeUpload" | "createUploadSession">;
   readonly forms: FormSchemaQueryService;
   readonly notifications: Pick<NotificationCenter, "get" | "list" | "unreadCount"> & Partial<Pick<NotificationCenter, "activateTemplate" | "archive" | "getTemplateAdministration" | "listTemplateDefinitions" | "markRead" | "previewTemplate" | "publishTemplateDraft" | "saveTemplateDraft">>;
@@ -67,9 +62,9 @@ export interface ApiQueryBindings {
 
 export interface ApiPlatformBindings {
   readonly audit: AuditService;
-  readonly authentication: PcAuthenticationHttpAdapter;
-  readonly authenticationCallbackUrl: (requestPathAndQuery: string) => string;
-  readonly browserSecurity: { readonly allowedOrigins: readonly string[] };
+  readonly accountAccess: LocalAuthenticationHttpAdapter;
+  readonly partTimeAccess?: LocalAuthenticationHttpAdapter;
+  readonly browserSecurity: { readonly allowedOrigins: Readonly<Record<AuthenticationSurface, string>> };
   readonly authorization: AuthorizationService;
   readonly authorizationTrace: {
     readonly run: <T>(traceId: string, work: () => Promise<T>) => Promise<T>;
@@ -80,14 +75,16 @@ export interface ApiPlatformBindings {
   readonly queries: ApiQueryBindings;
   readonly readiness: () => readonly HealthDependency[];
   readonly realtime?: RealtimeServer;
-  readonly sessionPolicy?: PcSessionPolicyPort;
-  readonly sessions: Pick<PcBffSessionService, "resolvePrincipal" | "sessionForMutation"> & Partial<Pick<PcBffSessionService, "logout">>;
+  readonly sessions: Readonly<{
+    logout?: (credential: string, traceId?: string) => Promise<void>;
+    resolvePrincipal: (surface: AuthenticationSurface, credential: string, traceId?: string) => Promise<Readonly<AccountAccessPrincipal>>;
+    sessionForMutation: (surface: AuthenticationSurface, credential: string) => Promise<Readonly<{ authenticatedAt: string; client: "internal-h5" | "pc-web"; csrfToken: string; expiresAt: string; sessionReference: string }>>;
+  }>;
   readonly workbench?: WorkbenchBootstrapFacade;
   readonly workforceAdministration?: WorkforceAdministrationFacade;
 }
 
 export interface ApiPlatformHttpComposition {
-  readonly applicationRegistry: ApplicationRegistryHttpAdapter;
   readonly authorize: ApiPlatformComposition["authorize"];
   readonly fileCenter: FileCenterHttpAdapter;
   readonly forms: FormSchemaHttpAdapter;
@@ -95,7 +92,6 @@ export interface ApiPlatformHttpComposition {
   /** Test-scoped causal-evidence port; production bindings use TaskCenter.complete. */
   readonly taskCompletionWithTrace?: (command: Parameters<TaskCenter["complete"]>[0], traceparent: string) => ReturnType<TaskCenter["complete"]>;
   readonly tasks?: Partial<Pick<TaskCenter, "complete" | "list">>;
-  readonly sessionPolicy?: PcSessionPolicyPort;
   /** Explicitly bound only by the disposable Walking Skeleton E2E BFF. */
   readonly walkingSkeletonFormSubmissions?: Readonly<{
     handle(request: Readonly<{
@@ -120,17 +116,17 @@ export interface BrowserMutationInput {
     readonly csrfToken?: string;
     readonly origin?: string;
     readonly referer?: string;
+    readonly surface: AuthenticationSurface;
 }
 
 export interface ApiPlatformComposition {
   readonly bindings: ApiPlatformBindings;
-  readonly lifecycle: Pick<ApiComposition, "authentication" | "authenticationCallbackUrl" | "dependencies" | "onStart" | "onStop" | "platformHttp" | "realtime" | "workbenchHttp" | "workforceAdministrationHttp">;
+  readonly lifecycle: Pick<ApiComposition, "accountAccess" | "partTimeAccess" | "dependencies" | "onStart" | "onStop" | "platformHttp" | "realtime" | "workbenchHttp" | "workforceAdministrationHttp">;
   readonly authorize: (input: ProtectedOperationInput) => Promise<Readonly<AuthorizedOperationContext>>;
 }
 
 function actorId(context: Readonly<AuthorizedOperationContext>): string {
-  const subject = context.principal.authenticationSubject;
-  return `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
+  return `account:${createHash("sha256").update(context.principal.accountId).digest("hex")}`;
 }
 
 function requireBinding(value: unknown, name: string): void {
@@ -156,7 +152,7 @@ function assertStartupActive(signal: AbortSignal): void {
  */
 export function createApiPlatformComposition(bindings: ApiPlatformBindings): Readonly<ApiPlatformComposition> {
   requireBinding(bindings.audit, "audit");
-  requireBinding(bindings.authentication, "authentication");
+  requireBinding(bindings.accountAccess, "account_access");
   requireBinding(bindings.browserSecurity, "browser_security");
   requireBinding(bindings.authorization, "authorization");
   requireBinding(bindings.authorizationTrace, "authorization_trace");
@@ -164,7 +160,6 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
   requireBinding(bindings.databaseCompatibility, "database_compatibility");
   requireBinding(bindings.organization, "organization");
   requireBinding(bindings.queries, "queries");
-  requireBinding(bindings.queries.applicationRegistry, "application_registry_queries");
   requireBinding(bindings.queries.fileCenter, "file_queries");
   requireBinding(bindings.queries.forms, "form_queries");
   requireBinding(bindings.queries.notifications, "notification_queries");
@@ -172,18 +167,15 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
   requireBinding(bindings.sessions, "sessions");
   requireMethod(bindings.audit, "readSensitive", "audit_read");
   requireMethod(bindings.audit, "record", "audit_record");
-  requireMethod(bindings.authentication, "beginLogin", "authentication_begin_login");
-  requireMethod(bindings.authentication, "completeLogin", "authentication_complete_login");
-  requireMethod(bindings.authentication, "currentSession", "authentication_current_session");
-  requireMethod(bindings.authentication, "logout", "authentication_logout");
-  requireMethod(bindings.authentication, "refresh", "authentication_refresh");
-  requireFunction(bindings.authenticationCallbackUrl, "authentication_callback_url");
+  requireMethod(bindings.accountAccess, "login", "account_access_login");
+  requireMethod(bindings.accountAccess, "session", "account_access_session");
+  requireMethod(bindings.accountAccess, "reauthentication", "account_access_reauthentication");
+  requireMethod(bindings.accountAccess, "assignment", "account_access_assignment");
+  requireMethod(bindings.accountAccess, "logout", "account_access_logout");
   requireMethod(bindings.authorization, "requireAllowed", "authorization_require_allowed");
   requireFunction(bindings.authorizationTrace.run, "authorization_trace_run");
   requireFunction(bindings.databaseCompatibility.assertCompatible, "database_compatibility_check");
-  requireMethod(bindings.organization, "resolveWorkforceContext", "organization_resolve_workforce");
-  requireMethod(bindings.queries.applicationRegistry, "loadRegistry", "application_registry_load");
-  requireMethod(bindings.queries.applicationRegistry, "resolveDeepLink", "application_registry_resolve_deep_link");
+  requireMethod(bindings.organization, "resolveWorkforcePersonContext", "organization_resolve_workforce_person");
   requireFunction(bindings.queries.fileCenter.authorizeDownload, "file_authorize_download");
   requireFunction(bindings.queries.fileCenter.completeUpload, "file_complete_upload");
   requireFunction(bindings.queries.fileCenter.createUploadSession, "file_create_upload_session");
@@ -206,31 +198,31 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
   const authorize = async (input: ProtectedOperationInput): Promise<Readonly<AuthorizedOperationContext>> => {
     const traceId = input.traceId ?? createTraceContext().traceId;
     return bindings.authorizationTrace.run(traceId, async () => {
-      const principal = await bindings.sessions.resolvePrincipal(input.credential);
-      const workforce = await bindings.organization.resolveWorkforceContext(
-        principal.authenticationSubject,
+      const principal = await bindings.sessions.resolvePrincipal(input.surface, input.credential, traceId);
+      const assignmentId = input.selectedAssignmentId ?? principal.currentAssignmentId;
+      const workforce = await bindings.organization.resolveWorkforcePersonContext(
+        principal.workforcePersonId,
         input.at,
-        input.selectedAssignmentId,
+        assignmentId,
       );
       const decision = await bindings.authorization.requireAllowed({
         activeAssignmentIds: workforce.assignments.map((assignment) => assignment.assignmentId),
-        ...(input.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: input.selectedAssignmentId }),
+        ...(assignmentId === undefined ? {} : { selectedAssignmentId: assignmentId }),
         workforcePersonId: workforce.workforcePersonId,
       }, input.permission);
-      return Object.freeze({ decision, principal, workforce });
+      return Object.freeze({ ...(assignmentId === undefined ? {} : { assignmentId }), decision, principal, workforce });
     });
   };
-  const applicationRegistry = createApplicationRegistryHttpAdapter(bindings.queries.applicationRegistry);
   const forms = createFormSchemaHttpAdapter({
     authorize: async (input) => {
       const traceId = extractTraceContext({ traceparent: input.traceparent }).traceId;
-      const context = await authorize({ ...input, traceId });
+      const context = await authorize({ ...input, surface: "pc", traceId });
       return Object.freeze({
         activeAssignmentIds: context.workforce.assignments.map((assignment) => assignment.assignmentId),
         actorId: actorId(context),
         traceId,
         workforcePersonId: context.workforce.workforcePersonId,
-        ...(input.selectedAssignmentId === undefined ? {} : { assignmentId: input.selectedAssignmentId }),
+        ...(context.assignmentId === undefined ? {} : { assignmentId: context.assignmentId }),
       });
     },
     service: bindings.queries.forms,
@@ -243,34 +235,34 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
           credential: input.credential,
           permission: {
             action: input.operation,
-            resource: "platform.file-center.file",
+            resource: "crm.file-center.file",
           },
           traceId: input.traceId,
+          surface: "pc",
           ...(input.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: input.selectedAssignmentId }),
         });
         return Object.freeze({
           actorId: context.workforce.workforcePersonId,
           actorType: "authenticated_subject" as const,
-          ...(input.selectedAssignmentId === undefined ? {} : { assignmentId: input.selectedAssignmentId }),
+          ...(context.assignmentId === undefined ? {} : { assignmentId: context.assignmentId }),
         });
       },
     },
-    allowedOrigins: bindings.browserSecurity.allowedOrigins,
+    allowedOrigins: [bindings.browserSecurity.allowedOrigins.pc],
     service: bindings.queries.fileCenter,
-    sessions: bindings.sessions,
+    sessions: { sessionForMutation: (credential) => bindings.sessions.sessionForMutation("pc", credential) },
   });
   const validateMutation = async (input: BrowserMutationInput): Promise<void> => {
-    const session = await bindings.sessions.sessionForMutation(input.credential);
-    validateBrowserMutation({
-      allowedOrigins: bindings.browserSecurity.allowedOrigins,
-      csrfHeader: input.csrfToken,
-      csrfSessionValue: session.csrfToken,
-      origin: input.origin,
-      referer: input.referer,
+    const session = await bindings.sessions.sessionForMutation(input.surface, input.credential);
+    validateLocalBrowserMutation({
+      allowedOrigin: bindings.browserSecurity.allowedOrigins[input.surface],
+      ...(input.csrfToken === undefined ? {} : { csrfToken: input.csrfToken }),
+      ...(input.origin === undefined ? {} : { origin: input.origin }),
+      ...(input.referer === undefined ? {} : { referer: input.referer }),
+      sessionCsrfToken: session.csrfToken,
     });
   };
   const platformHttp: Readonly<ApiPlatformHttpComposition> = Object.freeze({
-    applicationRegistry,
     authorize,
     fileCenter,
     forms,
@@ -292,7 +284,6 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
       if (result === undefined) throw new Error("task_completion_binding_missing");
       return result;
     } },
-    ...(bindings.sessionPolicy === undefined ? {} : { sessionPolicy: bindings.sessionPolicy }),
     validateFormMutation: validateMutation,
     validateNotificationMutation: validateMutation,
     validateTaskMutation: validateMutation,
@@ -306,18 +297,13 @@ export function createApiPlatformComposition(bindings: ApiPlatformBindings): Rea
     authorize,
     bindings,
     lifecycle: Object.freeze({
-      authentication: bindings.authentication,
-      authenticationCallbackUrl: bindings.authenticationCallbackUrl,
+    accountAccess: bindings.accountAccess,
+      ...(bindings.partTimeAccess === undefined ? {} : { partTimeAccess: bindings.partTimeAccess }),
       dependencies: bindings.readiness,
       ...(bindings.realtime === undefined ? {} : { realtime: bindings.realtime }),
       platformHttp,
       ...(workbenchHttp === undefined ? {} : { workbenchHttp }),
       ...(workforceAdministrationHttp === undefined ? {} : { workforceAdministrationHttp }),
-      ...(bindings.sessions.logout === undefined ? {} : {
-        revokeBrowserSession: async (credential: string, traceId: string) => {
-          await bindings.sessions.logout?.(credential, undefined, traceId);
-        },
-      }),
       onStart: async (signal: AbortSignal) => {
         assertStartupActive(signal);
         await bindings.databaseCompatibility.assertCompatible(signal);

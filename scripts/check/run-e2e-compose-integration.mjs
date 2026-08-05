@@ -58,11 +58,11 @@ try {
   run("docker", [...compose, "exec", "-T", "-e", "AI_CRM_E2E_PROCESS_ENTRYPOINT=publish-task-projection", "-e", `AI_CRM_E2E_TASK_PROJECTION_EVENT_ID=${eventId}`, "-e", `AI_CRM_E2E_TASK_PROJECTION_SOURCE_TASK_ID=${sourceTaskId}`, "worker-e2e", "node", "dist/worker-main.js"], { stdio: "inherit" });
   let projection = "";
   for (let attempt = 0; attempt < 40 && projection === ""; attempt += 1) {
-    projection = run("docker", [...compose, "exec", "-T", "postgres", "psql", "-U", "ai_crm_admin", "-d", "ai_crm", "-Atc", `select status||':'||source_version from platform_task_center.task_projections where source_task_id='${sourceTaskId}'`]);
+    projection = run("docker", [...compose, "exec", "-T", "postgres", "psql", "-U", "ai_crm_admin", "-d", "ai_crm", "-Atc", `select status||':'||source_version from crm_task_center.task_projections where source_task_id='${sourceTaskId}'`]);
     if (projection === "") await new Promise((ready) => { setTimeout(ready, 250); });
   }
   if (projection !== "open:1") throw new Error("e2e_task_projection_worker_not_applied");
-  const inbox = run("docker", [...compose, "exec", "-T", "postgres", "psql", "-U", "ai_crm_admin", "-d", "ai_crm", "-Atc", `select count(*) from platform_eventing.inbox_receipts where message_id='${eventId}' and consumer='platform.task-center.projection.v1'`]);
+  const inbox = run("docker", [...compose, "exec", "-T", "postgres", "psql", "-U", "ai_crm_admin", "-d", "ai_crm", "-Atc", `select count(*) from crm_eventing.inbox_receipts where message_id='${eventId}' and consumer='crm.task-center.projection.v1'`]);
   if (inbox !== "1") throw new Error("e2e_task_projection_inbox_missing");
   process.stdout.write(`${JSON.stringify({ inboxReceipts: 1, project, projection, services: 10, status: "e2e-process-composition-passed", worker: "isolated-rabbit-postgres" })}\n`);
 } catch (error) {

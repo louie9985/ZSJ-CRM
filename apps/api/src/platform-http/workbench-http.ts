@@ -1,6 +1,5 @@
 export interface WorkbenchBootstrapView {
   readonly accountKind: "system_administrator" | "workforce";
-  readonly applicationIds?: readonly string[];
   readonly assignmentReference?: string;
   readonly displayName: string;
   readonly navigationIds: readonly string[];
@@ -14,6 +13,7 @@ export interface WorkbenchBootstrapFacade {
 
 export interface WorkbenchHttpResponse {
   readonly body: unknown;
+  readonly diagnosticCode?: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly status: 200 | 401 | 403 | 503;
 }
@@ -40,6 +40,13 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
+function diagnosticCode(error: unknown): string {
+  const code = errorCode(error);
+  return code !== undefined && /^[a-z][a-z0-9_.-]{0,127}$/u.test(code)
+    ? code
+    : "workbench_unhandled_failure";
+}
+
 function boundedText(value: unknown, maximum: number): string {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum || value.trim() !== value || /[\0\r\n]/u.test(value)) {
     throw new Error("workbench_facade_result_invalid");
@@ -51,7 +58,6 @@ function serialize(view: Readonly<WorkbenchBootstrapView>): Readonly<Record<stri
   if (!(new Set<unknown>(["system_administrator", "workforce"])).has(view.accountKind)) throw new Error("workbench_facade_result_invalid");
   if (!SESSION_SCOPE.test(view.sessionScope)) throw new Error("workbench_facade_result_invalid");
   const rawNavigationIds: readonly unknown[] = view.navigationIds;
-  const rawApplicationIds: unknown = view.applicationIds;
   if (!Array.isArray(rawNavigationIds) || rawNavigationIds.length > 128 ||
     rawNavigationIds.some((id) => typeof id !== "string" || !NAVIGATION_ID.test(id)) ||
     new Set(rawNavigationIds).size !== rawNavigationIds.length) {
@@ -59,22 +65,13 @@ function serialize(view: Readonly<WorkbenchBootstrapView>): Readonly<Record<stri
   }
   if (view.assignmentReference !== undefined && !UUID.test(view.assignmentReference)) throw new Error("workbench_facade_result_invalid");
   if (view.accountKind === "system_administrator" && view.assignmentReference !== undefined) throw new Error("workbench_facade_result_invalid");
-  if (rawApplicationIds !== undefined && (!Array.isArray(rawApplicationIds) || rawApplicationIds.length > 32 || rawApplicationIds.some((id: unknown) => typeof id !== "string" || !NAVIGATION_ID.test(id)) || new Set(rawApplicationIds).size !== rawApplicationIds.length)) throw new Error("workbench_facade_result_invalid");
   if (view.workspaceProfileId !== undefined && !NAVIGATION_ID.test(view.workspaceProfileId)) throw new Error("workbench_facade_result_invalid");
   const navigationIds: string[] = [];
   for (const navigationId of rawNavigationIds) {
     if (typeof navigationId !== "string") throw new Error("workbench_facade_result_invalid");
     navigationIds.push(navigationId);
   }
-  const applicationIds: string[] = [];
-  if (Array.isArray(rawApplicationIds)) {
-    for (const applicationId of rawApplicationIds) {
-      if (typeof applicationId !== "string") throw new Error("workbench_facade_result_invalid");
-      applicationIds.push(applicationId);
-    }
-  }
   return Object.freeze({
-    ...(rawApplicationIds === undefined ? {} : { applicationIds: Object.freeze(applicationIds) }),
     collections: Object.freeze({ files: Object.freeze({}), forms: Object.freeze({}), notifications: Object.freeze({}), tasks: Object.freeze({}) }),
     context: Object.freeze({
       accountKind: view.accountKind,
@@ -116,6 +113,7 @@ export function createWorkbenchHttpAdapter(facade: WorkbenchBootstrapFacade): Re
         ].includes(code ?? "");
         return Object.freeze({
           body: Object.freeze({ code: unauthorized ? "authentication_required" : forbidden ? "workbench_forbidden" : "workbench_unavailable" }),
+          diagnosticCode: diagnosticCode(error),
           headers: headers(traceId),
           status: unauthorized ? 401 : forbidden ? 403 : 503,
         });

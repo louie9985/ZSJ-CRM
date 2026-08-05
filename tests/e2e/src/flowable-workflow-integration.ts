@@ -2,14 +2,14 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createTaskCenter, InMemoryTaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
+import { createTaskCenter, InMemoryTaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/crm-task-center";
 import {
   createFlowableRestEngine,
   createWorkflowFacade,
   type WorkflowAuditRecord,
   type WorkflowLifecycleEvent,
-} from "@ai-crm/platform-workflow";
-import { createMemoryWorkflowCommandLedger } from "@ai-crm/platform-workflow/testing";
+} from "@ai-crm/crm-workflow";
+import { createMemoryWorkflowCommandLedger } from "@ai-crm/crm-workflow/testing";
 
 import { createWalkingSkeletonSource, createWalkingSkeletonTaskPorts, walkingSkeletonSourceType } from "./walking-skeleton-source.js";
 import { createWalkingSkeletonWorkflowCompletion } from "./walking-skeleton-workflow.js";
@@ -88,7 +88,7 @@ export async function runWalkingSkeletonFlowableWorkflowIntegration(): Promise<v
   });
   const projected: TaskLifecycleEvent = {
     assigneeReference: actor.activeAssignmentIds[0] ?? "",
-    deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" },
+    deepLink: { appId: "crm.synthetic", routeId: "crm.synthetic.detail" },
     eventId: "80000000-0000-4000-8000-000000000001",
     occurredAt: "2026-07-30T00:00:00.000Z",
     sourceTaskId,

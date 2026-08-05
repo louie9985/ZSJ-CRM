@@ -1,8 +1,6 @@
-import { pcLoginUrl } from "./auth-routes";
 import type { BootstrapResult, PlatformCollection, WorkbenchPort } from "./workbench-port";
 
 type FetchPort = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-type LocationPort = Pick<Location, "assign">;
 
 function record(value: unknown, code: string): Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(code);
@@ -33,16 +31,11 @@ function parseReady(value: unknown): Extract<BootstrapResult, { kind: "ready" }>
   if (!Array.isArray(navigationIds) || navigationIds.length > 128 || navigationIds.some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(item)) || new Set(navigationIds).size !== navigationIds.length) throw new Error("workbench_navigation_invalid");
   const safeNavigationIds: string[] = [];
   for (const item of navigationIds) if (typeof item === "string") safeNavigationIds.push(item);
-  const applicationIds = body["applicationIds"];
-  if (applicationIds !== undefined && (!Array.isArray(applicationIds) || applicationIds.length > 32 || applicationIds.some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(item)) || new Set(applicationIds).size !== applicationIds.length)) throw new Error("workbench_application_ids_invalid");
-  const safeApplicationIds: string[] = [];
-  if (Array.isArray(applicationIds)) for (const item of applicationIds) if (typeof item === "string") safeApplicationIds.push(item);
   const workspaceProfileId = body["workspaceProfileId"];
   if (workspaceProfileId !== undefined && (typeof workspaceProfileId !== "string" || !/^[a-z][a-z0-9_.-]{0,127}$/u.test(workspaceProfileId))) throw new Error("workbench_workspace_profile_invalid");
   const counts = record(body["counts"], "workbench_counts_invalid");
   return Object.freeze({
     kind: "ready",
-    ...(applicationIds === undefined ? {} : { applicationIds: Object.freeze(safeApplicationIds) }),
     fixture: false,
     context: Object.freeze({
       accountKind,
@@ -63,11 +56,16 @@ async function responseBody(response: Response, code: string): Promise<unknown> 
 
 export function createSameSiteWorkbenchPort(
   fetchPort: FetchPort = globalThis.fetch,
-  locationPort: LocationPort = globalThis.location,
-): Pick<WorkbenchPort, "beginLogin" | "bootstrap" | "logout"> {
+): Pick<WorkbenchPort, "login" | "bootstrap" | "logout"> {
   return Object.freeze({
-    beginLogin(returnTo: string): void {
-      locationPort.assign(pcLoginUrl(returnTo));
+    async login(identifier: string, password: string) {
+      const response = await fetchPort("/auth/pc/login", { body: JSON.stringify({ identifier, password }), credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "POST" });
+      if (response.status === 401) return "invalid";
+      if (response.status === 403) return "security-rejected";
+      if (response.status === 429) return "rate-limited";
+      if (response.status === 503) return "unavailable";
+      if (response.status !== 200) throw new Error(`workbench_login_${String(response.status)}`);
+      return "authenticated";
     },
     async bootstrap(): Promise<BootstrapResult> {
       const response = await fetchPort("/workbench/bootstrap", { credentials: "same-origin", headers: { Accept: "application/json" } });
@@ -79,22 +77,17 @@ export function createSameSiteWorkbenchPort(
     },
     async logout(): Promise<{ kind: "logged-out" | "session-expired" }> {
       const sessionResponse = await fetchPort("/auth/pc/session", { credentials: "same-origin", headers: { Accept: "application/json" } });
-      if (sessionResponse.status === 401) return { kind: "logged-out" };
+      if (sessionResponse.status === 401) {
+        const response = await fetchPort("/auth/pc/logout", { credentials: "same-origin", headers: { Accept: "application/json" }, method: "POST" });
+        if (response.status !== 204) throw new Error(`workbench_logout_${String(response.status)}`);
+        return { kind: "logged-out" };
+      }
       if (!sessionResponse.ok) throw new Error("workbench_logout_session_unavailable");
       const session = record(await responseBody(sessionResponse, "workbench_logout_session_invalid"), "workbench_logout_session_invalid");
       const csrfToken = boundedText(session["csrfToken"], "workbench_logout_session_invalid", 512);
       const response = await fetchPort("/auth/pc/logout", { credentials: "same-origin", headers: { Accept: "application/json", "X-CSRF-Token": csrfToken }, method: "POST" });
       if (response.status === 401) return { kind: "session-expired" };
       if (response.status === 204) return { kind: "logged-out" };
-      if (response.status === 200) {
-        const body = record(await responseBody(response, "workbench_logout_response_invalid"), "workbench_logout_response_invalid");
-        const redirectUrl = boundedText(body["redirectUrl"], "workbench_logout_response_invalid", 4096);
-        let parsedRedirect: URL;
-        try { parsedRedirect = new URL(redirectUrl); } catch { throw new Error("workbench_logout_response_invalid"); }
-        if (parsedRedirect.protocol !== "https:" && parsedRedirect.protocol !== "http:") throw new Error("workbench_logout_response_invalid");
-        locationPort.assign(parsedRedirect.href);
-        return { kind: "logged-out" };
-      }
       throw new Error(`workbench_logout_${String(response.status)}`);
     },
   });

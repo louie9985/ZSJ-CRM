@@ -1,8 +1,8 @@
 # AI 网关
 
-- 模块位置：`packages/platform-modules/ai-gateway`
+- 模块位置：`packages/crm-modules/ai-gateway`
 - 运行入口：`apps/api`、`apps/worker`
-- 类型：业务中立平台模块
+- 类型：CRM 项目核心模块
 - 状态：边界与第一阶段范围已确认，公开契约、存储和实现待评审
 - 架构依据：ADR-0003、ADR-0010、ADR-0020、ADR-0024
 
@@ -52,7 +52,7 @@
 
 ## 依赖方向
 
-- 拥有模块通过 `platform-sdk` 和正式 AI 契约调用。
+- 拥有模块通过 `crm-sdk` 和正式 AI 契约调用。
 - `ai-gateway` 可以依赖 `integration-runtime`、配置、数据库、事件、审计和可观测公共入口。
 - Provider Adapter 由 `apps/api` 或 `apps/worker` 注入。
 - 领域模块不得依赖 AI Provider SDK、Adapter、AI 网关表或 Prompt 存储。

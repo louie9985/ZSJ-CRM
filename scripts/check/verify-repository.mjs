@@ -26,11 +26,9 @@ const required = contractsOnly
       "apps/api",
       "apps/worker",
       "apps/workbench-web",
-      "apps/internal-mobile",
-      "apps/external-portal",
-      "packages/platform-modules",
+      "packages/crm-modules",
       "packages/domain-modules/README.md",
-      "packages/platform-sdk",
+      "packages/crm-sdk",
       "contracts/http",
       "contracts/events",
       "contracts/jobs",
@@ -67,9 +65,9 @@ if (!contractsOnly) {
 const workspacePackages = contractsOnly
   ? []
   : [
-      ...["api", "worker", "workbench-web", "internal-mobile", "external-portal"].map((name) => `apps/${name}`),
-      ...["api-client", "config", "database", "eslint-config", "observability", "platform-sdk", "shared-ui", "test-config", "tsconfig"].map((name) => `packages/${name}`),
-      ...["ai-gateway", "app-registry", "audit", "auth-context", "authorization", "business-configuration", "eventing-outbox", "file-center", "form-schema", "integration-runtime", "notifications", "organization", "task-center", "workflow"].map((name) => `packages/platform-modules/${name}`),
+      ...["api", "worker", "workbench-web"].map((name) => `apps/${name}`),
+      ...["api-client", "config", "database", "eslint-config", "observability", "crm-sdk", "shared-ui", "test-config", "tsconfig"].map((name) => `packages/${name}`),
+      ...["ai-gateway", "audit", "authorization", "business-configuration", "eventing-outbox", "file-center", "form-schema", "integration-runtime", "notifications", "organization", "task-center", "workforce-access", "workflow"].map((name) => `packages/crm-modules/${name}`),
     ];
 const invalidPackages = workspacePackages.filter((path) => {
   const packagePath = resolve(root, path, "package.json");

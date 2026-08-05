@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Restrict the API runtime to revoking fixed-role grants without allowing scope or role mutation.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Changes table privileges only and does not rewrite fixed_role_grants rows.",
+  "dataImpact": "No data changes; existing SELECT and INSERT privileges remain and UPDATE is limited to revoked_at.",
+  "backfill": "Not required.",
+  "destructive": false,
+  "recovery": "Temporarily re-grant full UPDATE only through a reviewed emergency migration if an older runtime must be restored.",
+  "forwardFix": "Append a reviewed authorization-owned migration. Do not rewrite this migration after application."
+}

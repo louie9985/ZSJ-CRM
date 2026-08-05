@@ -78,11 +78,11 @@ export async function analyzeBoundaries(root) {
         graph.get(owner.manifest.name)?.add(dependency);
 
         const ownerPath = relative(root, owner.root).replaceAll("\\", "/");
-        if (ownerPath.startsWith("packages/platform-modules/") && dependency.startsWith("@ai-crm/domain-")) {
+        if (ownerPath.startsWith("packages/crm-modules/") && dependency.startsWith("@ai-crm/domain-")) {
           errors.push(`${owner.manifest.name} must not depend on a domain module`);
         }
-        if (ownerPath.startsWith("packages/domain-modules/") && dependency !== "@ai-crm/platform-sdk") {
-          errors.push(`${owner.manifest.name} may depend only on @ai-crm/platform-sdk and reviewed contracts`);
+        if (ownerPath.startsWith("packages/domain-modules/") && dependency !== "@ai-crm/crm-sdk") {
+          errors.push(`${owner.manifest.name} may depend only on @ai-crm/crm-sdk and reviewed contracts`);
         }
       }
     }

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   parseComposeDurationMilliseconds,
-  validatePreviousSessionKeyOverlay,
   validateRenderedWorkerDrain,
 } from "./production-deployment-gates.mjs";
 
@@ -39,34 +38,4 @@ test("fails closed when drain equals/exceeds grace or either value is not concre
       environment: { AI_CRM_WORKER_DRAIN_TIMEOUT_SECONDS: drain }, stop_grace_period: grace,
     } } }).some((error) => error.includes(expected)));
   }
-});
-
-const previousOverlay = () => ({
-  name: "ai-crm-prod-a",
-  services: { api: {
-    environment: {
-      AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID: "${AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID:?required}",
-      AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_FILE: "/run/secrets/pc_session_previous_encryption_key",
-    },
-    secrets: ["pc_session_previous_encryption_key"],
-  } },
-  secrets: { pc_session_previous_encryption_key: {
-    file: "${AI_CRM_SECRET_ROOT:?secret root is required}/pc_session_previous_encryption_key",
-  } },
-});
-
-test("keeps the previous session key absent by default and mounts only its typed file when opted in", () => {
-  const base = { services: { api: { environment: {}, secrets: ["pc_session_encryption_key"] } }, secrets: {} };
-  assert.deepEqual(validatePreviousSessionKeyOverlay(base, previousOverlay(), "ai-crm-prod-a"), []);
-});
-
-test("rejects accidental base mounts and incomplete or non-failing previous-key overlays", () => {
-  const base = { services: { api: { environment: {}, secrets: ["pc_session_previous_encryption_key"] } }, secrets: {} };
-  const overlay = previousOverlay();
-  delete overlay.services.api.environment.AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID;
-  overlay.secrets.pc_session_previous_encryption_key.file = "/untyped/optional/path";
-  const errors = validatePreviousSessionKeyOverlay(base, overlay, "ai-crm-prod-a");
-  assert.ok(errors.some((error) => error.includes("Base production Compose")));
-  assert.ok(errors.some((error) => error.includes("paired API ID")));
-  assert.ok(errors.some((error) => error.includes("fail closed")));
 });

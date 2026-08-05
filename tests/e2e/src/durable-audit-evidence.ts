@@ -1,5 +1,5 @@
-import type { AuditRecord } from "@ai-crm/platform-audit";
-import type { FileReference } from "@ai-crm/platform-file-center";
+import type { AuditRecord } from "@ai-crm/crm-audit";
+import type { FileReference } from "@ai-crm/crm-file-center";
 
 import {
   browserTaskSourceTaskId,

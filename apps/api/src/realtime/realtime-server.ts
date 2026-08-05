@@ -12,6 +12,7 @@ const MAX_BUFFERED_BYTES = 256 * 1024;
 export interface RealtimeIdentity {
   readonly activeAssignmentIds: readonly string[];
   readonly principalId: string;
+  readonly selectedAssignmentId?: string;
   readonly sessionReference: string;
   readonly workforcePersonId: string;
 }

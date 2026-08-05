@@ -1,17 +1,20 @@
-# Bootstrap Scripts
+# Local Bootstrap
 
-Environment initialization and local developer setup.
+本地开发使用 `scripts/bootstrap/local-dev.mjs` 作为唯一入口：
 
-## ZSJ CRM local administrator bootstrap
+```text
+pnpm local:infra
+pnpm local:migrate
+pnpm local:bootstrap
+pnpm local:api
+pnpm local:web
+pnpm local:doctor
+```
 
-`zsj-crm-local.mjs` coordinates the development-only creation of the stable `ZSJ` root, `AI应用部`, `系统管理岗`, one ZSJ administrator, and one CRM administrator. It never accepts account values as command-line arguments and never prints them.
+`compose-secrets.mjs dev` 在忽略提交的 `deploy/compose/.runtime/dev/` 下生成受限随机文件，其中认证只使用 `session_index_key` 与 `system_admin_password`。密码不会作为命令行参数或日志输出。
 
-Each username, real name, phone, and password must be supplied through its dedicated absolute `*_FILE` environment reference. Secret files must be regular, canonical, non-linked, single-value files; POSIX files with any group/other permission are rejected. Passwords are passed only to the injected identity/Keycloak port.
+`pnpm local:api` 在前台运行 API/BFF，并将结构化 JSON 日志输出到启动该命令的终端。请求日志只包含固定操作名、方法、状态、耗时和 Trace ID，不包含 Cookie、密码、请求体或账号标识；浏览器响应中的 `X-Trace-Id` 可用于定位对应日志。`pnpm local:doctor` 只检查服务可用性，不会代替 API 日志。
 
-Required Secret references are `AI_CRM_LOCAL_ZSJ_ADMIN_USERNAME_FILE`, `AI_CRM_LOCAL_ZSJ_ADMIN_REAL_NAME_FILE`, `AI_CRM_LOCAL_ZSJ_ADMIN_PHONE_FILE`, `AI_CRM_LOCAL_ZSJ_ADMIN_PASSWORD_FILE`, and the corresponding four `AI_CRM_LOCAL_CRM_ADMIN_*_FILE` references.
+`local:bootstrap` 从空库创建唯一 `system.admin`，以及配套 Person、Employment、Assignment、Account、Argon2id Credential 和全局 `system_administrator` 角色。脚本以稳定 ID 幂等；第二次执行只核对现有事实，不再次读取或处理密码。任何不匹配状态失败关闭。
 
-The executable also requires `AI_CRM_ZSJ_BOOTSTRAP_ADAPTER_MODULE`, an absolute path to an adapter exporting `createZsjCrmLocalBootstrapPorts`. The repository adapter is `scripts/bootstrap/zsj-crm-local-adapter.mjs`. It composes only public Database, Organization, Workforce Access, Authorization, App Registry, Audit, and Outbox APIs plus the Keycloak Admin HTTP API; it does not query module tables directly.
-
-The adapter additionally requires absolute `AI_CRM_LOCAL_BOOTSTRAP_DATABASE_URL_FILE`, `AI_CRM_LOCAL_KEYCLOAK_ADMIN_USERNAME_FILE`, and `AI_CRM_LOCAL_KEYCLOAK_ADMIN_PASSWORD_FILE` Secret references, plus the non-secret loopback `AI_CRM_LOCAL_KEYCLOAK_BASE_URL`. The target realm defaults to `ai-crm-dev` and the administrator realm defaults to `master`; override them only with `AI_CRM_LOCAL_KEYCLOAK_REALM` and `AI_CRM_LOCAL_KEYCLOAK_ADMIN_REALM`.
-
-Apply all reviewed migrations and build the referenced platform packages before running `node scripts/bootstrap/zsj-crm-local.mjs`. Every step carries a stable resource ID and Operation ID. Existing state is accepted only after exact stable identifiers match; conflicts fail closed, and a partial failure is resumed by running the same command again. The identity step creates each Keycloak user disabled with `UPDATE_PASSWORD`, links it to the Workforce Person and local account, and leaves the local account `credential_pending`. Only after that account's organization facts and administrator Grant exist does a separate activation step move the local account to `active` and finally enable Keycloak. If Keycloak enablement fails, the disabled identity keeps access closed and replay retries only the unfinished activation. Passwords remain inside the coordinator-to-Keycloak call and are never written to PostgreSQL, Audit, Outbox, output, or command arguments.
+本地 API 默认监听 `127.0.0.1:13001`，CRM Web 为 `127.0.0.1:3000`。PC、员工移动和兼职入口均由同一 Web 制品提供。

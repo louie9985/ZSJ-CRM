@@ -1005,6 +1005,54 @@ body {
   padding: 16px;
 }
 
+.mobile-workspace {
+  min-height: 100vh;
+  padding: 20px 16px 32px;
+  background: #f4f6f8;
+}
+
+.mobile-workspace-header,
+.mobile-workspace-nav,
+.mobile-workspace-content {
+  width: min(100%, 720px);
+  margin-inline: auto;
+}
+
+.mobile-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.mobile-workspace-header .ant-typography {
+  margin: 0;
+}
+
+.mobile-workspace-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.mobile-workspace-nav .ant-btn {
+  min-width: 0;
+}
+
+.mobile-workspace-content {
+  min-height: 280px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+@media (max-width: 420px) {
+  .mobile-workspace-nav { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 760px) {
   .template-workspace { flex-direction: column; }
   .template-selector { width: 100%; }

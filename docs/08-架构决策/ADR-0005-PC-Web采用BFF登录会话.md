@@ -1,6 +1,6 @@
 # ADR-0005：PC Web 采用 BFF 登录会话
 
-- 状态：已接受
+- 状态：认证提供方与 OIDC 部分已被 ADR-0034 取代；HttpOnly BFF Session 原则继续有效
 - 日期：2026-07-22
 - 决策人：项目负责人
 - 适用范围：`apps/workbench-web` 与 `apps/api` 的浏览器认证入口

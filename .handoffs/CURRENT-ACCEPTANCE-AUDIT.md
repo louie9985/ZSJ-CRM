@@ -1,5 +1,7 @@
 # 第一阶段 Walking Skeleton 当前验收证据审计
 
+> **历史快照。** 认证、外部客户端、Keycloak/OIDC、subject association 与动态授权策略相关证据已于 2026-08-04 被 ADR-0034 和其新版验收清单取代，不得作为当前实现要求。
+
 - 审计日期：2026-08-02
 - 审计对象：`docs/06-质量验收/第一阶段Walking-Skeleton验收清单.md` 当前实际存在的 201 个复选项
 - 审计性质：仓库证据盘点，不修改权威验收清单，不构成第一阶段签收
@@ -127,7 +129,7 @@
 | 04-01 | VERIFIED_REPO | `scripts/check/run-e2e-browser-authentication.mjs`、`tests/e2e/CURRENT-ENVIRONMENT-EVIDENCE.md` | 真实 Chromium 已经 Workbench/Nginx/BFF 进入真实 Keycloak 登录页并完成合成用户登录；只证明隔离本地 E2E，不代表生产 IdP。 |
 | 04-02～04-03 | VERIFIED_REPO | `apps/api/src/auth/http-adapter.test.ts`、`oidc.test.ts`、`session-security.test.ts` | 仓库级直接测试存在。 |
 | 04-04 | PARTIAL | `apps/api/src/auth/session-service.test.ts`、`session-store.integration.test.ts` | 刷新/注销有局部测试；缺真实 IdP 强制失效跨组件证据。 |
-| 04-05～04-10 | VERIFIED_REPO | `packages/platform-modules/auth-context/src/verifier.test.ts`、`packages/platform-modules/organization/src/service.test.ts`、`apps/api/src/auth/*.test.ts` | 仓库级正常与拒绝路径测试存在。 |
+| 04-05～04-10 | VERIFIED_REPO | `packages/crm-modules/auth-context/src/verifier.test.ts`、`packages/crm-modules/organization/src/service.test.ts`、`apps/api/src/auth/*.test.ts` | 仓库级正常与拒绝路径测试存在。 |
 | 04-11～04-12 | PARTIAL | `packages/observability/src/sanitize.test.ts`、`apps/internal-mobile/src/adapters.test.ts`、`apps/external-portal/src/session-adapters.test.ts` | 缺真实运行日志/Sentry/Trace 抽样；三端 BFF 实际部署隔离未验。 |
 | 04-13 | VERIFIED_REPO | `apps/external-portal/src/session-adapters.test.ts`、`portal-shell.test.tsx`、`runtime.production.ts` | 生产骨架失败关闭有直接测试/实现边界。 |
 
@@ -135,7 +137,7 @@
 
 | 编号 | 状态 | 直接证据 | 尚缺 |
 |---|---|---|---|
-| 05-01～05-04 | VERIFIED_REPO | `packages/platform-modules/authorization/src/engine.test.ts`、`platform-baseline.test.ts`、`packages/platform-sdk/src/authorization.test.ts` | 仓库级直接测试存在。 |
+| 05-01～05-04 | VERIFIED_REPO | `packages/crm-modules/authorization/src/engine.test.ts`、`platform-baseline.test.ts`、`packages/crm-sdk/src/authorization.test.ts` | 仓库级直接测试存在。 |
 | 05-05 | PARTIAL | 模块各自 `query-service.test.ts`、`service.test.ts` 与 `postgres-store*.ts` | 尚无统一架构测试证明所有拥有数据模块均正确翻译 Scope。 |
 | 05-06～05-08 | VERIFIED_REPO | `authorization/src/redis-cache.test.ts`、`runtime.integration.test.ts`、`apps/api/src/composition-factory.test.ts` | 缓存、任职上下文及拒绝记录有直接测试。 |
 | 05-09 | PARTIAL | 各 `platform-http/*.test.ts`、客户端 route-state 测试 | 缺直接 API + 深链 + 重放的全链拒绝 E2E。 |
@@ -147,7 +149,7 @@
 | 06-01 | VERIFIED_REPO | `packages/database/src/migrations.integration.test.ts` 与本轮数据库 40/40 | 空数据库升级到候选最新版本 `0000000015` 的本地集成证据存在。 |
 | 06-02 | VERIFIED_REPO | `migration-compatibility.test.ts`、`migration-artifact.test.mjs` 检测 checksum/identity 漂移；修复以新版本 `0000000015` 追加；用户确认项目从未部署、没有共享测试/预发布/生产数据库且本地无迁移登记 | 当前不存在已部署迁移可被历史改写；首次建立共享环境时仍须从空库执行并保存实际 Manifest/checksum，不能把本结论外推为未来环境证据。 |
 | 06-03～06-08 | VERIFIED_REPO | Compose 数据库隔离、模块自有 Schema/Repository、`prisma-generation.test.mjs`、`migration-compatibility.test.ts`、`migrations*.test.ts`、`runtime-role-*.test.ts` 与禁止自动 sync/push 的仓库门 | 当前权威清单此处实际包含六项：三库隔离、模块所有权、禁止自动同步、Prisma 源片段确定性组合、历史 SQL/Prisma 连续重建、迁移失败不记成功；均有自动化机制。旧审计漏计中间两项并错误压缩为四项。 |
-| 06-09 | PARTIAL | `packages/platform-modules/organization/migrations/0000000015_recheck_placement_parent_updates.sql` 与 `.meta.json`；用户已确认历史 `0003` 未进入非临时环境 | `0015` 是 destructive trigger replacement；元数据记录锁影响、事务回滚、恢复和仅追加前滚方案，仍缺目标环境备份/恢复点、变更审批和实际锁影响记录。 |
+| 06-09 | PARTIAL | `packages/crm-modules/organization/migrations/0000000015_recheck_placement_parent_updates.sql` 与 `.meta.json`；用户已确认历史 `0003` 未进入非临时环境 | `0015` 是 destructive trigger replacement；元数据记录锁影响、事务回滚、恢复和仅追加前滚方案，仍缺目标环境备份/恢复点、变更审批和实际锁影响记录。 |
 | 06-10 | PARTIAL | `packages/database/src/runtime*.test.ts`、observability context/trace tests | 缺真实慢查询与事务 Trace 关联的运行证据。 |
 
 ### 07 Outbox、RabbitMQ 与 Inbox 验收

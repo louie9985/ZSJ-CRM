@@ -13,7 +13,6 @@ describe("workbench HTTP adapter", () => {
   it("returns an Assignment-free system administrator bootstrap", async () => {
     const adapter = createWorkbenchHttpAdapter(facade({
       accountKind: "system_administrator",
-      applicationIds: ["crm"],
       displayName: "ZSJ系统管理员",
       navigationIds: ["crm.workforce-administration"],
       sessionScope: "session:system:01",
@@ -22,7 +21,6 @@ describe("workbench HTTP adapter", () => {
     await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({
       body: {
         context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员" },
-        applicationIds: ["crm"],
         fixture: false,
         kind: "ready",
         navigationIds: ["crm.workforce-administration"],
@@ -46,13 +44,13 @@ describe("workbench HTTP adapter", () => {
 
   it("fails closed for malformed facade output", async () => {
     const adapter = createWorkbenchHttpAdapter(facade({ accountKind: "system_administrator", displayName: "admin", navigationIds: ["UNKNOWN"], sessionScope: "session:system:01" }));
-    await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_unavailable" }, status: 503 });
+    await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_unavailable" }, diagnosticCode: "workbench_unhandled_failure", status: 503 });
   });
 
   it("maps inactive employment to forbidden without exposing details", async () => {
     const load = vi.fn().mockRejectedValue(Object.assign(new Error("private"), { code: "employment_not_active" }));
     const adapter = createWorkbenchHttpAdapter({ load });
-    await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, status: 403 });
+    await expect(adapter.bootstrap({ credential, traceId })).resolves.toMatchObject({ body: { code: "workbench_forbidden" }, diagnosticCode: "employment_not_active", status: 403 });
   });
 
   it("maps a stale workforce account session to forbidden instead of maintenance", async () => {

@@ -20,7 +20,7 @@
 
 - 根依赖包含 `drizzle-kit@0.31.4`；七个包直接依赖 `drizzle-orm@0.45.2`。
 - `packages/database/src/runtime.ts` 初始化 Drizzle，但共享运行时和多数 Repository 实际通过 `pg` 参数化 SQL 工作。
-- 六个模块有 Drizzle Schema 源码：`app-registry`、`audit`、`business-configuration`、`file-center`、`form-schema`、`organization`。
+- 模块使用 Prisma Schema 源片段，CRM 导航不再单独持有应用注册表。
 - 十个模块已有 PostgreSQL 持久化 Adapter：上述六个模块，以及 `authorization`、`eventing-outbox`、`notifications`、`task-center`。
 - 仓库有十五份全局编号 SQL migration 和对应元数据，覆盖 `0000000001`～`0000000015`；这些历史文件必须保持不可变。
 - Outbox 抢占使用 `FOR UPDATE SKIP LOCKED`，多个模块使用 Advisory Lock、触发器、检查约束、复合外键、角色授权等 PostgreSQL 特性，不能假设 Prisma Schema 能完整表达。
@@ -46,7 +46,7 @@
 ## 5. 非目标
 
 - 不新增 CRM 领域模块或业务表。
-- 不改变 PostgreSQL、部署拓扑、数据库角色、备份策略、Keycloak 或 Flowable 数据库。
+- 不改变 PostgreSQL、部署拓扑、数据库角色、备份策略或 Flowable 数据库。
 - 不优化或重写与 ORM 切换无关的业务逻辑。
 - 不承诺日历工期；执行以验收门和证据推进。
 
@@ -70,7 +70,7 @@ packages/database/
   src/prisma-runtime.ts
   src/transaction-context.ts
   generated/                 # 生成位置与是否入库待试点决定
-packages/platform-modules/<module>/
+packages/crm-modules/<module>/
   prisma/<module>.prisma     # 模块拥有
   src/infrastructure/prisma-*.ts
 prisma/
@@ -143,7 +143,7 @@ Owner 修改范围：测试资产、迁移清单、重构 handoff，不修改运
 
 前置：G-ORM-2。可按模块分支并行，Schema 组合根由 ORM-02 Owner 合并。
 
-模块：`app-registry`、`audit`、`business-configuration`、`file-center`、`notifications`。
+模块：`audit`、`business-configuration`、`file-center`、`notifications`。
 
 每个模块产出：
 

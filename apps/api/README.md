@@ -1,77 +1,18 @@
-# API Application
+# API
 
-NestJS composition root for synchronous HTTP APIs and optional real-time delivery. It wires platform and confirmed domain modules together but must not contain domain logic itself.
+The API composes CRM-internal core modules and exposes one employee `AccountAccessApplicationService` plus an isolated part-time access service. The single CRM Web artifact uses `pc` for desktop and employee mobile routes; `part-time` is a separate identity surface.
 
-It is separated from `apps/worker` so HTTP latency, connection handling, scaling, health, and failure behavior can be managed independently from retries and long-running jobs. This separation does not require platform or domain packages to be deployed as microservices.
+Both surfaces use independent `__Host-` HttpOnly, Secure, SameSite=Lax cookies containing random opaque Session handles. Redis stores the server-side Session record with `accountId`, `securityRevision`, surface, CSRF token, selected Assignment, and timestamps. Idle lifetime is 30 minutes, absolute lifetime is 8 hours, and one account may have only one Session per surface.
 
-This application hosts isolated BFF authentication boundaries for the approved clients. PC Web and both H5 artifacts receive only opaque, secure, HTTP-only cookies; the WeChat Mini Program receives only a short-lived, revocable opaque session handle. Keycloak tokens and provider secrets remain server-side, and the BFF does not issue its own authentication JWT. See [ADR-0005](../../docs/08-架构决策/ADR-0005-PC-Web采用BFF登录会话.md) and [ADR-0017](../../docs/08-架构决策/ADR-0017-多客户端认证与服务端会话.md).
+Required Session configuration:
 
-Reviewed synchronous provider adapters and Webhook entry adapters are composed here when a real integration is approved. Webhooks must verify the raw request and durably register the receipt before asynchronous business processing; this application does not own provider business state or expose a generic arbitrary-URL proxy. No concrete third-party adapter is part of the first-stage scope. See [ADR-0020](../../docs/08-架构决策/ADR-0020-第三方集成运行时与供应商适配器.md).
+- `AI_CRM_PC_ALLOWED_ORIGIN`
+- `AI_CRM_INTERNAL_H5_ALLOWED_ORIGIN`
+- `AI_CRM_REDIS_URL`
+- `AI_CRM_REDIS_PASSWORD_FILE`
+- `AI_CRM_REDIS_CONNECT_TIMEOUT_MS`
+- `AI_CRM_SESSION_INDEX_KEY_FILE`
 
-This process uses the project observability boundary for Pino JSON logs, safe Trace Context propagation, Sentry error reporting, and liveness/readiness checks. It never logs or reports credentials, sessions, request bodies, personal data, or raw provider payloads. See [ADR-0022](../../docs/08-架构决策/ADR-0022-第一阶段轻量可观测性基线.md).
+The index key is a 32-byte base64url Secret used only for keyed Redis indexes. Passwords, hashes, cookies, request bodies, and identity values never enter logs, traces, operation fingerprints, or errors.
 
-Future approved synchronous AI adapters are composed here only for use cases that must return an immediate proposal within a strict deadline. Clients cannot submit arbitrary system prompts, choose unapproved providers, invoke tools, or turn model output into a domain command. The first stage has no real model adapter. See [ADR-0024](../../docs/08-架构决策/ADR-0024-AI网关与AI治理边界.md).
-
-See [ADR-0003](../../docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md).
-
-## PC BFF authentication configuration
-
-The IAM-01 adapter requires explicit configuration; it does not provide session-duration or security-key defaults:
-
-- `AI_CRM_KEYCLOAK_ISSUER`, `AI_CRM_PC_OIDC_CLIENT_ID`, `AI_CRM_OIDC_API_AUDIENCE`, `AI_CRM_PC_OIDC_REDIRECT_URI`, `AI_CRM_PC_ALLOWED_ORIGIN`
-- `AI_CRM_PC_LOGIN_TRANSACTION_TTL_SECONDS`, `AI_CRM_PC_SESSION_IDLE_TTL_SECONDS`, `AI_CRM_PC_SESSION_ABSOLUTE_TTL_SECONDS`
-- `AI_CRM_PC_OIDC_TIMEOUT_SECONDS`, `AI_CRM_PC_REFRESH_LEASE_TTL_MS`, `AI_CRM_REDIS_CONNECT_TIMEOUT_MS`, `AI_CRM_REDIS_URL`
-- `AI_CRM_PC_OIDC_CLIENT_SECRET_FILE`, `AI_CRM_REDIS_PASSWORD_FILE`
-- `AI_CRM_PC_SESSION_ENCRYPTION_KEY_FILE`, `AI_CRM_PC_SESSION_ENCRYPTION_KEY_ID`, `AI_CRM_PC_SESSION_INDEX_KEY_FILE`
-- `AI_CRM_API_POSTGRES_HEALTH_INTERVAL_MS`, `AI_CRM_API_POSTGRES_HEALTH_TIMEOUT_MS`
-- Optional bounded rotation pair: `AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_FILE`, `AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID`
-
-The current session-encryption and indexing keys are distinct 256-bit base64url values. Secret values are read only from the referenced files. During encryption-key rotation, configure exactly one previous ID/file pair: the current key writes every new or refreshed envelope, while the previous key is read-only. Keep the previous file mounted for no longer than the configured absolute session TTL after all consumers switch to the current key, then remove both previous-key settings and revoke the old file. Duplicate IDs, duplicate values, incomplete pairs, and reuse of the indexing key fail closed. Rotating the indexing key intentionally invalidates all existing browser credentials and is not an online session-preserving operation.
-
-Redis stores short-lived login transactions and encrypted Token sets; session lookup keys are keyed digests rather than browser credentials. Redis, Keycloak, decryption, Access Token verification, or durable authentication-audit failures fail closed.
-
-The OAuth Client ID and API resource Audience are separate values. The development/test Realm maps `ai-crm-api` only into Access Tokens; the verifier also binds `azp` to the PC BFF Client ID. This rejects ID Token substitution without adding business claims.
-
-The CMP-01 application root now starts a NestJS HTTP application and exposes the reviewed `/health/live` and `/health/ready` contract. Required dependencies are supplied explicitly by the composition caller; an unavailable required dependency returns `503` without exposing dependency names or topology. Authentication and platform facades remain injected through their public entry points as their controllers are registered; the composition root does not create repositories or domain rules.
-
-Production composition now supplies PostgreSQL-backed Task and Notification query facades and required `task-query` / `notification-query` readiness dependencies. Notification reads retain current-principal storage filtering and module authorization/audit. Task list keeps per-item object authorization; because no reviewed Assignment/candidate visibility adapter exists yet, Task object reads fail closed rather than treating a function permission as object access. Task/Notification mutations, source routing, recipient resolution and preferences remain unavailable and are not exported by the API query binding.
-
-Workflow remains uncomposed: the repository has no production durable Workflow command Ledger, API-owned typed Flowable Secret contract/mount, or reviewed Workflow HTTP binding. Flowable container health alone is not API Workflow readiness.
-
-The reviewed PC BFF routes (`/auth/pc/login`, `/auth/pc/callback`, `/auth/pc/session`, `/auth/pc/refresh`, and `/auth/pc/logout`) delegate to the IAM-01 HTTP adapter. Cookie, Origin, Referer, and CSRF values are bounded and rejected when repeated before being passed to that adapter; their values are never logged.
-
-The callback resolves fallible session-policy dependencies before atomically consuming the one-time Redis login transaction or exchanging the Keycloak authorization code. A pre-consumption `503 authentication_dependency_unavailable` therefore leaves that callback retryable after the dependency recovers; operators may retry the same callback URL within the login-transaction and authorization-code lifetimes. Once consumption or code exchange starts, callback replay still fails closed as invalid and the user must begin a new login.
-
-PC logout sends the server-held Refresh Token directly to Keycloak's end-session endpoint before revoking the current local session, then clears the browser Cookie and redirects to the same-origin login entry. No Keycloak Token is exposed to browser code or URLs. If the identity provider is unavailable on the current-session path, logout fails closed and preserves the local session so the user can retry instead of reporting a false success.
-
-Database startup uses an application-owned bounded runtime and an explicit semantic `applicationSchemaVersion`; the schema version is not `AI_CRM_RELEASE`. The compatibility query is read-only and bounded by the PostgreSQL statement timeout. Startup never runs migrations or schema synchronization.
-
-After compatibility succeeds, production starts one non-overlapping `DatabaseRuntime.healthCheck()` loop. The synchronous readiness endpoint consumes only its cached state. The application-side timeout must be shorter than the probe interval; timeout, rejection, or an unavailable result removes database readiness, and a later successful probe restores it. Because the public health call is not cancellable, the next interval starts only after the underlying call settles; a stuck call therefore cannot accumulate more Pool queries. Shutdown and startup cancellation invalidate the probe generation before resources close, so a pending or late result cannot restore readiness or schedule another timer. Health responses keep the existing `{status}` shape and expose no database or error detail.
-
-Process configuration is parsed through `@ai-crm/config`. The reviewed defaults bind container traffic on `0.0.0.0:3000`; `AI_CRM_API_HOST` is restricted to reviewed local/container bind addresses, `AI_CRM_API_PORT` must be a valid TCP port, and `AI_CRM_RELEASE` is a bounded immutable release identifier. These settings do not make the API ready until its required module dependencies are composed and healthy.
-
-`pnpm --filter @ai-crm/api start` executes `dist/main.js`. Development and tests load an application-owned, business-neutral synthetic composition whose capability probes and operations remain unavailable; it cannot be selected in production. Production loads PostgreSQL, Redis session, OIDC and session-key configuration through typed variables and file-backed Secrets, checks the reviewed migration catalog without running migrations, and closes acquired resources on failed initialization or shutdown. PostgreSQL is composed through the public authorization policy/decision-recorder, organization, and audit boundaries. Organization is read-only in this composition: subject-to-workforce resolution uses authoritative organization facts, while every organization write command fails at authorization before database access and no audit/event intent is fabricated. SIGINT/SIGTERM listeners and the startup deadline cover binding acquisition as well as Nest startup; Redis initial connection and OIDC discovery are abortable, failed-start cleanup is bounded, and initialization plus cleanup failures remain correlated without exposing their payloads.
-
-Authorization readiness periodically reloads the current PostgreSQL policy through the authorization public store and requires a validated non-empty Permission, Role, and Grant set. Database recovery cannot reuse a stale successful policy result: the policy is revalidated after each completed healthy probe. The repository intentionally ships no production policy seed, so a deployment without a reviewed published policy stays Not Ready and all checks fail closed. Authentication events are appended through the PostgreSQL AuditService; audit failure makes the authentication operation unavailable. Startup and readiness do not write synthetic audit probes or query audit-owned tables directly. Authentication-audit technical readiness follows migration compatibility, the shared database health state, and presence of the formal adapter; only real authentication events create audit facts.
-
-Authentication audit idempotency is tied to the logical fact rather than an adapter attempt. Domain-separated deterministic UUIDs bind login start to the keyed state index, login completion to the session ID, logout to the session reference, and refresh to the session ID plus target revision. If an audit commit result is uncertain, the adapter retries once with the identical command and operation ID so the audit receipt returns the original fact instead of appending another record. A trace ID is captured once per authentication operation and carried by the event; until inbound HTTP trace propagation is composed, this is a local operation trace and does not claim HTTP-request correlation.
-
-Production additionally requires `AI_CRM_API_SCHEMA_VERSION`, `AI_CRM_MIGRATIONS_ROOT`, `AI_CRM_POSTGRES_URL_FILE`, and `AI_CRM_KEYCLOAK_JWKS_URI`. The schema version is an independent `x.y.z` compatibility value, not a release identifier. `AI_CRM_MIGRATIONS_ROOT` is an absolute path containing the repository `packages/**/migrations` layout; application startup reads it but never applies migrations.
-
-File storage is selected explicitly with `AI_CRM_FILE_STORAGE_PROVIDER`. Local development uses `local` plus `AI_CRM_LOCAL_FILE_STORAGE_ROOT`, which composes the File Center filesystem adapter under a controlled runtime directory. Server deployments use `cos` plus the reviewed `AI_CRM_COS_*` variables and file-backed COS Secrets; production must not fall back to local disk storage.
-
-The reviewed internal App Registry, Form Schema, and File Center contracts are registered as protected Controllers. They accept only the PC BFF session boundary, resolve the current workforce context, enforce the catalogued static permission, and then invoke the module public service so resource-specific authorization still runs. Form validation receives the original JSON bytes and enforces the 262144-byte, depth-32, and 10000-node limits before authorization. File upload mutations validate the idempotency key and BFF Origin/CSRF state before invoking File Center; download grants are freshly reauthorized and never expose stable provider locations.
-
-The inbound W3C Trace is extracted once for each protected request and is carried through the authorization decision recorder, module call, and bounded response correlation header. Raw request bodies, cookies, credentials, submitted form data, and provider fields are not logged. The process does not accept a client-supplied Actor, workforce person, assignment, permission, reason, or Trace ID.
-
-Production Registry/Form query services and the File Center storage Provider are composed through explicit readiness dependencies. Local development may satisfy the storage dependency with the filesystem adapter, while server deployments must satisfy it with COS. File scanning still fails closed until the reviewed scanner composition is enabled; no synthetic seed, hidden Actor convention, or business-owned storage shortcut is used.
-
-Known facts: all bindings use package public entry points and the reviewed authentication, health, Registry, Form, and File routes are registered. Allowed assumptions: tests may inject synthetic fakes and listen on a random port. Forbidden assumptions: a release version is a schema version, startup may apply migrations, authentication implies workforce/authorization, or an Assignment-selection transport exists without a reviewed contract. Non-goals: CRM routes, generic external access, real provider adapters, policy seeds, and business authorization rules.
-
-### Authentication integration test
-
-Run `pnpm auth:test:integration` from the repository root with Docker available. The runner creates an isolated PostgreSQL/Redis/Keycloak project, generates temporary Secret files, creates a random synthetic Keycloak user through the Admin API, and verifies Authorization Code + PKCE, callback exchange, JWKS principal verification, Redis-backed session creation, refresh rotation, old-session invalidation, and logout. It always removes the synthetic user, containers, Volumes, networks, and temporary Secret directory.
-
-The default loopback ports are `18080` for Keycloak and `16379` for Redis. Set `AI_CRM_TEST_KEYCLOAK_PORT` and `AI_CRM_TEST_REDIS_PORT` to unused explicit ports when needed. These variables contain ports only; Secret values remain file-backed and are never placed in the environment or command arguments.
-
-The Realm import is bootstrap-only: Keycloak skips an import when the Realm already exists. For an existing local/test Realm, rotate the confidential PC Client with `pnpm auth:rotate-client-secret` after setting `AI_CRM_KEYCLOAK_ISSUER`, `AI_CRM_PC_OIDC_CLIENT_ID`, `AI_CRM_PC_OIDC_CLIENT_SECRET_FILE`, `AI_CRM_KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME`, `AI_CRM_KEYCLOAK_BOOTSTRAP_ADMIN_SECRET_FILE`, and the bounded `AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_SECONDS`. The command reads both credentials from restricted files, restricts and closes the temporary file before changing Keycloak, updates and verifies Keycloak, and uses atomic rename as its final commit step. Pre-commit failures roll Keycloak back and remove the temporary file. Stop or restart API consumers around this single-version rotation maintenance window. Test-server and production rotation remains an OPS-owned procedure and must not reuse the development bootstrap administrator.
+Production additionally requires the typed database, migration, file-center, lifecycle, and observability configuration declared by `production-config.ts`. Startup checks reviewed migrations but never applies them. Use `pnpm local:infra`, `pnpm local:migrate`, `pnpm local:bootstrap`, and `pnpm local:api` for the local stack.

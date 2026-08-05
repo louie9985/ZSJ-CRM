@@ -27,7 +27,7 @@ const fileReference = Object.freeze({
 const release: SyntheticFormEvidenceRelease = Object.freeze({
   active: true,
   contentDigest: "a".repeat(64),
-  definitionId: "platform.synthetic.task-completion",
+  definitionId: "crm.synthetic.task-completion",
   jsonSchema: Object.freeze({
     $schema: "https://json-schema.org/draft/2020-12/schema",
     additionalProperties: false,

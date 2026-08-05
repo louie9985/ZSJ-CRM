@@ -59,8 +59,8 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA e2e_walking_skeleton TO ai_
 
 -- The disposable E2E orchestrator composes API and Worker responsibilities in one process.
 -- These grants are never installed by production deployment or application startup.
-GRANT USAGE ON SCHEMA platform_eventing, platform_notifications TO ai_crm_runtime;
-GRANT SELECT, INSERT, UPDATE ON platform_eventing.outbox_messages, platform_eventing.job_requests TO ai_crm_runtime;
-GRANT SELECT, INSERT ON platform_eventing.inbox_receipts, platform_eventing.isolations TO ai_crm_runtime;
-GRANT SELECT, INSERT ON platform_notifications.template_releases, platform_notifications.notification_intents TO ai_crm_runtime;
-GRANT SELECT, INSERT, UPDATE ON platform_notifications.in_app_notifications TO ai_crm_runtime;
+GRANT USAGE ON SCHEMA crm_eventing, crm_notifications TO ai_crm_runtime;
+GRANT SELECT, INSERT, UPDATE ON crm_eventing.outbox_messages, crm_eventing.job_requests TO ai_crm_runtime;
+GRANT SELECT, INSERT ON crm_eventing.inbox_receipts, crm_eventing.isolations TO ai_crm_runtime;
+GRANT SELECT, INSERT ON crm_notifications.template_releases, crm_notifications.notification_intents TO ai_crm_runtime;
+GRANT SELECT, INSERT, UPDATE ON crm_notifications.in_app_notifications TO ai_crm_runtime;

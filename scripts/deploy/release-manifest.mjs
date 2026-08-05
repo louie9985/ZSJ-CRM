@@ -41,14 +41,14 @@ const scanKeys = (value, path, errors) => {
 };
 
 const validateImages = (images, environment, errors) => {
-  const keys = ["api", "edge", "worker", "postgres", "redis", "rabbitmq", "keycloak", "flowable", "clamav"];
+  const keys = ["api", "edge", "worker", "postgres", "redis", "rabbitmq", "flowable", "clamav"];
   if (!EXACT_KEYS(images, keys, "images", errors)) return;
   for (const name of ["api", "edge", "worker"]) {
     if (typeof images[name] !== "string" || !APPLICATION_IMAGE.test(images[name])) {
       errors.push(`images.${name} must be an application image pinned by sha256 digest.`);
     }
   }
-  for (const name of ["postgres", "redis", "rabbitmq", "keycloak", "flowable", "clamav"]) {
+  for (const name of ["postgres", "redis", "rabbitmq", "flowable", "clamav"]) {
     const pattern = environment === "production" ? IMMUTABLE_IMAGE : PINNED_IMAGE;
     if (typeof images[name] !== "string" || !pattern.test(images[name])) {
       errors.push(environment === "production"
@@ -64,7 +64,7 @@ const validateHosts = (hosts, errors) => {
     return;
   }
   const expected = new Map([
-    ["host-a", { project: "ai-crm-prod-a", services: ["api", "clamav", "edge", "flowable", "keycloak", "postgres", "rabbitmq", "redis"] }],
+    ["host-a", { project: "ai-crm-prod-a", services: ["api", "clamav", "edge", "flowable", "postgres", "rabbitmq", "redis"] }],
     ["host-b", { project: "ai-crm-prod-b", services: ["api", "edge", "worker"] }],
   ]);
   const seen = new Set();
@@ -145,7 +145,7 @@ export const renderComposeVariables = (manifest, expectedEnvironment) => {
     throw new Error("Expected release environment must be staging or production.");
   }
   if (manifest.environment !== expectedEnvironment) throw new Error("Release manifest environment does not match the deployment target.");
-  const names = ["api", "edge", "worker", "postgres", "redis", "rabbitmq", "keycloak", "flowable", "clamav"];
+  const names = ["api", "edge", "worker", "postgres", "redis", "rabbitmq", "flowable", "clamav"];
   return [
     `AI_CRM_RELEASE_ID=${manifest.releaseId}`,
     ...names.map((name) => `AI_CRM_${name.toUpperCase()}_IMAGE=${manifest.images[name]}`),

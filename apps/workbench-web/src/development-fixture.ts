@@ -18,7 +18,6 @@ function collection(title: string, prefix: string, statuses: string[]): Platform
 const fixture: BootstrapResult & { kind: "ready" } = {
   kind: "ready",
   fixture: true,
-  applicationIds: ["crm"],
   context: { accountKind: "system_administrator", displayName: "ZSJ系统管理员", sessionScope: "fixture-session-01" },
   counts: { tasks: 7, notifications: 7, forms: 7, files: 7 },
   collections: {
@@ -67,14 +66,13 @@ const workforceFixture: WorkforceAdministrationSnapshot = Object.freeze({
 });
 
 export const developmentFixturePort: WorkbenchPort = {
-  beginLogin: () => undefined,
+  login: () => Promise.resolve("authenticated"),
   bootstrap: () => Promise.resolve(fixture),
   logout: () => Promise.resolve({ kind: "logged-out" }),
   workforceAdministration: {
-    execute: (command) => Promise.resolve(command.kind === "reactivate_account"
-      ? { credentialRedirectUrl: "/auth/credential-ceremony/fixture" }
-      : {}),
+    execute: () => Promise.resolve({ replayed: false }),
     listAccounts: (query) => Promise.resolve({ items: workforceFixture.accounts.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), page: query.page, pageSize: query.pageSize, total: workforceFixture.accounts.length }),
     load: () => Promise.resolve(workforceFixture),
+    reauthenticate: () => Promise.resolve(),
   },
 };

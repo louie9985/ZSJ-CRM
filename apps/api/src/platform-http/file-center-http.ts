@@ -1,5 +1,5 @@
 import { extractTraceContext } from "@ai-crm/observability";
-import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/platform-authorization";
+import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/crm-authorization";
 import {
   FileCenterError,
   type ContentVersion,
@@ -9,12 +9,10 @@ import {
   type ResourceReference,
   type UploadGrant,
   type UploadSession,
-} from "@ai-crm/platform-file-center";
+} from "@ai-crm/crm-file-center";
 
 import { BrowserSessionFailure, type BrowserSessionFailureCode } from "../auth/errors.js";
-import { parsePcSessionCredential } from "../auth/http-adapter.js";
-import { validateBrowserMutation } from "../auth/session-security.js";
-import type { BrowserMutationSession } from "../auth/session-service.js";
+import { parseSurfaceSessionCookie, validateLocalBrowserMutation } from "../auth/local-http-adapter.js";
 
 export interface FileCenterHttpResponse {
   readonly body: Readonly<Record<string, unknown>>;
@@ -46,7 +44,7 @@ export interface FileCenterHttpAdapterOptions {
   readonly allowedOrigins: readonly string[];
   readonly service: Pick<FileCenterService, "authorizeDownload" | "completeUpload" | "createUploadSession">;
   readonly sessions: {
-    sessionForMutation(credential: string): Promise<Readonly<BrowserMutationSession>>;
+    sessionForMutation(credential: string): Promise<Readonly<{ csrfToken: string }>>;
   };
 }
 
@@ -98,8 +96,8 @@ function safeInteger(value: unknown): number {
 }
 
 function requiredCredential(cookie: string | undefined): string {
-  const credential = parsePcSessionCredential(cookie);
-  if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+  const credential = parseSurfaceSessionCookie("pc", cookie);
+  if (credential === undefined) throw new BrowserSessionFailure("authentication_required");
   return credential;
 }
 
@@ -236,12 +234,11 @@ function publicContentVersion(value: ContentVersion): Readonly<Record<string, un
 }
 
 const browserStatus: Readonly<Record<BrowserSessionFailureCode, number>> = Object.freeze({
-  authentication_callback_invalid: 401,
   authentication_csrf_rejected: 403,
   authentication_dependency_unavailable: 503,
-  authentication_refresh_in_progress: 503,
-  authentication_refresh_rejected: 401,
-  authentication_session_invalid: 401,
+  authentication_invalid_credentials: 401,
+  authentication_rate_limited: 429,
+  authentication_required: 401,
 });
 
 const fileStatus = Object.freeze({
@@ -265,7 +262,7 @@ function errorResponse(error: unknown): Readonly<FileCenterHttpResponse> {
       : error instanceof AuthorizationUnavailableError
         ? "file_center_storage_unavailable"
     : error instanceof BrowserSessionFailure
-      ? error.code === "authentication_session_invalid" || error.code === "authentication_refresh_rejected" ? "authentication_required" : error.code
+      ? error.code
       : "file_center_storage_unavailable";
   const status = error instanceof FileCenterError
     ? fileStatus[error.code]
@@ -289,12 +286,12 @@ export function createFileCenterHttpAdapter(options: FileCenterHttpAdapterOption
     const operationId = uuid(context.idempotencyKey);
     const credential = requiredCredential(context.cookie);
     const session = await options.sessions.sessionForMutation(credential);
-    validateBrowserMutation({
-      allowedOrigins: options.allowedOrigins,
-      csrfHeader: context.csrfToken,
-      csrfSessionValue: session.csrfToken,
-      origin: context.origin,
-      referer: context.referer,
+    validateLocalBrowserMutation({
+      allowedOrigin: options.allowedOrigins,
+      ...(context.csrfToken === undefined ? {} : { csrfToken: context.csrfToken }),
+      ...(context.origin === undefined ? {} : { origin: context.origin }),
+      ...(context.referer === undefined ? {} : { referer: context.referer }),
+      sessionCsrfToken: session.csrfToken,
     });
     const traceId = extractTraceContext({ traceparent: context.traceparent }).traceId;
     const resolvedActor = await resolveActor(context, "upload", credential, traceId);

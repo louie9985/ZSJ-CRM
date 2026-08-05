@@ -1,5 +1,5 @@
-import type { FileReference } from "@ai-crm/platform-file-center";
-import type { FormQueryContext } from "@ai-crm/platform-form-schema";
+import type { FileReference } from "@ai-crm/crm-file-center";
+import type { FormQueryContext } from "@ai-crm/crm-form-schema";
 
 import { WalkingSkeletonFormSubmissionError, type WalkingSkeletonFormSubmissionReceipt } from "./walking-skeleton-form-submission.js";
 

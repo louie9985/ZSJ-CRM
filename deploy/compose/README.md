@@ -30,7 +30,7 @@ Delete an isolated test environment with `node scripts/bootstrap/cleanup-test-co
 
 `pnpm e2e:compose:integration` adds `compose.e2e.yml` to the isolated dependency composition. It builds test-only API and Worker entry points plus a Workbench image selected by the explicit E2E build flag, waits for all ten services, verifies API readiness and liveness through Nginx, verifies the Workbench route, and then removes only its unique project, Volumes, and temporary Secret directory. The process anchor does not activate production consumers and this test does not claim the main Walking Skeleton behavior.
 
-`pnpm e2e:browser-auth:integration` adds `compose.e2e-browser-auth.yml`, mounts the locally built E2E Workbench artifact read-only into Nginx, and routes only `/auth/pc/` to a short-lived host BFF. Keycloak and Redis publish dynamically selected loopback ports; the edge uses `localhost:18088` because it is an allowlisted development/test redirect URI. This overlay is test-only and does not alter production topology.
+`pnpm e2e:browser-auth:integration` starts the local API against the isolated PostgreSQL and Redis dependencies, then exercises real HTTP login/session/logout flows for both `pc` and `internal-h5`. It verifies independent cookies, CSRF and post-logout rejection. This is an HTTP Session integration slice, not a Chromium UI test.
 
 ## RabbitMQ TLS integration
 

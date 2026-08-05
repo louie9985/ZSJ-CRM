@@ -6,7 +6,7 @@ Completed the code and deployment composition for the only reviewed asynchronous
 
 ## Known facts
 
-- ADR-0027 owns exactly `platform.task-center.projection.v1`, the Task projection event route, 3 total consume attempts, 30/300-second fixed TTL layers, 10-second Handler deadline, prefetch 2, concurrency 1 and the stable error classifier.
+- ADR-0027 owns exactly `crm.task-center.projection.v1`, the Task projection event route, 3 total consume attempts, 30/300-second fixed TTL layers, 10-second Handler deadline, prefetch 2, concurrency 1 and the stable error classifier.
 - Organization and Workflow are Message components without consumer queues. Notification/File/private Job components have no reviewed `jobType`, queue, retry policy or owning Handler.
 - Eventing Inbox and Task projection stores share the abortable `DatabaseRuntime`; its nested transaction context keeps Inbox receipt and projection apply in one local transaction before ACK.
 - The repository RabbitMQ integration fixture uses synthetic temporary credentials/certificates. It proves client/server protocol behavior, not production image, CA, VHost, Secret rotation, recovery or alert deployment.
@@ -15,7 +15,7 @@ Completed the code and deployment composition for the only reviewed asynchronous
 
 - The already reviewed Task event route is also the only Outbox publisher route composed in this Worker.
 - Outbox batch size, claim lease, maximum attempts, exact backoff vector and polling interval are mandatory typed release inputs. Their values are supplied by staging/release review and are not encoded as production defaults.
-- `platform.task-center` is the stable responsibility Owner; deployment resolves the current human on-call without storing a person's identity in code.
+- `crm.task-center` is the stable responsibility Owner; deployment resolves the current human on-call without storing a person's identity in code.
 
 ## Forbidden assumptions preserved
 

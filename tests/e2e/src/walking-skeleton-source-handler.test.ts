@@ -1,5 +1,5 @@
-import { createEventingCore, type JobEnvelope, type ValidatedMessage } from "@ai-crm/platform-eventing-outbox";
-import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
+import { createEventingCore, type JobEnvelope, type ValidatedMessage } from "@ai-crm/crm-eventing-outbox";
+import { InMemoryEventingStore } from "@ai-crm/crm-eventing-outbox/testing";
 import { describe, expect, it, vi } from "vitest";
 
 import { createWalkingSkeletonSourceCommandMessageHandler } from "./walking-skeleton-source-handler.js";

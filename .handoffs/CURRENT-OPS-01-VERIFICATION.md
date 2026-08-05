@@ -46,7 +46,7 @@
 | In-memory migration manifest build | PASS, 30 files, `sha256:6c9f80380f9e970c2eb40cf562267182941724620b5f88abff950bc623c7a70c` | Digest describes this working tree only and is not a production-approved digest. |
 | `git diff --check` before this handoff | PASS | No whitespace errors in the concurrent working tree at that point. |
 | Initial plain `pnpm check` | FAIL before environment correction | A residual local Redis password file enabled `platform-authorization` Redis integration while its matching Redis endpoint was unavailable; the test failed closed with `AUTHORIZATION_CACHE_UNAVAILABLE`. |
-| `AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE=<known-missing-path>; pnpm --filter @ai-crm/platform-authorization test` | PASS, 52 passed and 6 integration tests skipped | Proves the authorization unit suite; it is not Redis integration evidence. |
+| `AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE=<known-missing-path>; pnpm --filter @ai-crm/crm-authorization test` | PASS, 52 passed and 6 integration tests skipped | Proves the authorization unit suite; it is not Redis integration evidence. |
 | `AI_CRM_AUTHORIZATION_REDIS_PASSWORD_FILE=<active-dev-secret-file>; pnpm check` after Docker recovery | PASS, 133/133 Turbo tasks | Uses the test's supported file override to connect the active dev Redis; the Redis integration is enabled and passes. The Secret value is neither printed nor copied. |
 
 ## What The Repository Can Prove

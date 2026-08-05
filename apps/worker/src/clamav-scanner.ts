@@ -1,5 +1,5 @@
 import { connect, type Socket } from "node:net";
-import { FileCenterError, type MalwareScanner } from "@ai-crm/platform-file-center";
+import { FileCenterError, type MalwareScanner } from "@ai-crm/crm-file-center";
 
 export interface ClamAvScannerOptions {
   readonly connect?: typeof connect;

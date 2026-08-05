@@ -4,7 +4,7 @@
 - Date: 2026-07-28
 - Owner: `codex/cmp-registry-form-probes`
 - Branch: `codex/cmp-registry-form-probes`
-- Allowed paths: `packages/platform-modules/app-registry/**`, `packages/platform-modules/form-schema/**`, and this handoff
+- Allowed paths: `packages/crm-modules/app-registry/**`, `packages/crm-modules/form-schema/**`, and this handoff
 - Forbidden paths: `apps/**`, migrations, contracts, generated artifacts, deployment/Compose files, and the root lockfile
 
 ## Objective
@@ -67,8 +67,8 @@ Add module-owned, public, read-only PostgreSQL capability probes for the Applica
 
 ## Delivered Result
 
-- Added public `ApplicationRegistryCapabilityProbe` / `ApplicationRegistryCapabilityStatus` and `createPostgresApplicationRegistryCapabilityProbe` through `@ai-crm/platform-app-registry`.
-- Added public `FormSchemaCapabilityProbe` / `FormSchemaCapabilityStatus` and `createPostgresFormSchemaCapabilityProbe` through `@ai-crm/platform-form-schema`.
+- Added public `ApplicationRegistryCapabilityProbe` / `ApplicationRegistryCapabilityStatus` and `createPostgresApplicationRegistryCapabilityProbe` through `@ai-crm/crm-app-registry`.
+- Added public `FormSchemaCapabilityProbe` / `FormSchemaCapabilityStatus` and `createPostgresFormSchemaCapabilityProbe` through `@ai-crm/crm-form-schema`.
 - Each implementation performs exactly one read-only PostgreSQL catalog `SELECT`, supplies no values, opens no transaction, performs no retry, and returns only `available` or `unavailable`.
 - Registry checks schema usage and the exact 4/6/6 columns used for filtering, ordering, mapping, and returning production query data from `applications`, `routes`, and `navigation`, including column-level `SELECT` capability.
 - Form Schema checks schema usage and the exact 7/3 columns used for filtering, joining, mapping, and returning exact releases from `releases` and `release_status`, including column-level `SELECT` capability.
@@ -83,8 +83,8 @@ Add module-owned, public, read-only PostgreSQL capability probes for the Applica
 - `pnpm --filter @ai-crm/database build`: passed for clean-worktree dependency resolution.
 - Application Registry default tests: 31 passed; 5 PostgreSQL-gated tests skipped. Capability probe statement/function/line coverage: 100%.
 - Form Schema default tests: 27 passed; 3 PostgreSQL-gated tests skipped. Capability probe statement/function/line coverage: 100%.
-- `pnpm --filter @ai-crm/platform-app-registry test:integration`: 5 passed against disposable PostgreSQL 17.5.
-- `pnpm --filter @ai-crm/platform-form-schema test:integration`: 3 passed against disposable PostgreSQL 17.5.
+- `pnpm --filter @ai-crm/crm-app-registry test:integration`: 5 passed against disposable PostgreSQL 17.5.
+- `pnpm --filter @ai-crm/crm-form-schema test:integration`: 3 passed against disposable PostgreSQL 17.5.
 - Both packages passed lint, typecheck, build, and `contracts:check`.
 - Full `pnpm check`: Repository tests 40/40, Compose and contract checks passed, Turbo 140/140 successful.
 - `git diff --check`: passed.

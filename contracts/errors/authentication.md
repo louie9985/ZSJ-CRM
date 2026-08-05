@@ -1,13 +1,13 @@
 # Authentication Errors
 
-Authentication errors expose only a stable category and a bounded, user-safe message. They never include a Token, Cookie, authorization code, session handle, provider response, or internal exception text.
+Authentication errors expose only a stable category and bounded safe message. They never distinguish a missing, disabled, or wrong-password account and never include passwords, hashes, cookies, Session handles, request bodies, or internal exceptions.
 
-| Code | HTTP | Retry | Meaning |
-|---|---:|---|---|
-| `authentication_required` | 401 | After a new login | The local session is absent, expired, revoked, audience-mismatched, or cannot be validated. |
-| `authentication_callback_invalid` | 400 | Start a new login | The one-time OIDC callback transaction failed state, nonce, PKCE, expiry, allowlist, or replay validation. |
-| `authentication_csrf_rejected` | 403 | No blind retry | The modifying Cookie request failed trusted-origin or CSRF-token validation. |
-| `authentication_refresh_in_progress` | 409 | Retry only after bounded backoff or session re-read | Another request owns the short-lived refresh lease; the same Refresh Token must not be used concurrently. |
-| `authentication_dependency_unavailable` | 503 | According to caller retry policy | Keycloak, JWKS, session storage, decryption, or another required authentication dependency is unavailable; access fails closed. |
+| Code | HTTP | Meaning |
+|---|---:|---|
+| `authentication_invalid_credentials` | 401 | The identifier/password pair or required active workforce context is invalid. |
+| `authentication_required` | 401 | The Session is absent, expired, revoked, or no longer matches account/workforce facts. |
+| `authentication_csrf_rejected` | 403 | A cookie mutation failed trusted-origin or CSRF validation. |
+| `authentication_rate_limited` | 429 | The identifier or source failure threshold was reached. |
+| `authentication_dependency_unavailable` | 503 | A required account, organization, authorization, audit, PostgreSQL, or Redis dependency failed closed. |
 
-Business authorization denial is owned by the authorization module and must not be represented as an authentication error.
+Business authorization denial remains owned by the authorization module.

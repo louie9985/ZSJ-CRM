@@ -76,7 +76,7 @@ function hasEvidenceShape(release: SyntheticFormEvidenceRelease): boolean {
   const required = release.jsonSchema["required"];
   const expectedFields = ["synthetic_value", "file_id", "content_version_id"];
   return release.active
-    && release.definitionId === "platform.synthetic.task-completion"
+    && release.definitionId === "crm.synthetic.task-completion"
     && Number.isSafeInteger(release.releaseVersion)
     && release.releaseVersion > 0
     && DIGEST.test(release.contentDigest)

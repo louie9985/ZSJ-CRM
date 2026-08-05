@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import type { TaskActor, TaskProjectionKey } from "@ai-crm/platform-task-center";
-import type { WorkflowFacade } from "@ai-crm/platform-workflow";
+import type { TaskActor, TaskProjectionKey } from "@ai-crm/crm-task-center";
+import type { WorkflowFacade } from "@ai-crm/crm-workflow";
 
 import { WalkingSkeletonSourceError, walkingSkeletonSourceType } from "./walking-skeleton-source.js";
 

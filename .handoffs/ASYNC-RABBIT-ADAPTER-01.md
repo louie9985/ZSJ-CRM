@@ -37,7 +37,7 @@ Implement the application-owned `amqplib` adapter for the existing vendor-neutra
 - `docs/08-架构决策/ADR-0026-RabbitMQ运行策略与延迟重试边界.md`.
 - `docs/08-架构决策/ADR-0010-RabbitMQ与Redis异步执行及Outbox-Inbox.md`.
 - `docs/04-工程手册/第一阶段AI并行开发实施计划.md`.
-- Public exports of `@ai-crm/platform-eventing-outbox` and the current Worker lifecycle/handler ports.
+- Public exports of `@ai-crm/crm-eventing-outbox` and the current Worker lifecycle/handler ports.
 - npm registry metadata and upstream `amqplib` package documentation, captured read-only in this handoff.
 
 ## Allowed Paths
@@ -64,7 +64,7 @@ None.
 ## Dependencies
 
 - Select exact `amqplib` and matching TypeScript type package versions using npm registry evidence.
-- Existing `@ai-crm/platform-eventing-outbox` public interfaces.
+- Existing `@ai-crm/crm-eventing-outbox` public interfaces.
 - Reviewed binding/topology input supplied by a future composition task; this task supplies no production values.
 
 ## Required Tests

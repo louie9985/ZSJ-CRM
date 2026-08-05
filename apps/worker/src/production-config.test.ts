@@ -7,7 +7,6 @@ import type { RabbitSecretFileAccess } from "./rabbit-config.js";
 
 const secretPath = (name: string) => resolve(import.meta.dirname, "__synthetic-secrets__", name);
 const postgresPath = secretPath("worker-postgres-url");
-const keycloakSecretPath = secretPath("workforce-worker-client-secret");
 const rabbitPaths = {
   ca: secretPath("rabbit-ca"),
   consumerPassword: secretPath("rabbit-consumer-password"),
@@ -30,19 +29,12 @@ const rabbitFiles: RabbitSecretFileAccess = {
 };
 
 const databaseFiles: SecretFileSystem = {
-  inspect: (path) => Promise.resolve({ isFile: path === postgresPath || path === keycloakSecretPath, isSymbolicLink: false, mode: 0o400, size: 43 }),
-  read: (path) => path === postgresPath
-    ? Promise.resolve("postgresql://worker:secret@db.internal/ai_crm")
-    : path === keycloakSecretPath ? Promise.resolve("s".repeat(43)) : Promise.reject(new Error("missing")),
+  inspect: (path) => Promise.resolve({ isFile: path === postgresPath, isSymbolicLink: false, mode: 0o400, size: 43 }),
+  read: (path) => path === postgresPath ? Promise.resolve("postgresql://worker:secret@db.internal/ai_crm") : Promise.reject(new Error("missing")),
 };
 
 const environment = (): NodeJS.ProcessEnv => ({
   AI_CRM_MIGRATIONS_ROOT: resolve(import.meta.dirname, "../../.."),
-  AI_CRM_KEYCLOAK_ADMIN_BASE_URL: "https://keycloak.internal",
-  AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS: "5000",
-  AI_CRM_KEYCLOAK_REALM: "ai-crm-production",
-  AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_ID: "ai-crm-workforce-sync-worker",
-  AI_CRM_KEYCLOAK_WORKFORCE_WORKER_CLIENT_SECRET_FILE: keycloakSecretPath,
   AI_CRM_POSTGRES_URL_FILE: postgresPath,
   AI_CRM_WORKER_OUTBOX_BACKOFF_SECONDS: "5,30",
   AI_CRM_WORKER_OUTBOX_BATCH_SIZE: "10",
@@ -69,7 +61,7 @@ describe("Worker production configuration", () => {
   it("fails the bidirectional migration-root gate for either an added or removed root", () => {
     expect(() => { validateWorkerMigrationRootManifest(approvedWorkerMigrationRoots); }).not.toThrow();
     expect(() => { validateWorkerMigrationRootManifest(approvedWorkerMigrationRoots.slice(1)); }).toThrow("worker_migration_root_manifest_mismatch");
-    expect(() => { validateWorkerMigrationRootManifest([...approvedWorkerMigrationRoots, "packages/platform-modules/new-capability/migrations"]); })
+    expect(() => { validateWorkerMigrationRootManifest([...approvedWorkerMigrationRoots, "packages/crm-modules/new-capability/migrations"]); })
       .toThrow("worker_migration_root_manifest_mismatch");
   });
 
@@ -83,10 +75,9 @@ describe("Worker production configuration", () => {
     expect(value.database.connectionString).toContain("db.internal/ai_crm");
     expect(value.rabbit.publisher.username).toBe("worker-publisher");
     expect(value.rabbit.consumer.username).toBe("worker-consumer");
-    expect(value.migrations).toHaveLength(12);
-    expect(value.workforceKeycloak).toMatchObject({ clientId: "ai-crm-workforce-sync-worker", realm: "ai-crm-production" });
+    expect(value.migrations).toHaveLength(11);
     expect(value.outbox).toEqual({ backoffSeconds: [5, 30], batchSize: 10, claimLeaseSeconds: 60, intervalMs: 1000, maxAttempts: 3 });
-    expect(value.migrations.some((path) => path.endsWith(join("platform-modules", "authorization", "migrations")))).toBe(true);
+    expect(value.migrations.some((path) => path.endsWith(join("crm-modules", "authorization", "migrations")))).toBe(true);
   });
 
   it("rejects an Outbox retry vector that does not match the required release policy", async () => {

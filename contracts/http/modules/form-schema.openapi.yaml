@@ -6,7 +6,7 @@ paths:
       operationId: getFormRelease
       description: Reads one exact immutable release after current resource authorization. It does not resolve a mutable current version.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.form-schema, code: platform.form-schema.form-release:read, resource: platform.form-schema.form-release, action: read }
+      x-ai-crm-permission: { version: 1, owner: crm.form-schema, code: crm.form-schema.form-release:read, resource: crm.form-schema.form-release, action: read }
       x-ai-crm-csrf: { mode: not-required, reason: read-only }
       x-ai-crm-idempotency: { mode: none, reason: read-only }
       parameters: [ { $ref: "#/components/parameters/FormDefinitionId" }, { $ref: "#/components/parameters/FormReleaseVersion" } ]
@@ -21,7 +21,7 @@ paths:
       operationId: validateFormSubmission
       description: Validates a proposed value against one exact immutable release on the server. The value is not persisted, authorization and domain invariants are not inferred, and client validation never becomes authoritative.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.form-schema, code: platform.form-schema.form-release:validate, resource: platform.form-schema.form-release, action: validate }
+      x-ai-crm-permission: { version: 1, owner: crm.form-schema, code: crm.form-schema.form-release:validate, resource: crm.form-schema.form-release, action: validate }
       x-ai-crm-csrf: { mode: not-required, reason: read-only-validation }
       x-ai-crm-idempotency: { mode: none, reason: no-state-change }
       x-ai-crm-request-limits: { maxBodyBytes: 262144, jsonLimitTarget: requestBody.data, maxJsonDepth: 32, jsonRootDepth: 1, maxJsonNodes: 10000, jsonNodeCounting: object-array-and-scalar-values-including-data-root, enforcement: before-authorization-and-service }

@@ -2,29 +2,9 @@
 export const packageId = "@ai-crm/api-client" as const;
 export const internalOperations = [
   {
-    "id": "getInternalApplicationRegistry",
-    "method": "GET",
-    "path": "/application-registry"
-  },
-  {
-    "id": "resolveInternalApplicationDeepLink",
+    "id": "loginPc",
     "method": "POST",
-    "path": "/application-registry/deep-links/resolve"
-  },
-  {
-    "id": "beginPcLogin",
-    "method": "GET",
     "path": "/auth/pc/login"
-  },
-  {
-    "id": "completePcLogin",
-    "method": "GET",
-    "path": "/auth/pc/callback"
-  },
-  {
-    "id": "beginPcReauthentication",
-    "method": "POST",
-    "path": "/auth/pc/reauthentication"
   },
   {
     "id": "getPcSession",
@@ -32,14 +12,64 @@ export const internalOperations = [
     "path": "/auth/pc/session"
   },
   {
-    "id": "refreshPcSession",
+    "id": "reauthenticatePc",
     "method": "POST",
-    "path": "/auth/pc/refresh"
+    "path": "/auth/pc/reauthentication"
   },
   {
-    "id": "logoutPcSession",
+    "id": "selectPcAssignment",
+    "method": "POST",
+    "path": "/auth/pc/assignment"
+  },
+  {
+    "id": "logoutPc",
     "method": "POST",
     "path": "/auth/pc/logout"
+  },
+  {
+    "id": "loginInternalH5",
+    "method": "POST",
+    "path": "/auth/internal-h5/login"
+  },
+  {
+    "id": "getInternalH5Session",
+    "method": "GET",
+    "path": "/auth/internal-h5/session"
+  },
+  {
+    "id": "reauthenticateInternalH5",
+    "method": "POST",
+    "path": "/auth/internal-h5/reauthentication"
+  },
+  {
+    "id": "selectInternalH5Assignment",
+    "method": "POST",
+    "path": "/auth/internal-h5/assignment"
+  },
+  {
+    "id": "logoutInternalH5",
+    "method": "POST",
+    "path": "/auth/internal-h5/logout"
+  },
+  {
+    "id": "loginPartTime",
+    "method": "POST",
+    "path": "/auth/part-time/login"
+  },
+  {
+    "id": "getPartTimeSession",
+    "method": "GET",
+    "path": "/auth/part-time/session"
+  },
+  {
+    "id": "reauthenticatePartTime",
+    "method": "POST",
+    "path": "/auth/part-time/reauthentication"
+  },
+  {
+    "id": "logoutPartTime",
+    "method": "POST",
+    "path": "/auth/part-time/logout"
   },
   {
     "id": "createFileUploadSession",
@@ -120,16 +150,6 @@ export const internalOperations = [
     "id": "activateNotificationTemplateRelease",
     "method": "POST",
     "path": "/notification-templates/{templateKey}/activate"
-  },
-  {
-    "id": "getPcSessionPolicy",
-    "method": "GET",
-    "path": "/authentication/session-policy"
-  },
-  {
-    "id": "updatePcSessionPolicy",
-    "method": "PUT",
-    "path": "/authentication/session-policy"
   },
   {
     "id": "getLiveness",

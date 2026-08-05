@@ -1,10 +1,9 @@
-import { AppstoreOutlined, LoginOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App as AntdApp, Avatar, Button, ConfigProvider, Flex, Result, Spin } from "antd";
+import { App as AntdApp, Button, ConfigProvider, Flex, Result, Spin } from "antd";
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { normalizeReturnTo as normalizeAuthReturnTo, pcLoginUrl } from "./auth-routes";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { normalizeReturnTo as normalizeAuthReturnTo } from "./auth-routes";
 import { getNavigationSelection, navigationFor } from "./navigation";
 import { usePolledCollections } from "./collection-polling";
 import { markNotificationRead, resolveNotificationPath } from "./notification-navigation";
@@ -16,6 +15,7 @@ import { resolveWorkspaceProfile } from "./workspace-profiles";
 import "./styles.css";
 
 const CollectionPage = lazy(async () => ({ default: (await import("./pages")).CollectionPage }));
+const LoginPage = lazy(async () => ({ default: (await import("./login-page")).LoginPage }));
 const FeaturePlaceholderPage = lazy(async () => ({ default: (await import("./feature-placeholder-page")).FeaturePlaceholderPage }));
 const Overview = lazy(async () => ({ default: (await import("./overview-page")).Overview }));
 const SettingsPage = lazy(async () => ({ default: (await import("./settings-page")).SettingsPage }));
@@ -24,8 +24,9 @@ const SyntheticFormEvidencePage = lazy(async () => ({ default: (await import("./
 const WorkforceAdministrationRoute = lazy(async () => ({ default: (await import("./workforce-administration-route")).WorkforceAdministrationRoute }));
 const NotificationTemplatePage = lazy(async () => ({ default: (await import("./notification-template-page")).NotificationTemplatePage }));
 const RealtimeMergeEvidencePage = lazy(async () => ({ default: (await import("./realtime-merge-evidence-page")).RealtimeMergeEvidencePage }));
-const SessionPolicyPage = lazy(async () => ({ default: (await import("./session-policy-page")).SessionPolicyPage }));
 const WorkbenchShell = lazy(async () => ({ default: (await import("./workbench-shell")).WorkbenchShell }));
+const PartTimeShell = lazy(async () => ({ default: (await import("./part-time-shell")).PartTimeShell }));
+const MobileShell = lazy(async () => ({ default: (await import("./mobile-shell")).MobileShell }));
 
 type StateKind = "expired" | "failure" | "forbidden" | "maintenance" | "missing" | "offline";
 
@@ -86,10 +87,10 @@ function ConnectivityFrame({ children }: { children: ReactNode }): React.JSX.Ele
 function DirectSystemState({ kind, onRetry }: { kind: StateKind; onRetry?: () => void }): React.JSX.Element {
   const copy = stateCopy[kind];
   const action = kind === "expired"
-    ? <Button type="primary" href={pcLoginUrl("/applications")}>重新登录</Button>
+    ? <Button type="primary" href="/login">重新登录</Button>
     : onRetry
       ? <Button type="primary" onClick={onRetry}>重试</Button>
-      : <Button type="primary" href="/applications">返回应用选择</Button>;
+      : <Button type="primary" href="/crm/workspace">返回 CRM 工作台</Button>;
   return <Result status={copy.status} title={copy.title} subTitle={copy.detail} extra={action} />;
 }
 
@@ -109,21 +110,6 @@ function SyntheticFormEvidenceRoute({ port }: { port: NonNullable<WorkbenchPort[
   if (release.isPending) return <Flex className="full-state" align="center" justify="center"><Spin size="large" description="正在加载表单版本" /></Flex>;
   if (release.isError) return <DirectSystemState kind="failure" onRetry={() => { void release.refetch(); }} />;
   return <SyntheticFormEvidencePage fileReference={port.fileReference} port={port} release={release.data} />;
-}
-
-interface ApplicationOption {
-  readonly description: string;
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-}
-
-const applicationCatalog: readonly ApplicationOption[] = [{ id: "crm", name: "CRM 系统", description: "内部客户关系管理工作台", path: "/crm/workspace" }];
-
-export function applicationsFor(applicationIds: readonly string[] | undefined): ApplicationOption[] {
-  if (applicationIds === undefined) return [];
-  const allowed = new Set(applicationIds);
-  return applicationCatalog.filter(({ id }) => allowed.has(id));
 }
 
 function useSessionLogout(port: WorkbenchPort): Readonly<{
@@ -148,68 +134,6 @@ function useSessionLogout(port: WorkbenchPort): Readonly<{
     );
   };
   return { logoutState, requestLogout };
-}
-
-function accountKindLabel(accountKind: "system_administrator" | "workforce" | undefined): string {
-  return accountKind === "system_administrator" ? "系统管理员账号" : "内部员工账号";
-}
-
-function ApplicationsPage({ data, port }: { data: BootstrapResult & { kind: "ready" }; port: WorkbenchPort }): React.JSX.Element {
-  const applications = applicationsFor(data.applicationIds);
-  const { logoutState, requestLogout } = useSessionLogout(port);
-  return (
-    <main className="applications-entry" aria-labelledby="applications-title">
-      <section className="applications-panel">
-        <div className="application-account">
-          <div className="application-account-identity">
-            <Avatar size={40}>{data.context.displayName.slice(0, 1)}</Avatar>
-            <span>
-              <span className="application-account-caption">当前登录账号</span>
-              <strong title={data.context.displayName}>{data.context.displayName}</strong>
-              <span className="application-account-kind">{accountKindLabel(data.context.accountKind)}</span>
-            </span>
-          </div>
-          <Button
-            aria-label="退出登录"
-            danger
-            type="text"
-            icon={<LogoutOutlined />}
-            loading={logoutState === "pending"}
-            disabled={logoutState === "pending"}
-            onClick={requestLogout}
-          >退出登录</Button>
-        </div>
-        <div className="applications-heading">
-          <h1 id="applications-title">选择应用</h1>
-          <p className="applications-context">进入已授权的工作空间</p>
-        </div>
-        <div className="application-list">
-          {applications.length === 0 ? <Result status="403" title="暂无可访问应用" subTitle="当前账号没有已授权的应用入口。" /> : applications.map((application) => (
-            <Link className="application-card" to={application.path} key={application.id}>
-              <span className="application-icon" aria-hidden="true"><AppstoreOutlined /></span>
-              <span><strong>{application.name}</strong><span>{application.description}</span></span>
-            </Link>
-          ))}
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function loginReturnTo(location: ReturnType<typeof useLocation>): string {
-  if (location.pathname === "/" || location.pathname === "/login" || location.pathname.startsWith("/auth/pc/")) {
-    return "/applications";
-  }
-  return normalizeReturnTo(`${location.pathname}${location.search}${location.hash}`);
-}
-
-function LoginRedirect({ port }: { port: WorkbenchPort }): React.JSX.Element {
-  const location = useLocation();
-  const returnTo = loginReturnTo(location);
-  useEffect(() => {
-    port.beginLogin(returnTo);
-  }, [port, returnTo]);
-  return <Flex className="full-state" align="center" justify="center"><Spin size="large" description="正在前往统一认证中心" /></Flex>;
 }
 
 function LegacyCrmRedirect(): React.JSX.Element {
@@ -276,9 +200,8 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
       {...(selectedPrimaryItem === undefined ? {} : { selectedPrimaryItem })}
     >
       <Routes>
-        <Route path="/" element={<Navigate to="/applications" replace />} />
-        <Route path="/login" element={<Navigate to="/applications" replace />} />
-        <Route path="/applications" element={<ApplicationsPage data={data} port={port} />} />
+        <Route path="/" element={<Navigate to="/crm/workspace" replace />} />
+        <Route path="/login" element={<Navigate to="/crm/workspace" replace />} />
         <Route path="/workspace" element={<LegacyCrmRedirect />} />
         <Route path="/coordination" element={<LegacyCrmRedirect />} />
         <Route path="/resources" element={<LegacyCrmRedirect />} />
@@ -317,17 +240,16 @@ function Shell({ data, port }: { data: BootstrapResult & { kind: "ready" }; port
         <Route path="/crm/mail/inbox" element={authorized("crm.mail.inbox", <FeaturePlaceholderPage title="收件箱" />)} />
         <Route path="/crm/mail/sent" element={authorized("crm.mail.sent", <FeaturePlaceholderPage title="已发送" />)} />
         <Route path="/crm/mail/draft" element={authorized("crm.mail.draft", <FeaturePlaceholderPage title="草稿箱" />)} />
-        {port.syntheticFormEvidence === undefined ? null : <Route path="/crm/forms/platform.synthetic.task-completion" element={<SyntheticFormEvidenceRoute port={port.syntheticFormEvidence} />} />}
+        {port.syntheticFormEvidence === undefined ? null : <Route path="/crm/forms/crm.synthetic.task-completion" element={<SyntheticFormEvidenceRoute port={port.syntheticFormEvidence} />} />}
         {CollectionRoutes({ path: "/crm/forms", collection: collections.forms })}
         {CollectionRoutes({ path: "/crm/files", collection: collections.files })}
         <Route path="/crm/settings" element={<Navigate to="/crm/settings/system" replace />} />
         <Route path="/crm/settings/system" element={authorized("crm.settings.system", <FeaturePlaceholderPage title="系统设置" />)} />
-        {port.sessionPolicy === undefined || data.navigationIds?.includes("crm.session-policy") !== true ? null : <Route path="/crm/settings/session-policy" element={<SessionPolicyPage port={port.sessionPolicy} />} />}
         <Route path="/crm/settings/profile" element={authorized("crm.settings.profile", <SettingsPage />)} />
         <Route path="/status/403" element={<StatusRoutePage kind="forbidden" />} />
         <Route path="/status/500" element={<StatusRoutePage kind="failure" />} />
         <Route path="/status/offline" element={<StatusRoutePage kind="offline" />} />
-        <Route path="/status/session-expired" element={<StatusRoutePage kind="expired" loginUrl={pcLoginUrl("/applications")} />} />
+        <Route path="/status/session-expired" element={<StatusRoutePage kind="expired" loginUrl="/login" />} />
         <Route path="/status/maintenance" element={<StatusRoutePage kind="maintenance" />} />
         <Route path="*" element={<StatusRoutePage kind="missing" />} />
       </Routes>
@@ -341,9 +263,21 @@ function Workbench({ port }: { port: WorkbenchPort }): React.JSX.Element {
   const query = useQuery({ queryKey: ["workbench-bootstrap"], queryFn: () => port.bootstrap(), retry: false });
 
   const retry = (): void => { query.refetch().catch(() => undefined); };
+  if (location.pathname.startsWith("/part-time")) {
+    return port.partTime === undefined ? <DirectSystemState kind="failure" /> : <PartTimeShell port={port.partTime} />;
+  }
+  const authenticated = (): void => {
+    const returnToCandidate = location.pathname === "/login" || location.pathname === "/auth/pc/login"
+      ? new URLSearchParams(location.search).get("returnTo") ?? "/crm/workspace"
+      : `${location.pathname}${location.search}${location.hash}`;
+    const returnTo = normalizeReturnTo(returnToCandidate);
+    query.refetch().then((result) => {
+      if (result.data?.kind === "ready") void navigate(returnTo, { replace: true });
+    }, () => undefined);
+  };
   const retryStatus = (): void => {
     query.refetch().then(
-      (result) => { if (!result.isError) void navigate("/applications", { replace: true }); },
+      (result) => { if (!result.isError) void navigate("/crm/workspace", { replace: true }); },
       () => undefined,
     );
   };
@@ -370,23 +304,20 @@ function Workbench({ port }: { port: WorkbenchPort }): React.JSX.Element {
   }
   if (query.isPending) return <Flex className="full-state" align="center" justify="center"><Spin size="large" description="正在恢复会话" /></Flex>;
   if (query.isError) return <SystemState kind="failure" retryable onRetry={retry} />;
-  if (query.data.kind === "logged-out") {
-    return <Result status="success" title="已退出登录" subTitle="当前浏览器会话已结束。" extra={<Button aria-label="重新登录" type="primary" href={pcLoginUrl("/applications")} icon={<LoginOutlined />}>重新登录</Button>} />;
+  if (query.data.kind === "logged-out" || query.data.kind === "signed-out" || query.data.kind === "session-expired") return <LoginPage port={port} onAuthenticated={authenticated} />;
+  if (location.pathname === "/login" || location.pathname === "/auth/pc/login") {
+    const returnTo = normalizeReturnTo(new URLSearchParams(location.search).get("returnTo") ?? "/crm/workspace");
+    return <Navigate to={returnTo} replace />;
   }
-  if (query.data.kind === "signed-out") {
-    return <LoginRedirect port={port} />;
-  }
-  if (query.data.kind === "session-expired") return <SystemState kind="expired" loginUrl={pcLoginUrl(loginReturnTo(location))} />;
   if (query.data.kind === "forbidden") return <SystemState kind="forbidden" />;
   if (query.data.kind === "maintenance") return <SystemState kind="maintenance" retryable onRetry={retry} />;
-  if (location.pathname === "/applications") return <ApplicationsPage data={query.data} port={port} />;
-  if (location.pathname.startsWith("/crm") && query.data.applicationIds?.includes("crm") !== true) return <SystemState kind="forbidden" />;
+  if (location.pathname.startsWith("/mobile")) return <MobileShell data={query.data} port={port} />;
   return <Shell data={query.data} port={port} />;
 }
 
 export function App({ port = runtimeWorkbenchPort }: { port?: WorkbenchPort }): React.JSX.Element {
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: "#1677ff", borderRadius: 6, fontSize: 14, colorBgLayout: "#f4f6f8" } }}>
+    <ConfigProvider button={{ autoInsertSpace: false }} theme={{ token: { colorPrimary: "#1677ff", borderRadius: 6, fontSize: 14, colorBgLayout: "#f4f6f8" } }}>
       <AntdApp>
         <ConnectivityFrame>
           <RouteErrorBoundary>

@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Bind fixed-role grants to real workforce people and their own Assignments, and make grant revocation irreversible.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Validates two foreign keys and installs a row trigger on fixed_role_grants; no table rewrite is expected in the reset local environment.",
+  "dataImpact": "No row changes; inconsistent grant rows or attempted revocation reversal fail closed.",
+  "backfill": "Not required for the reset development database. Pre-existing inconsistent rows must be removed before applying this migration.",
+  "destructive": false,
+  "recovery": "A reviewed emergency migration may drop the trigger and foreign keys before rolling back to a runtime that predates fixed roles.",
+  "forwardFix": "Append a reviewed authorization-owned migration. Do not rewrite this migration after application."
+}

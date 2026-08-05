@@ -31,7 +31,7 @@
 
 ## Delivered code and gates
 
-- Authorization governance, optimistic first/replacement publication preconditions, protected command/audit boundary, separate `platform.authorization.policy:publish` management permission catalog and complete assignment-scoped baseline compiler.
+- Authorization governance, optimistic first/replacement publication preconditions, protected command/audit boundary, separate `crm.authorization.policy:publish` management permission catalog and complete assignment-scoped baseline compiler.
 - API production composition for PostgreSQL Authorization/Audit/Organization, Registry/Form/File, Task and Notification queries; required readiness covers fixed API role, complete policy, capability SQL, File Center database access and COS `HeadBucket`.
 - Tencent COS adapter, ClamAV INSTREAM scanner, stable failure classification, synthetic conformance tests and opt-in real test-Bucket conformance suite. Both production APIs receive reviewed non-secret COS settings and API-specific file Secrets.
 - Worker production composition for the only accepted route: Outbox publisher plus Rabbit Inbox/Task projection handler sharing abortable PostgreSQL transaction state. Fixed retry/DLQ topology, explicit activation, bounded drain and health loss are fail-closed.

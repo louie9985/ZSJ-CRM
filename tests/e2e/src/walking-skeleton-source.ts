@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { TaskActor, TaskLifecycleEvent, TaskProjectionKey, TaskSourceCommandRouter, TaskSourceReader } from "@ai-crm/platform-task-center";
+import type { TaskActor, TaskLifecycleEvent, TaskProjectionKey, TaskSourceCommandRouter, TaskSourceReader } from "@ai-crm/crm-task-center";
 
 export const walkingSkeletonSourceType = "tests.walking-skeleton" as const;
 
@@ -182,7 +182,7 @@ export function createWalkingSkeletonSource(options: {
       const receipt: WalkingSkeletonSourceReceipt = Object.freeze({
         lifecycleEvent: Object.freeze({
           assigneeReference: completed.assigneeReference,
-          deepLink: Object.freeze({ appId: "platform.synthetic", routeId: "platform.synthetic.detail" }),
+          deepLink: Object.freeze({ appId: "crm.synthetic", routeId: "crm.synthetic.detail" }),
           eventId: command.workflowCompletionEventId,
           occurredAt: clock().toISOString(),
           sourceTaskId: completed.sourceTaskId,
@@ -299,7 +299,7 @@ export function createWalkingSkeletonTaskPorts(input: {
         const state = input.source.getState(key.sourceTaskId);
         return Promise.resolve({
           assigneeReference: state.assigneeReference,
-          deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" },
+          deepLink: { appId: "crm.synthetic", routeId: "crm.synthetic.detail" },
           eventId: randomUUID(),
           occurredAt: new Date().toISOString(),
           sourceTaskId: state.sourceTaskId,

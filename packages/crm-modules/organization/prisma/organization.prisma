@@ -1,0 +1,153 @@
+// CHECK constraints, composite foreign keys, overlap/cycle triggers and their
+// advisory-lock behavior remain governed by migrations 0000000002/0000000015.
+model OrganizationWorkforcePerson {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("workforce_people")
+  @@schema("organization")
+}
+
+model OrganizationEmployment {
+  employmentId      String    @id @db.Uuid @map("employment_id")
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([employmentId, workforcePersonId], map: "employments_id_person_unique")
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "employments_person_time_idx")
+  @@map("employments")
+  @@schema("organization")
+}
+
+model OrganizationUnit {
+  organizationUnitId String    @id @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@map("organization_units")
+  @@schema("organization")
+}
+
+model OrganizationUnitPlacement {
+  placementId              String    @id @db.Uuid @map("placement_id")
+  organizationUnitId       String    @db.Uuid @map("organization_unit_id")
+  parentOrganizationUnitId String?   @db.Uuid @map("parent_organization_unit_id")
+  effectiveFrom            DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo              DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([organizationUnitId, effectiveFrom, effectiveTo], map: "organization_unit_placements_time_idx")
+  @@map("organization_unit_placements")
+  @@schema("organization")
+}
+
+model OrganizationPosition {
+  positionId         String    @id @db.Uuid @map("position_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@unique([positionId, organizationUnitId], map: "positions_id_unit_unique")
+  @@map("positions")
+  @@schema("organization")
+}
+
+model OrganizationAssignment {
+  assignmentId       String    @id @db.Uuid @map("assignment_id")
+  workforcePersonId  String    @db.Uuid @map("workforce_person_id")
+  employmentId       String    @db.Uuid @map("employment_id")
+  organizationUnitId String    @db.Uuid @map("organization_unit_id")
+  positionId         String    @db.Uuid @map("position_id")
+  effectiveFrom      DateTime  @db.Timestamptz(6) @map("effective_from")
+  effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
+
+  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "assignments_person_time_idx")
+  @@unique([assignmentId, workforcePersonId], map: "assignments_id_person_unique")
+  @@map("assignments")
+  @@schema("organization")
+}
+
+model OrganizationOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+
+  @@map("operation_receipts")
+  @@schema("organization")
+}
+
+model OrganizationWorkforcePersonProfile {
+  workforcePersonId String   @id @db.Uuid @map("workforce_person_id")
+  realName          String   @db.VarChar(100) @map("real_name")
+  revision          Int
+  updatedAt         DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("workforce_person_profiles")
+  @@schema("organization")
+}
+
+model OrganizationWorkforcePersonProfileHistory {
+  workforcePersonId String   @db.Uuid @map("workforce_person_id")
+  revision          Int
+  realName          String   @db.VarChar(100) @map("real_name")
+  recordedAt        DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([workforcePersonId, revision])
+  @@map("workforce_person_profile_history")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectory {
+  organizationUnitId       String   @id @db.Uuid @map("organization_unit_id")
+  name                     String   @db.VarChar(100)
+  normalizedName           String   @db.VarChar(100) @map("normalized_name")
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  rootLocked               Boolean  @map("root_locked")
+  revision                 Int
+  updatedAt                DateTime @db.Timestamptz(6) @map("updated_at")
+  @@index([parentOrganizationUnitId], map: "department_parent_idx")
+  @@map("department_directory")
+  @@schema("organization")
+}
+
+model OrganizationDepartmentDirectoryHistory {
+  organizationUnitId       String   @db.Uuid @map("organization_unit_id")
+  revision                 Int
+  name                     String   @db.VarChar(100)
+  parentOrganizationUnitId String?  @db.Uuid @map("parent_organization_unit_id")
+  active                   Boolean
+  recordedAt               DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([organizationUnitId, revision])
+  @@map("department_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectory {
+  positionId         String   @id @db.Uuid @map("position_id")
+  organizationUnitId String   @db.Uuid @map("organization_unit_id")
+  name               String   @db.VarChar(100)
+  normalizedName     String   @db.VarChar(100) @map("normalized_name")
+  active             Boolean
+  revision           Int
+  updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
+  @@map("position_directory")
+  @@schema("organization")
+}
+
+model OrganizationPositionDirectoryHistory {
+  positionId String   @db.Uuid @map("position_id")
+  revision   Int
+  name       String   @db.VarChar(100)
+  active     Boolean
+  recordedAt DateTime @db.Timestamptz(6) @map("recorded_at")
+  @@id([positionId, revision])
+  @@map("position_directory_history")
+  @@schema("organization")
+}
+
+model OrganizationDirectoryOperationReceipt {
+  operationId String   @id @db.Uuid @map("operation_id")
+  fingerprint String   @db.VarChar(64)
+  recordedAt  DateTime @default(dbgenerated("transaction_timestamp()")) @db.Timestamptz(6) @map("recorded_at")
+  @@map("directory_operation_receipts")
+  @@schema("organization")
+}

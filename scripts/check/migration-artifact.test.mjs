@@ -17,10 +17,10 @@ import {
 const fixture = async () => {
   const root = await mkdtemp(resolve(tmpdir(), "ai-crm-migration-artifact-"));
   await mkdir(resolve(root, "packages/database/migrations"), { recursive: true });
-  await mkdir(resolve(root, "packages/platform-modules/audit/migrations"), { recursive: true });
+  await mkdir(resolve(root, "packages/crm-modules/audit/migrations"), { recursive: true });
   await writeFile(resolve(root, "packages/database/migrations/0000000001_base.sql"), "select 1;\n");
   await writeFile(resolve(root, "packages/database/migrations/0000000001_base.meta.json"), "{}\n");
-  await writeFile(resolve(root, "packages/platform-modules/audit/migrations/0000000002_audit.sql"), "select 2;\n");
+  await writeFile(resolve(root, "packages/crm-modules/audit/migrations/0000000002_audit.sql"), "select 2;\n");
   return root;
 };
 
@@ -30,7 +30,7 @@ test("builds a deterministic manifest for every reviewed migration directory and
   const first = await buildMigrationManifest(root);
   const second = await buildMigrationManifest(root);
   assert.deepEqual(first, second);
-  assert.deepEqual(first.migrationRoots, ["packages/database/migrations", "packages/platform-modules/audit/migrations"]);
+  assert.deepEqual(first.migrationRoots, ["packages/crm-modules/audit/migrations", "packages/database/migrations"]);
   assert.equal(first.files.length, 3);
   assert.match(migrationManifestDigest(first), /^sha256:[a-f0-9]{64}$/u);
   assert.deepEqual((await verifyMigrationArtifact(root, first, migrationManifestDigest(first))).errors, []);
@@ -90,7 +90,7 @@ test("rejects missing migration directories and an unapproved manifest digest", 
   const root = await fixture();
   context.after(() => rm(root, { recursive: true, force: true }));
   const manifest = await buildMigrationManifest(root);
-  await rm(resolve(root, "packages/platform-modules/audit/migrations"), { recursive: true });
+  await rm(resolve(root, "packages/crm-modules/audit/migrations"), { recursive: true });
   const missingDirectory = await verifyMigrationArtifact(root, manifest, migrationManifestDigest(manifest));
   assert.ok(missingDirectory.errors.includes("Migration artifact directory set does not match the approved manifest."));
   const wrongDigest = await verifyMigrationArtifact(root, manifest, `sha256:${"0".repeat(64)}`);

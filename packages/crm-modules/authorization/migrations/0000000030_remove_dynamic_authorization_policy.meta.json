@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Remove dynamic policy publication state after the fixed-role cutover.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Drops three unused authorization-owned tables; run while application traffic is stopped.",
+  "dataImpact": "Deletes obsolete development-only policy snapshots and publication pointers. Immutable decision records and fixed role grants remain.",
+  "backfill": "Not required because the approved rollout resets the local development database.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 local-development empty-volume reset; no retained environment data exists.",
+  "recovery": "Restore the database backup only if rolling back to an application version that still requires dynamic policies.",
+  "forwardFix": "Append a reviewed authorization-owned migration for later changes. Do not rewrite this migration after application."
+}

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/platform-authorization";
-import { FileCenterError, type FileActor, type FileCenterService } from "@ai-crm/platform-file-center";
+import { AuthorizationDeniedError, AuthorizationUnavailableError } from "@ai-crm/crm-authorization";
+import { FileCenterError, type FileActor, type FileCenterService } from "@ai-crm/crm-file-center";
 import { describe, expect, it, vi } from "vitest";
 
 import { BrowserSessionFailure } from "../auth/errors.js";
@@ -64,17 +64,17 @@ function context(overrides: Partial<FileCenterHttpRequestContext> = {}): FileCen
 }
 
 function createBody() {
-  return { declaredMediaType: "TEXT/plain", declaredSizeBytes: 7, displayName: "synthetic.txt", ownerModule: "platform.synthetic" };
+  return { declaredMediaType: "TEXT/plain", declaredSizeBytes: 7, displayName: "synthetic.txt", ownerModule: "crm.synthetic" };
 }
 
 function downloadBody() {
   return {
     fileReference,
-    resource: { resourceId: "synthetic:1", resourceType: "platform.synthetic" },
+    resource: { resourceId: "synthetic:1", resourceType: "crm.synthetic" },
   };
 }
 
-function fixture() {
+function fixture(allowedOrigins: readonly string[] = ["https://workbench.example.test"]) {
   const service = {
     authorizeDownload: vi.fn<Pick<FileCenterService, "authorizeDownload">["authorizeDownload"]>().mockResolvedValue({
       downloadUrl: "https://download.example.test/short-lived?signature=synthetic",
@@ -108,13 +108,17 @@ function fixture() {
   const actorResolver = { resolve: vi.fn().mockResolvedValue(actor) };
   return {
     actorResolver,
-    adapter: createFileCenterHttpAdapter({ actorResolver, allowedOrigins: ["https://workbench.example.test"], service, sessions }),
+    adapter: createFileCenterHttpAdapter({ actorResolver, allowedOrigins, service, sessions }),
     service,
     sessions,
   };
 }
 
 describe("File Center HTTP adapter", () => {
+  it("accepts every configured browser origin", async () => {
+    const runtime = fixture(["https://first.example.test", "https://workbench.example.test"]);
+    await expect(runtime.adapter.createUpload(context(), createBody())).resolves.toMatchObject({ status: 201 });
+  });
   it("maps a secure create request to server-owned command metadata and a bounded public result", async () => {
     const runtime = fixture();
     const leakyResult = {
@@ -141,7 +145,7 @@ describe("File Center HTTP adapter", () => {
       declaredSizeBytes: 7,
       displayName: "synthetic.txt",
       operationId: ids.operation,
-      ownerModule: "platform.synthetic",
+      ownerModule: "crm.synthetic",
       reason: "file_http:create_upload",
       traceId,
     });
@@ -175,7 +179,7 @@ describe("File Center HTTP adapter", () => {
   it("rejects unknown and accessor-bearing body fields without reading an accessor", async () => {
     const runtime = fixture();
     let reads = 0;
-    const accessor = Object.defineProperty(createBody(), "ownerModule", { enumerable: true, get: () => { reads += 1; return "platform.synthetic"; } });
+    const accessor = Object.defineProperty(createBody(), "ownerModule", { enumerable: true, get: () => { reads += 1; return "crm.synthetic"; } });
 
     await expect(runtime.adapter.createUpload(context(), { ...createBody(), actor })).resolves.toMatchObject({ status: 400 });
     await expect(runtime.adapter.createUpload(context(), accessor)).resolves.toMatchObject({ status: 400 });
@@ -241,7 +245,7 @@ describe("File Center HTTP adapter", () => {
 
   it("maps invalid sessions to 401 and opaque dependency failures to a safe 503", async () => {
     const invalidSession = fixture();
-    invalidSession.sessions.sessionForMutation.mockRejectedValueOnce(new BrowserSessionFailure("authentication_session_invalid"));
+    invalidSession.sessions.sessionForMutation.mockRejectedValueOnce(new BrowserSessionFailure("authentication_required"));
     await expect(invalidSession.adapter.confirmUpload(context(), ids.session)).resolves.toMatchObject({ body: { code: "authentication_required" }, status: 401 });
 
     const unavailable = fixture();

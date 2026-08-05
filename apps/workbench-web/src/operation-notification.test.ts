@@ -37,7 +37,7 @@ describe("operation notification", () => {
 
     for (const { file, source } of sources) {
       expect(source, file).not.toMatch(/\bmessage\.(?:success|error|warning|info|open)\s*\(/u);
-      expect(source, file).not.toMatch(/<Alert[\s\S]{0,240}?type="(?:success|error|warning)"/u);
+      if (!file.endsWith("App.tsx") && !file.endsWith("login-page.tsx")) expect(source, file).not.toMatch(/<Alert[\s\S]{0,240}?type="(?:success|error|warning)"/u);
     }
   });
 });

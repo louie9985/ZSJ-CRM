@@ -9,7 +9,7 @@
 - The reviewed internal contract exposes upload-session creation, upload confirmation, and short-lived download-grant authorization only.
 - Upload creation and confirmation are Cookie-session mutations and require trusted Origin/Referer, session-bound CSRF, and a UUID `Idempotency-Key` before Actor/Trace mapping or File Center invocation.
 - Download-grant authorization is read-only but security-sensitive. It requires a valid Cookie credential and UUID audited-operation identity, reauthorizes on every call, and may return a fresh ephemeral grant on repeated calls.
-- The adapter calls only the `@ai-crm/platform-file-center` public `createUploadSession`, `completeUpload`, and `authorizeDownload` methods.
+- The adapter calls only the `@ai-crm/crm-file-center` public `createUploadSession`, `completeUpload`, and `authorizeDownload` methods.
 - The injected Actor resolver is the composition seam for verified session, active workforce association/assignment, and the matching static HTTP permission. The adapter accepts no Actor, Trace, operation ID, reason, bucket, object handle, or provider payload from JSON bodies.
 
 ## Allowed assumptions
@@ -62,7 +62,7 @@
 
 ## Integration note
 
-- The shared controller/composition owner must wire `FileCenterHttpActorResolver.resolve` to current BFF principal verification, organization workforce resolution (including explicitly selected active assignment), and the exact `platform.file-center.file:upload` or `platform.file-center.file:download` HTTP permission before returning `{ actorId: workforcePersonId, actorType: "authenticated_subject", assignmentId? }`.
+- The shared controller/composition owner must wire `FileCenterHttpActorResolver.resolve` to current BFF principal verification, organization workforce resolution (including explicitly selected active assignment), and the exact `crm.file-center.file:upload` or `crm.file-center.file:download` HTTP permission before returning `{ actorId: workforcePersonId, actorType: "authenticated_subject", assignmentId? }`.
 - No unresolved contract or module-schema assumption remains in this adapter. Production readiness still depends on the shared route wiring and a reviewed published non-empty authorization policy.
 
 ## Integration review closure

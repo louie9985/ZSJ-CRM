@@ -17,9 +17,9 @@ if (!connectionString) {
 
 const repositoryRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const directories = [resolve(repositoryRoot, "packages/database/migrations")];
-for (const entry of await readdir(resolve(repositoryRoot, "packages/platform-modules"), { withFileTypes: true })) {
+for (const entry of await readdir(resolve(repositoryRoot, "packages/crm-modules"), { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
-  const directory = resolve(repositoryRoot, "packages/platform-modules", entry.name, "migrations");
+  const directory = resolve(repositoryRoot, "packages/crm-modules", entry.name, "migrations");
   try { if ((await readdir(directory)).some((name) => name.endsWith(".sql"))) directories.push(directory); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
 }

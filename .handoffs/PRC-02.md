@@ -45,7 +45,7 @@ Provide a business-neutral, replayable and reconcilable unified task projection.
 
 ## Migration And Recovery
 
-- Add `0000000004_task_center_projection` under module-owned `platform_task_center` with projection, processed-event receipt, and source-command receipt tables.
+- Add `0000000004_task_center_projection` under module-owned `crm_task_center` with projection, processed-event receipt, and source-command receipt tables.
 - Event receipt and version-guarded projection update share one PostgreSQL transaction and task-scoped advisory lock. No cross-module foreign key or table access exists.
 - Migration is additive. Before consumers start, recovery may restore the pre-deployment backup. After accepted commands exist, retain receipts and forward-fix; projections can be rebuilt from authoritative source events. A `running` receipt has a bounded lease and may be atomically taken over after expiry; recovery always redrives the source command with the original idempotency key.
 - Runtime startup does not synchronize schemas; the migration entry point requires `DATABASE_MIGRATION_URL_FILE`.
@@ -110,11 +110,11 @@ Owner review repaired: duplicate accepted commands now close their audit phase; 
 
 ## Verification Evidence
 
-- `pnpm --filter @ai-crm/platform-task-center lint`: passed.
-- `pnpm --filter @ai-crm/platform-task-center typecheck`: passed.
-- `pnpm --filter @ai-crm/platform-task-center build`: passed.
-- `pnpm --filter @ai-crm/platform-task-center test`: 35 tests passed; 3 PostgreSQL tests skipped by the unit runner as intended.
-- `pnpm --filter @ai-crm/platform-task-center test:integration`: 3/3 passed against isolated PostgreSQL, including root/module migrations, canonical event deduplication, atomic lease takeover, stale-owner isolation, stable accepted receipts, ambiguous interruption redrive, source-side idempotency, and Compose cleanup.
+- `pnpm --filter @ai-crm/crm-task-center lint`: passed.
+- `pnpm --filter @ai-crm/crm-task-center typecheck`: passed.
+- `pnpm --filter @ai-crm/crm-task-center build`: passed.
+- `pnpm --filter @ai-crm/crm-task-center test`: 35 tests passed; 3 PostgreSQL tests skipped by the unit runner as intended.
+- `pnpm --filter @ai-crm/crm-task-center test:integration`: 3/3 passed against isolated PostgreSQL, including root/module migrations, canonical event deduplication, atomic lease takeover, stale-owner isolation, stable accepted receipts, ambiguous interruption redrive, source-side idempotency, and Compose cleanup.
 - `pnpm contracts:check`: passed; source/generated consistency and audience-reachable schema pruning are verified.
 - `pnpm check`: passed, 140/140 tasks successful.
 - `git diff --check`: passed.

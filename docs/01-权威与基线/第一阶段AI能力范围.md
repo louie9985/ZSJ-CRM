@@ -16,7 +16,7 @@
 
 ## 自研、开源与托管边界
 
-- 自研：AI 网关治理、用途/版本/预算/调用记录、人工确认和平台 SDK 边界。
+- 自研：AI 网关治理、用途/版本/预算/调用记录、人工确认和 CRM SDK 边界。
 - 开源：JSON Schema 2020-12、Ajv、OpenTelemetry 和现有 `integration-runtime` 技术依赖。
 - 托管：未来批准的模型推理服务，经独立 Provider Adapter 接入。
 - 不采用：第一阶段 LiteLLM、LangChain/LangGraph、Agent/RAG 平台、向量数据库或自建模型推理。

@@ -75,7 +75,7 @@ const validateDistinctDatabaseEvidence = (databases, names, errors) => {
     const references = names.map((name) => databases[name]?.[evidenceName]?.evidenceRef);
     if (references.every((reference) => typeof reference === "string")
       && new Set(references.map((reference) => reference.toLocaleLowerCase("en-US"))).size !== names.length) {
-      errors.push(`databases must use distinct ${evidenceName}.evidenceRef values for ai_crm, keycloak, and flowable.`);
+      errors.push(`databases must use distinct ${evidenceName}.evidenceRef values for ai_crm and flowable.`);
     }
   }
 };
@@ -138,7 +138,7 @@ export const validateRecoveryEvidence = (manifest) => {
     validateEvidenceBinding(manifest.postgres.versionEvidence, "postgres.versionEvidence", errors);
   }
 
-  const databaseNames = ["ai_crm", "keycloak", "flowable"];
+  const databaseNames = ["ai_crm", "flowable"];
   if (exactKeys(manifest.databases, databaseNames, "databases", errors)) {
     for (const name of databaseNames) validateDatabase(manifest.databases[name], name, errors);
     validateDistinctDatabaseEvidence(manifest.databases, databaseNames, errors);
@@ -174,7 +174,6 @@ export const validateRecoveryEvidence = (manifest) => {
   validateEvidenceGroup(manifest.configurationArtifacts, [
     "compose",
     "nginx",
-    "keycloakRealm",
     "flowableConfiguration",
     "infrastructureInventory",
   ], "configurationArtifacts", errors);

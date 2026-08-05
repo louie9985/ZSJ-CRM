@@ -33,7 +33,7 @@ channels:
       x-dead-letter-exchange: ai-crm.tests.dead-letter.v1
       x-dead-letter-routing-key: tests.walking-skeleton.source-command.v1.dead
   notificationIntentExchange:
-    address: platform.notifications.intent-submit.v1
+    address: crm.notifications.intent-submit.v1
     messages:
       notificationIntentSubmitV1:
         $ref: '#/components/messages/notificationIntentSubmitV1'
@@ -43,20 +43,20 @@ channels:
         exchange: { name: ai-crm.tests.events.v1, type: topic, durable: true, autoDelete: false }
         bindingVersion: 0.3.0
   notificationIntentQueue:
-    address: ai-crm.tests.platform.notifications.intent-submit.v1
+    address: ai-crm.tests.crm.notifications.intent-submit.v1
     messages:
       notificationIntentSubmitV1:
         $ref: '#/components/messages/notificationIntentSubmitV1'
     bindings:
       amqp:
         is: queue
-        queue: { name: ai-crm.tests.platform.notifications.intent-submit.v1, durable: true, exclusive: false, autoDelete: false }
+        queue: { name: ai-crm.tests.crm.notifications.intent-submit.v1, durable: true, exclusive: false, autoDelete: false }
         bindingVersion: 0.3.0
     x-ai-crm-bindings:
-      - { exchange: ai-crm.tests.events.v1, routingKey: platform.notifications.intent-submit.v1 }
+      - { exchange: ai-crm.tests.events.v1, routingKey: crm.notifications.intent-submit.v1 }
     x-ai-crm-queue-arguments:
       x-dead-letter-exchange: ai-crm.tests.dead-letter.v1
-      x-dead-letter-routing-key: platform.notifications.intent-submit.v1.dead
+      x-dead-letter-routing-key: crm.notifications.intent-submit.v1.dead
   retryExchange:
     address: walking-skeleton.retry.v1
     messages:
@@ -98,32 +98,32 @@ channels:
     x-ai-crm-queue-arguments: { x-message-ttl: 300000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: tests.walking-skeleton.source-command.v1 }
     x-ai-crm-consumer-forbidden: true
   notificationRetry30Queue:
-    address: ai-crm.tests.platform.notifications.intent-submit.retry.30s.v1
+    address: ai-crm.tests.crm.notifications.intent-submit.retry.30s.v1
     messages:
       notificationIntentSubmitV1:
         $ref: '#/components/messages/notificationIntentSubmitV1'
     bindings:
       amqp:
         is: queue
-        queue: { name: ai-crm.tests.platform.notifications.intent-submit.retry.30s.v1, durable: true, exclusive: false, autoDelete: false }
+        queue: { name: ai-crm.tests.crm.notifications.intent-submit.retry.30s.v1, durable: true, exclusive: false, autoDelete: false }
         bindingVersion: 0.3.0
     x-ai-crm-bindings:
-      - { exchange: ai-crm.tests.retry.v1, routingKey: platform.notifications.intent-submit.v1.retry.30s }
-    x-ai-crm-queue-arguments: { x-message-ttl: 30000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: platform.notifications.intent-submit.v1 }
+      - { exchange: ai-crm.tests.retry.v1, routingKey: crm.notifications.intent-submit.v1.retry.30s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 30000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: crm.notifications.intent-submit.v1 }
     x-ai-crm-consumer-forbidden: true
   notificationRetry300Queue:
-    address: ai-crm.tests.platform.notifications.intent-submit.retry.300s.v1
+    address: ai-crm.tests.crm.notifications.intent-submit.retry.300s.v1
     messages:
       notificationIntentSubmitV1:
         $ref: '#/components/messages/notificationIntentSubmitV1'
     bindings:
       amqp:
         is: queue
-        queue: { name: ai-crm.tests.platform.notifications.intent-submit.retry.300s.v1, durable: true, exclusive: false, autoDelete: false }
+        queue: { name: ai-crm.tests.crm.notifications.intent-submit.retry.300s.v1, durable: true, exclusive: false, autoDelete: false }
         bindingVersion: 0.3.0
     x-ai-crm-bindings:
-      - { exchange: ai-crm.tests.retry.v1, routingKey: platform.notifications.intent-submit.v1.retry.300s }
-    x-ai-crm-queue-arguments: { x-message-ttl: 300000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: platform.notifications.intent-submit.v1 }
+      - { exchange: ai-crm.tests.retry.v1, routingKey: crm.notifications.intent-submit.v1.retry.300s }
+    x-ai-crm-queue-arguments: { x-message-ttl: 300000, x-dead-letter-exchange: ai-crm.tests.events.v1, x-dead-letter-routing-key: crm.notifications.intent-submit.v1 }
     x-ai-crm-consumer-forbidden: true
   deadLetterExchange:
     address: walking-skeleton.dead.v1
@@ -151,7 +151,7 @@ channels:
         bindingVersion: 0.3.0
     x-ai-crm-bindings:
       - { exchange: ai-crm.tests.dead-letter.v1, routingKey: tests.walking-skeleton.source-command.v1.dead }
-      - { exchange: ai-crm.tests.dead-letter.v1, routingKey: platform.notifications.intent-submit.v1.dead }
+      - { exchange: ai-crm.tests.dead-letter.v1, routingKey: crm.notifications.intent-submit.v1.dead }
     x-ai-crm-replay: { automatic: false, enabled: false, authorizationRequired: true, auditRequired: true, authoritativeStateRecheckRequired: true }
 operations:
   publishSourceCommand:
@@ -230,7 +230,7 @@ components:
       payload:
         $ref: ../jobs/notification-intent-submit.v1.schema.json
       x-ai-crm-kind: job
-      x-ai-crm-owner: platform.notifications
+      x-ai-crm-owner: crm.notifications
       x-ai-crm-scope: walking-skeleton-test-route
 x-ai-crm-topology-policy:
   scope: tests-only

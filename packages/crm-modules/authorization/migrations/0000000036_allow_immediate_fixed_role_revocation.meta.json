@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Allow an authorization grant to be revoked at its grant timestamp and index active person-scoped role lookup.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Takes bounded locks while replacing one check constraint and creating a small reset-environment index.",
+  "dataImpact": "No row changes; zero-duration grants become valid while timestamps before granted_at remain rejected.",
+  "backfill": "Not required for the approved empty local-development reset.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 reset-only local-development migration plan; this replaces only the fixed-role timestamp constraint and retains all grant rows.",
+  "recovery": "Retain the relaxed constraint and index during application rollback because both remain compatible with earlier valid rows.",
+  "forwardFix": "Append a reviewed authorization-owned migration. Do not rewrite this migration after application."
+}

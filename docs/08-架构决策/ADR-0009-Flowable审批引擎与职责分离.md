@@ -15,7 +15,7 @@
 ## 决策
 
 1. 使用开源 Flowable 作为 BPMN 流程定义、流程版本、流程实例和人工审批任务引擎。
-2. `packages/platform-modules/workflow` 提供稳定、业务中立的应用接口，并通过适配器调用 Flowable。领域模块不得直接依赖 Flowable SDK、REST 模型或数据库。
+2. `packages/crm-modules/workflow` 提供稳定、业务中立的应用接口，并通过适配器调用 Flowable。领域模块不得直接依赖 Flowable SDK、REST 模型或数据库。
 3. Flowable 作为独立运行组件管理自己的数据。任何项目模块不得查询或修改 Flowable 表。
 4. BPMN 定义及部署元数据进入仓库并版本化、评审和测试。生产流程不能只在 Flowable 管理界面临时修改。
 5. 已启动实例固定使用其启动时的流程定义版本。新版本默认只用于新实例；实例迁移必须有单独方案、回滚指导和人工评审。

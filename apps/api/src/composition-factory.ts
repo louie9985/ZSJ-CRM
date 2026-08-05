@@ -1,41 +1,37 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { createTraceContext } from "@ai-crm/observability";
-import {
-  createPostgresApplicationRegistryCapabilityProbe,
-  createPostgresApplicationRegistryQueryService,
-} from "@ai-crm/platform-app-registry";
-import { createAuditService, createPostgresAuditCapabilityProbe, createPrismaAuditStore } from "@ai-crm/platform-audit";
+import { createAuditService, createPostgresAuditCapabilityProbe, createPrismaAuditStore } from "@ai-crm/crm-audit";
 import {
   AuthorizationUnavailableError,
-  createAuthorizationService,
-  createPrismaAuthorizationPersistence,
-  type AuthorizationPolicyStore,
-} from "@ai-crm/platform-authorization";
-import { createBusinessConfigurationService, createPrismaBusinessConfigurationStore } from "@ai-crm/platform-business-configuration";
-import { createOidcTokenVerifier, type TokenVerifier } from "@ai-crm/platform-auth-context";
-import { createEventingCore, createPrismaEventingStore, type EventingCore } from "@ai-crm/platform-eventing-outbox";
+  createFixedRoleAuthorizationService,
+  FIXED_ROLE_PERMISSION_BUNDLES,
+  createFixedRoleDecisionRecorder,
+  createFixedRoleGrantStore,
+} from "@ai-crm/crm-authorization";
+import { createEventingCore, createPrismaEventingStore, type EventingCore } from "@ai-crm/crm-eventing-outbox";
 import {
   createPostgresFormSchemaCapabilityProbe,
   createPrismaFormSchemaQueryService,
-} from "@ai-crm/platform-form-schema";
+} from "@ai-crm/crm-form-schema";
 import {
   createNotificationCenter,
   createPrismaNotificationStore,
   type NotificationAudit,
   type NotificationAuthorization,
-} from "@ai-crm/platform-notifications";
+} from "@ai-crm/crm-notifications";
 import {
   createPrismaOrganizationService,
   createPrismaOrganizationDirectoryStore,
   OrganizationDirectoryService,
   type OrganizationPersistenceRuntime,
-} from "@ai-crm/platform-organization";
+} from "@ai-crm/crm-organization";
 import {
   createPrismaWorkforceAccessStore,
+  createPasswordCredentialPort,
   WorkforceAccessService,
   type WorkforceAccessServiceApi,
-} from "@ai-crm/platform-workforce-access";
+} from "@ai-crm/crm-workforce-access";
 import {
   createFileCenterService,
   createPrismaFileCenterStore,
@@ -45,14 +41,14 @@ import {
   type FileAuthorizationRequest,
   type FileAuthorizer,
   type StorageAdapter,
-} from "@ai-crm/platform-file-center";
+} from "@ai-crm/crm-file-center";
 import {
   createPrismaTaskCenterStore,
   createTaskCenter,
   type TaskAudit,
   type TaskAuthorization,
-} from "@ai-crm/platform-task-center";
-import { createTencentCosStorageAdapter } from "@ai-crm/platform-file-center/provider/tencent-cos";
+} from "@ai-crm/crm-task-center";
+import { createTencentCosStorageAdapter } from "@ai-crm/crm-file-center/provider/tencent-cos";
 import {
   checkMigrationCompatibility,
   createDatabaseRuntime,
@@ -63,19 +59,10 @@ import {
 } from "@ai-crm/database";
 
 import { BrowserSessionFailure } from "./auth/errors.js";
-import { createPcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
-import { parsePcSessionCredential } from "./auth/http-adapter.js";
-import { createOidcClient, type OidcClientPort } from "./auth/oidc.js";
-import { createPcBffSessionService } from "./auth/session-service.js";
-import { createPcSessionPolicyPort } from "./auth/session-policy.js";
-import type { AuthenticationAuditEvent, AuthenticationAuditPort } from "./auth/session-service.js";
-import {
-  connectRedisSessionStore,
-  createRedisBrowserSessionStore,
-  type RedisSessionConnection,
-  type RedisSessionConnectionConfig,
-} from "./auth/session-store.js";
-import type { AuthenticationHttpResponse } from "./auth/http-adapter.js";
+import { AccountAccessApplicationService } from "./auth/account-access-service.js";
+import { createLocalAuthenticationHttpAdapter, parseSurfaceSessionCookie } from "./auth/local-http-adapter.js";
+import { connectRedisAccessSessionStore, type AuthenticationSurface, type RedisAccessSessionConfiguration, type RedisAccessSessionConnection } from "./auth/local-session-store.js";
+import type { LocalAuthenticationHttpResponse } from "./auth/local-http-adapter.js";
 import type { ApiPlatformBindings } from "./composition.js";
 import { createRabbitRealtimeEventSource, createRealtimeServer, type RealtimeEventSource, type RealtimeIdentity } from "./realtime/index.js";
 import {
@@ -85,11 +72,9 @@ import {
 import type { ApiRuntimeConfiguration } from "./runtime-config.js";
 import { createWorkbenchBootstrapFacade } from "./workbench/facade.js";
 import { createWorkforceAuthorizationContext } from "./workforce-authorization-context.js";
-import { createAuthorizationGrantPort } from "./workforce-administration/authorization-grants.js";
+import { createFixedRoleAdministrationGrantPort } from "./workforce-administration/authorization-grants.js";
 import { createDurableAdministrationOperationPort } from "./workforce-administration/durable-operation.js";
-import { createDurableIdentityAdministrationPort } from "./workforce-administration/durable-identity.js";
-import { createWorkforceAdministrationFacade, deriveAdministrationOperationId } from "./workforce-administration/facade.js";
-import { createKeycloakAdministrationPorts } from "./workforce-administration/keycloak-administration.js";
+import { createWorkforceAdministrationFacade } from "./workforce-administration/facade.js";
 
 export interface ApiPlatformBindingFactory {
   readonly create: (configuration: Readonly<ApiRuntimeConfiguration>, signal?: AbortSignal) => ApiPlatformBindings | Promise<ApiPlatformBindings>;
@@ -97,7 +82,7 @@ export interface ApiPlatformBindingFactory {
 
 type HealthCheckedStorageAdapter = StorageAdapter & { readonly checkHealth: () => Promise<boolean> };
 
-const unavailableAuthenticationResponse: AuthenticationHttpResponse = Object.freeze({
+const unavailableAuthenticationResponse: LocalAuthenticationHttpResponse = Object.freeze({
   body: Object.freeze({
     code: "authentication_dependency_unavailable",
     message: "Authentication is temporarily unavailable.",
@@ -128,7 +113,7 @@ function organizationRuntime(
           ...(intent.actorType === "authenticated_subject" ? { workforcePersonId: intent.actorId } : {}),
         },
         reason: { code: intent.reason },
-        resource: { resourceId: intent.entityId, resourceType: `platform.organization.${intent.entityType}` },
+        resource: { resourceId: intent.entityId, resourceType: `crm.organization.${intent.entityType}` },
         result: intent.result,
         trace: { operationId: intent.operationId, traceId: intent.traceId },
       });
@@ -155,47 +140,11 @@ function organizationRuntime(
   });
 }
 
-function authenticationAuditPort(audit: ApiPlatformBindings["audit"]): AuthenticationAuditPort {
-  return Object.freeze({
-    async record(event: AuthenticationAuditEvent): Promise<void> {
-      const command = {
-        action: `authentication.${event.action}`,
-        actor: { actorId: "api.pc_bff", actorType: "system" },
-        reason: { code: "authentication_event" },
-        resource: {
-          resourceId: event.sessionReference ?? event.action,
-          resourceType: event.sessionReference === undefined ? "authentication_attempt" : "pc_bff_session",
-        },
-        result: event.result,
-        trace: { operationId: event.operationId, traceId: event.traceId },
-      } as const;
-      try {
-        await audit.record(command);
-      } catch {
-        await audit.record(command);
-      }
-    },
-  });
-}
-
 function deterministicUuid(material: string): string {
   const value = createHash("sha256").update(material).digest("hex").slice(0, 32).split("");
   value[12] = "5";
   value[16] = ((Number.parseInt(value[16] ?? "0", 16) & 3) | 8).toString(16);
   return `${value.slice(0, 8).join("")}-${value.slice(8, 12).join("")}-${value.slice(12, 16).join("")}-${value.slice(16, 20).join("")}-${value.slice(20).join("")}`;
-}
-
-export function pcSessionPolicySystemAuthorization(action: string): Readonly<{ allowed: boolean; decisionId: string }> {
-  return Object.freeze({ allowed: action === "configuration:read", decisionId: deterministicUuid("pc-session-policy-system-read") });
-}
-
-export function pcSessionRevokedEvent(input: Readonly<{ eventId: string; occurredAt: string; reason: "concurrent-limit"; sessionReference: string; subjectId: string; subjectIssuer: string }>): Readonly<Record<string, unknown>> {
-  return Object.freeze({ specversion: "1.0", id: input.eventId, source: "urn:ai-crm:authentication", type: "authentication.pc-session-revoked.v1", time: input.occurredAt, datacontenttype: "application/json", dataschema: "urn:ai-crm:events:authentication-pc-session-revoked:v1", correlationid: input.eventId, subject: input.sessionReference, data: Object.freeze({ eventId: input.eventId, occurredAt: input.occurredAt, principalId: `subject:${createHash("sha256").update(`${input.subjectIssuer}\0${input.subjectId}`).digest("hex")}`, reason: input.reason, sessionReference: input.sessionReference }) });
-}
-
-function internalPrincipalId(principal: { readonly authenticationSubject: { readonly issuer: string; readonly subject: string } }): string {
-  const subject = principal.authenticationSubject;
-  return `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
 }
 
 function managementAuditPort(
@@ -222,7 +171,7 @@ function managementAuditPort(
           reason: { code: event.errorCode === undefined ? `${capability}_query` : `${capability}_query_failed` },
           resource: {
             resourceId: event.referenceId,
-            resourceType: capability === "task" ? "platform.task-center.task-projection" : "platform.notifications.in-app-notification",
+            resourceType: capability === "task" ? "crm.task-center.task-projection" : "crm.notifications.in-app-notification",
           },
           result: event.phase === "attempted" ? "attempted" : event.phase === "succeeded" ? "succeeded" : "failed",
           trace: { authorizationDecisionId: event.decisionId, operationId, traceId },
@@ -236,36 +185,20 @@ function managementAuditPort(
   });
 }
 
-async function hasCompleteCurrentPolicy(store: AuthorizationPolicyStore): Promise<boolean> {
-  try {
-    const version = await store.currentVersion();
-    const snapshot = await store.load(version);
-    if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) return false;
-    const candidate = snapshot as Record<string, unknown>;
-    return Array.isArray(candidate["permissions"]) && candidate["permissions"].length > 0 &&
-      Array.isArray(candidate["roles"]) && candidate["roles"].length > 0 &&
-      Array.isArray(candidate["grants"]) && candidate["grants"].length > 0;
-  } catch {
-    return false;
-  }
-}
-
 function createUnavailableBindings(): ApiPlatformBindings {
   const bindings: ApiPlatformBindings = {
     audit: { readSensitive: () => rejected(), record: () => rejected() },
-    authentication: {
-      beginLogin: () => Promise.resolve(unavailableAuthenticationResponse),
-      completeLogin: () => Promise.resolve(unavailableAuthenticationResponse),
-      currentSession: () => Promise.resolve(unavailableAuthenticationResponse),
+    accountAccess: {
+      assignment: () => Promise.resolve(unavailableAuthenticationResponse),
+      login: () => Promise.resolve(unavailableAuthenticationResponse),
       logout: () => Promise.resolve(unavailableAuthenticationResponse),
-      refresh: () => Promise.resolve(unavailableAuthenticationResponse),
+      reauthentication: () => Promise.resolve(unavailableAuthenticationResponse),
+      session: () => Promise.resolve(unavailableAuthenticationResponse),
     },
-    authenticationCallbackUrl: (requestPathAndQuery: string) => new URL(requestPathAndQuery, "https://api.invalid").href,
-    browserSecurity: { allowedOrigins: ["https://workbench.invalid"] },
+    browserSecurity: { allowedOrigins: { "internal-h5": "https://internal-h5.invalid", "part-time": "https://part-time.invalid", pc: "https://workbench.invalid" } },
     authorization: {
       batchCheck: () => Promise.reject(new AuthorizationUnavailableError()),
       check: () => Promise.reject(new AuthorizationUnavailableError()),
-      invalidatePolicyVersion: () => Promise.reject(new AuthorizationUnavailableError()),
       requireAllowed: () => Promise.reject(new AuthorizationUnavailableError()),
       resolveDataScope: () => Promise.reject(new AuthorizationUnavailableError()),
     },
@@ -274,13 +207,12 @@ function createUnavailableBindings(): ApiPlatformBindings {
     databaseCompatibility: { assertCompatible: () => undefined },
     organization: {
       closeAssignment: () => rejected(), closeEmployment: () => rejected(), closeOrganizationUnitPlacement: () => rejected(),
-      closeSubjectAssociation: () => rejected(), createAssignment: () => rejected(), createEmployment: () => rejected(),
+      createAssignment: () => rejected(), createEmployment: () => rejected(),
       createOrganizationUnit: () => rejected(), createOrganizationUnitPlacement: () => rejected(), createPosition: () => rejected(),
-      createSubjectAssociation: () => rejected(), createWorkforcePerson: () => rejected(), resolveWorkforceContext: () => rejected(),
+      createWorkforcePerson: () => rejected(),
       resolveWorkforcePersonContext: () => rejected(),
     },
     queries: {
-      applicationRegistry: { loadRegistry: () => rejected(), resolveDeepLink: () => rejected() },
       fileCenter: { authorizeDownload: () => rejected(), completeUpload: () => rejected(), createUploadSession: () => rejected() },
       forms: { getRelease: () => rejected(), validateSubmission: () => rejected() },
       notifications: { get: () => rejected(), list: () => rejected(), unreadCount: () => rejected() },
@@ -297,11 +229,9 @@ function createUnavailableBindings(): ApiPlatformBindings {
 
 export interface ProductionApiBindingDependencies {
   readonly checkCompatibility: typeof checkMigrationCompatibility;
-  readonly connectSessions: (config: RedisSessionConnectionConfig) => Promise<Readonly<RedisSessionConnection>>;
+  readonly connectSessions: (config: RedisAccessSessionConfiguration) => Promise<Readonly<RedisAccessSessionConnection>>;
   readonly createDatabase: (config: DatabaseConfig) => DatabaseRuntime;
   readonly createFileStorage?: (config: ProductionApiConfiguration["fileCenter"]["storage"]) => HealthCheckedStorageAdapter;
-  readonly createOidc: typeof createOidcClient;
-  readonly createTokenVerifier: (config: ProductionApiConfiguration["oidcVerifier"]) => TokenVerifier;
   readonly loadConfiguration: () => Promise<Readonly<ProductionApiConfiguration>>;
 }
 
@@ -332,10 +262,8 @@ function createConfiguredFileStorage(
 
 const productionDependencies: ProductionApiBindingDependencies = Object.freeze({
   checkCompatibility: checkMigrationCompatibility,
-  connectSessions: connectRedisSessionStore,
+  connectSessions: connectRedisAccessSessionStore,
   createDatabase: createDatabaseRuntime,
-  createOidc: createOidcClient,
-  createTokenVerifier: createOidcTokenVerifier,
   loadConfiguration: loadProductionApiConfiguration,
 });
 
@@ -354,7 +282,7 @@ function migrationPool(runtime: DatabaseRuntime): MigrationPool {
 }
 
 async function closeResources(
-  sessions: Readonly<RedisSessionConnection> | undefined,
+  sessions: Readonly<RedisAccessSessionConnection> | undefined,
   database: DatabaseRuntime | undefined,
   timeoutMs: number,
 ): Promise<void> {
@@ -457,16 +385,6 @@ function startupAborted(signal: AbortSignal): boolean {
   return signal.aborted;
 }
 
-function authenticationCallbackUrl(pathAndQuery: string, redirectUri: string): string {
-  const expected = new URL(redirectUri);
-  const actual = new URL(pathAndQuery, expected);
-  if (actual.origin !== expected.origin || actual.pathname !== expected.pathname || actual.hash ||
-    actual.username || actual.password) {
-    throw new BrowserSessionFailure("authentication_callback_invalid");
-  }
-  return actual.href;
-}
-
 export async function createProductionApiPlatformBindings(
   dependencies: ProductionApiBindingDependencies = productionDependencies,
   signal: AbortSignal = new AbortController().signal,
@@ -478,27 +396,16 @@ export async function createProductionApiPlatformBindings(
   if (startupAborted(signal)) throw new Error("api_start_cancelled");
   const configuration = await dependencies.loadConfiguration();
   if (startupAborted(signal)) throw new Error("api_start_cancelled");
-  const tokenVerifier = dependencies.createTokenVerifier(configuration.oidcVerifier);
   let database: DatabaseRuntime | undefined;
-  let sessions: Readonly<RedisSessionConnection> | undefined;
-  let oidc: Readonly<OidcClientPort> | undefined;
+  let sessions: Readonly<RedisAccessSessionConnection> | undefined;
   try {
     database = dependencies.createDatabase(configuration.database);
     sessions = await dependencies.connectSessions({
-      connectTimeoutMs: configuration.pcBff.redisConnectTimeoutMs,
-      password: configuration.pcBff.redisPassword,
+      connectTimeoutMs: configuration.sessions.redisConnectTimeoutMs,
+      indexingKey: configuration.sessions.sessionIndexingKey,
+      password: configuration.sessions.redisPassword,
       signal,
-      url: configuration.pcBff.redisUrl,
-    });
-    if (startupAborted(signal)) throw new Error("api_start_cancelled");
-    oidc = await dependencies.createOidc({
-      clientId: configuration.pcBff.keycloakClientId,
-      clientSecret: configuration.pcBff.keycloakClientSecret,
-      issuer: configuration.pcBff.keycloakIssuer,
-      postLogoutRedirectUri: configuration.pcBff.postLogoutRedirectUri,
-      redirectUri: configuration.pcBff.redirectUri,
-      signal,
-      timeoutSeconds: configuration.pcBff.oidcTimeoutSeconds,
+      url: configuration.sessions.redisUrl,
     });
     if (startupAborted(signal)) throw new Error("api_start_cancelled");
   } catch (error) {
@@ -513,15 +420,14 @@ export async function createProductionApiPlatformBindings(
 
   const activeDatabase = database;
   const activeSessions = sessions;
-  const activeOidc = oidc;
   try {
   const authorizationTrace = new AsyncLocalStorage<string>();
-  const authorizationPersistence = createPrismaAuthorizationPersistence(activeDatabase);
-  const authorization = createAuthorizationService({
-    recorder: authorizationPersistence.recorder,
-    store: authorizationPersistence.store,
-  }, {
-    cacheTtlSeconds: 60,
+  const fixedRoleGrants = createFixedRoleGrantStore(activeDatabase);
+  const authorization = createFixedRoleAuthorizationService({
+    approvedPermissions: FIXED_PERMISSION_CATALOG,
+    decisionRecorder: createFixedRoleDecisionRecorder(activeDatabase),
+    rolePermissions: FIXED_ROLE_PERMISSION_BUNDLES,
+    store: fixedRoleGrants,
     traceId: () => authorizationTrace.getStore() ?? createTraceContext().traceId,
   });
   const audit = createAuditService(
@@ -531,7 +437,7 @@ export async function createProductionApiPlatformBindings(
   );
   const eventing = createEventingCore(createPrismaEventingStore(activeDatabase));
   const fileStorage: HealthCheckedStorageAdapter = dependencies.createFileStorage?.(configuration.fileCenter.storage)
-    ?? createConfiguredFileStorage(configuration.fileCenter.storage, configuration.pcBff.allowedOrigin);
+    ?? createConfiguredFileStorage(configuration.fileCenter.storage, configuration.sessions.pcAllowedOrigin);
   const fileAuthorizer: FileAuthorizer = Object.freeze({
     authorize: async (request: FileAuthorizationRequest) => {
       if (request.actor.actorType !== "authenticated_subject" || (request.action !== "file:upload" && request.action !== "file:download")) {
@@ -541,7 +447,7 @@ export async function createProductionApiPlatformBindings(
         activeAssignmentIds: request.actor.assignmentId === undefined ? [] : [request.actor.assignmentId],
         ...(request.actor.assignmentId === undefined ? {} : { selectedAssignmentId: request.actor.assignmentId }),
         workforcePersonId: request.actor.actorId,
-      }, { action: request.action === "file:upload" ? "upload" : "download", resource: "platform.file-center.file" }));
+      }, { action: request.action === "file:upload" ? "upload" : "download", resource: "crm.file-center.file" }));
       return { allowed: decision.allowed, decisionId: decision.decisionId };
     },
   });
@@ -551,7 +457,7 @@ export async function createProductionApiPlatformBindings(
         action: event.action,
         actor: { ...event.actor, ...(event.actor.actorType === "authenticated_subject" ? { workforcePersonId: event.actor.actorId } : {}) },
         reason: { code: "file_center_operation" },
-        resource: { resourceId: event.resourceReference, resourceType: "platform.file-center.file" },
+        resource: { resourceId: event.resourceReference, resourceType: "crm.file-center.file" },
         result: event.result,
         trace: { authorizationDecisionId: event.authorizationDecisionId, operationId: event.operationId, traceId: event.traceId },
       });
@@ -568,15 +474,17 @@ export async function createProductionApiPlatformBindings(
   );
   const auditCapability = createPostgresAuditCapabilityProbe(activeDatabase);
   const runtimeRoleCapability = createPostgresRuntimeRoleCapabilityProbe(activeDatabase);
-  const applicationRegistryCapability = createPostgresApplicationRegistryCapabilityProbe(activeDatabase);
   const formSchemaCapability = createPostgresFormSchemaCapabilityProbe(activeDatabase);
-  const applicationRegistryQueries = createPostgresApplicationRegistryQueryService(activeDatabase, {
-    authorize: async (request) => {
-      const decision = await authorizationTrace.run(request.traceId, () => authorization.check(
-        request.subject,
-        { action: request.permission.action, resource: request.permission.resource },
-      ));
-      return Object.freeze({ allowed: decision.allowed, decisionId: decision.decisionId });
+  const crmNavigationRegistry = Object.freeze({
+    loadRegistry() {
+      return Promise.resolve(Object.freeze({
+        navigation: Object.freeze([
+          "crm.workspace.unconfigured", "crm.workforce-administration", "crm.calendar.schedule", "crm.calendar.interview-plan",
+          "crm.approvals.mine", "crm.approvals.todo", "crm.approvals.all", "crm.notifications.all", "crm.notifications.todo",
+          "crm.notifications.system", "crm.notification-templates", "crm.mail.inbox", "crm.mail.sent", "crm.mail.draft",
+          "crm.settings.system", "crm.settings.profile",
+        ].map((navigationId, order) => Object.freeze({ enabled: true, navigationId, order }))),
+      }));
     },
   });
   const formQueries = createPrismaFormSchemaQueryService(activeDatabase, {
@@ -615,10 +523,10 @@ export async function createProductionApiPlatformBindings(
       if (workforcePersonId === undefined) throw new Error("task_workforce_context_unavailable");
       const traceId = authorizationTrace.getStore() ?? createTraceContext().traceId;
       const decision = await authorizationTrace.run(traceId, () => authorization.check(
-        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId },
+        { activeAssignmentIds: actor.activeAssignmentIds ?? [], ...(actor.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: actor.selectedAssignmentId }), workforcePersonId },
         {
           action,
-          resource: "platform.task-center.task-projection",
+          resource: "crm.task-center.task-projection",
         },
       ));
       queryDecisionTraces.set(decision.decisionId, traceId);
@@ -647,8 +555,8 @@ export async function createProductionApiPlatformBindings(
       if (workforcePersonId === undefined) throw new Error("notification_workforce_context_unavailable");
       const traceId = authorizationTrace.getStore() ?? createTraceContext().traceId;
       const decision = await authorizationTrace.run(traceId, () => authorization.check(
-        { activeAssignmentIds: actor.activeAssignmentIds ?? [], workforcePersonId },
-        { action, resource: operation.startsWith("notification_template_") ? "platform.notifications.template" : "platform.notifications.in-app-notification" },
+        { activeAssignmentIds: actor.activeAssignmentIds ?? [], ...(actor.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: actor.selectedAssignmentId }), workforcePersonId },
+        { action, resource: operation.startsWith("notification_template_") ? "crm.notifications.template" : "crm.notifications.in-app-notification" },
       ));
       queryDecisionTraces.set(decision.decisionId, traceId);
       return { allowed: decision.allowed, decisionId: decision.decisionId };
@@ -676,26 +584,18 @@ export async function createProductionApiPlatformBindings(
     store: notificationStore,
   });
   const organizationHolder: { value?: ReturnType<typeof createPrismaOrganizationService> } = {};
-  const grantPort = createAuthorizationGrantPort({
-    clock: () => new Date(),
-    publisher: authorizationPersistence.publisher,
-    resolveActiveAssignmentIds: async (workforcePersonId, at) => {
-      const organization = organizationHolder.value;
-      if (organization === undefined) throw new Error("organization_write_authorization_unavailable");
-      return (await organization.resolveWorkforcePersonContext(workforcePersonId, at)).assignments.map(({ assignmentId }) => assignmentId);
-    },
-    store: authorizationPersistence.store,
-  });
+  const grantPort = createFixedRoleAdministrationGrantPort(fixedRoleGrants);
   const workforceManagementAuthorizer = Object.freeze({
-    async authorize(request: { readonly actor: { readonly actorId: string; readonly actorType: "authenticated_subject" | "system" } }): Promise<void> {
+    async authorize(request: { readonly actor: { readonly actorId: string; readonly actorType: "authenticated_subject" | "system"; readonly assignmentId?: string } }): Promise<void> {
       if (request.actor.actorType !== "authenticated_subject") throw new Error("authorization_denied");
-      const context = await organizationHolder.value?.resolveWorkforcePersonContext(request.actor.actorId, new Date().toISOString());
+      const context = await organizationHolder.value?.resolveWorkforcePersonContext(request.actor.actorId, new Date().toISOString(), request.actor.assignmentId);
       if (context === undefined) throw new Error("organization_write_authorization_unavailable");
       await authorization.requireAllowed(createWorkforceAuthorizationContext({
         activeAssignmentIds: context.assignments.map(({ assignmentId }) => assignmentId),
-        systemAdministrator: await grantPort.isSuperAdministrator(context.workforcePersonId),
+        ...(request.actor.assignmentId === undefined ? {} : { selectedAssignmentId: request.actor.assignmentId }),
+        systemAdministrator: await grantPort.isSystemAdministrator(context.workforcePersonId),
         workforcePersonId: context.workforcePersonId,
-      }), { action: "manage", resource: "platform.workforce-access.console" });
+      }), { action: "manage", resource: "crm.workforce-access.console" });
     },
   });
   const organization = createPrismaOrganizationService(
@@ -712,10 +612,10 @@ export async function createProductionApiPlatformBindings(
     createPrismaWorkforceAccessStore(activeDatabase),
     workforceManagementAuthorizer,
   );
+  const passwordCredentials = createPasswordCredentialPort(activeDatabase);
   const state = {
-    applicationRegistryCapabilityReady: false,
     auditCapabilityReady: false,
-    authorizationPolicyReady: false,
+    authorizationRoleStoreReady: false,
     closed: false,
     databaseCompatible: false,
     databaseHealthy: false,
@@ -728,11 +628,10 @@ export async function createProductionApiPlatformBindings(
   let probeController = new AbortController();
   let probeGeneration = 0;
   let probeTimer: NodeJS.Timeout | undefined;
-  type DependencyProbeName = "applicationRegistry" | "audit" | "authorizationPolicy" | "fileCenter" | "formSchema" | "notificationQuery" | "runtimeRole" | "taskQuery";
+  type DependencyProbeName = "audit" | "authorizationRoleStore" | "fileCenter" | "formSchema" | "notificationQuery" | "runtimeRole" | "taskQuery";
   const dependentProbeCompletions: Record<DependencyProbeName, Promise<void> | undefined> = {
-    applicationRegistry: undefined,
     audit: undefined,
-    authorizationPolicy: undefined,
+    authorizationRoleStore: undefined,
     formSchema: undefined,
     fileCenter: undefined,
     notificationQuery: undefined,
@@ -747,8 +646,7 @@ export async function createProductionApiPlatformBindings(
     state.databaseHealthy = false;
     state.runtimeRoleCapabilityReady = false;
     state.auditCapabilityReady = false;
-    state.authorizationPolicyReady = false;
-    state.applicationRegistryCapabilityReady = false;
+    state.authorizationRoleStoreReady = false;
     state.formSchemaCapabilityReady = false;
     state.fileCenterProviderReady = false;
     state.notificationQueryReady = false;
@@ -782,8 +680,8 @@ export async function createProductionApiPlatformBindings(
     await Promise.all([
       runDependencyProbe("audit", () => auditCapability.check().then(({ status }) => status === "available"),
         (healthy) => { state.auditCapabilityReady = healthy; }, generation, controller, signals),
-      runDependencyProbe("authorizationPolicy", () => hasCompleteCurrentPolicy(authorizationPersistence.store),
-        (healthy) => { state.authorizationPolicyReady = healthy; }, generation, controller, signals),
+      runDependencyProbe("authorizationRoleStore", () => activeDatabase.execute("select 1 from authorization_core.fixed_role_grants limit 1").then(() => true),
+        (healthy) => { state.authorizationRoleStoreReady = healthy; }, generation, controller, signals),
       runDependencyProbe("runtimeRole", () => runtimeRoleCapability.check().then(({ status }) => status === "available"),
         (healthy) => { state.runtimeRoleCapabilityReady = healthy; }, generation, controller, signals),
       runDependencyProbe("fileCenter", async () => {
@@ -794,8 +692,6 @@ export async function createProductionApiPlatformBindings(
         return providerReady;
       },
         (healthy) => { state.fileCenterProviderReady = healthy; }, generation, controller, signals),
-      runDependencyProbe("applicationRegistry", () => applicationRegistryCapability.check().then(({ status }) => status === "available"),
-        (healthy) => { state.applicationRegistryCapabilityReady = healthy; }, generation, controller, signals),
       runDependencyProbe("formSchema", () => formSchemaCapability.check().then(({ status }) => status === "available"),
         (healthy) => { state.formSchemaCapabilityReady = healthy; }, generation, controller, signals),
       runDependencyProbe("taskQuery", () => taskStore.list({ limit: 1 }).then(() => true),
@@ -818,9 +714,8 @@ export async function createProductionApiPlatformBindings(
         if (result.healthy) void runDependentProbes(generation, controller, [controller.signal]);
         else {
           state.auditCapabilityReady = false;
-          state.authorizationPolicyReady = false;
+          state.authorizationRoleStoreReady = false;
           state.runtimeRoleCapabilityReady = false;
-          state.applicationRegistryCapabilityReady = false;
           state.formSchemaCapabilityReady = false;
           state.notificationQueryReady = false;
           state.taskQueryReady = false;
@@ -846,9 +741,8 @@ export async function createProductionApiPlatformBindings(
       state.databaseHealthy = result.healthy;
       if (!result.healthy) {
         state.auditCapabilityReady = false;
-        state.authorizationPolicyReady = false;
+        state.authorizationRoleStoreReady = false;
         state.runtimeRoleCapabilityReady = false;
-        state.applicationRegistryCapabilityReady = false;
         state.formSchemaCapabilityReady = false;
         state.notificationQueryReady = false;
         state.taskQueryReady = false;
@@ -867,75 +761,82 @@ export async function createProductionApiPlatformBindings(
       throw error;
     }
   };
-  const businessConfiguration = createBusinessConfigurationService(
-    createPrismaBusinessConfigurationStore(activeDatabase),
-    {
-      async authorize(request) {
-        if (request.actor.actorType === "system") return pcSessionPolicySystemAuthorization(request.action);
-        const decision = await authorizationTrace.run(authorizationTrace.getStore() ?? createTraceContext().traceId, () => authorization.check(
-          { activeAssignmentIds: request.actor.assignmentId === undefined ? [] : [request.actor.assignmentId], workforcePersonId: request.actor.actorId },
-          { action: request.action === "configuration:read" ? "read" : "manage", resource: "platform.authentication.session-policy" },
-        ));
-        return { allowed: decision.allowed, decisionId: decision.decisionId };
-      },
-    },
-    {
+  const accountAccessService = new AccountAccessApplicationService({
+    audit: {
       async record(event) {
         await audit.record({
-          action: event.action,
-          actor: { actorId: event.actor.actorId, actorType: event.actor.actorType, ...(event.actor.actorType === "authenticated_subject" ? { workforcePersonId: event.actor.actorId } : {}) },
-          reason: { code: event.reason },
-          resource: { resourceId: event.resourceId, resourceType: "platform.authentication.session-policy" },
-          result: event.result,
-          trace: { authorizationDecisionId: event.authorizationDecisionId, operationId: event.operationId, traceId: event.traceId },
+          action: `authentication.${event.action}`,
+          actor: event.accountId === undefined || event.workforcePersonId === undefined
+            ? { actorId: "anonymous", actorType: "system" }
+            : { actorId: event.workforcePersonId, actorType: "authenticated_subject", workforcePersonId: event.workforcePersonId },
+          reason: { code: event.action },
+          resource: { resourceId: event.accountId ?? "anonymous", resourceType: "crm.authentication.session" },
+          result: event.action === "login_failed" || event.action === "reauthentication_failed" ? "denied" : "succeeded",
+          trace: { operationId: randomUUID(), traceId: event.traceId ?? createTraceContext().traceId },
         });
       },
     },
-    { get: () => Promise.resolve(undefined), invalidate: () => Promise.resolve(), set: () => Promise.resolve() },
-  );
-  const sessionStore = createRedisBrowserSessionStore(activeSessions.executor);
-  const authenticationAudit = authenticationAuditPort(audit);
-  const sessionPolicy = createPcSessionPolicyPort(businessConfiguration, (work) => activeDatabase.withTransaction(work), () => new Date(), async (limit, input) => {
-    const revoked = await sessionStore.enforceConcurrentLimit?.(limit) ?? [];
-    await Promise.all(revoked.map((sessionReference) => authenticationAudit.record({ action: "session_revoked_concurrent_limit", operationId: deterministicUuid(`${input.operationId}\0${sessionReference}`), result: "succeeded", sessionReference, traceId: input.traceId })));
+    credentials: passwordCredentials,
+    organization,
+    roles: fixedRoleGrants,
+    sessions: activeSessions.store,
   });
-  const systemSessionPolicy = () => sessionPolicy.get({ actor: { actorId: "api.pc_bff", actorType: "system" } });
-  const sessionService = createPcBffSessionService({
-    audit: authenticationAudit,
-    decryptionKeys: configuration.pcBff.sessionDecryptionKeys,
-    encryptionKey: configuration.pcBff.sessionEncryptionKey,
-    indexingKey: configuration.pcBff.sessionIndexingKey,
-    loginTransactionTtlSeconds: configuration.pcBff.loginTransactionTtlSeconds,
-    oidc: activeOidc,
-    refreshLeaseTtlMs: configuration.pcBff.refreshLeaseTtlMs,
-    sessionAbsoluteTtlSeconds: configuration.pcBff.sessionAbsoluteTtlSeconds,
-    sessionIdleTtlSeconds: configuration.pcBff.sessionIdleTtlSeconds,
-    concurrentSessionLimit: async () => (await systemSessionPolicy()).concurrentLimit,
-    requireSessionSchemaVersion2: true,
-    sessionRevocationPublisher: async ({ reason, sessionReference, subjectId, subjectIssuer }) => {
-      const eventId = deterministicUuid(`pc-session-revoked\0${sessionReference}`);
-      const occurredAt = new Date().toISOString();
-      await eventing.appendEvent(pcSessionRevokedEvent({ eventId, occurredAt, reason, sessionReference, subjectId, subjectIssuer }));
+  const accountAccess = createLocalAuthenticationHttpAdapter({
+    allowedOrigins: {
+      "internal-h5": configuration.sessions.internalH5AllowedOrigin,
+      "part-time": configuration.sessions.internalH5AllowedOrigin,
+      pc: configuration.sessions.pcAllowedOrigin,
     },
-    store: sessionStore,
-    tokenVerifier,
+    service: accountAccessService,
+  });
+  const partTimeCredentials = createPasswordCredentialPort(activeDatabase, { personColumn: "part_time_person_id", schema: "part_time_access" });
+  const partTimeOrganization = {
+    resolveWorkforcePersonContext(partTimePersonId: string, at: string, selectedAssignmentId?: string) {
+      const assignmentId = selectedAssignmentId ?? partTimePersonId;
+      return Promise.resolve(Object.freeze({
+        assignments: Object.freeze([{ assignmentId, employmentId: partTimePersonId, organizationUnitId: partTimePersonId, positionId: partTimePersonId }]),
+        employmentIds: Object.freeze([partTimePersonId]),
+        resolvedAt: at,
+        workforcePersonId: partTimePersonId,
+      }));
+    },
+  };
+  const partTimeRoles = { grant: () => Promise.resolve(undefined), listActive: () => Promise.resolve(Object.freeze([])), revoke: () => Promise.resolve(undefined) };
+  const partTimeAccessService = new AccountAccessApplicationService({
+    audit: {
+      async record(event) {
+        await audit.record({
+          action: `part_time_authentication.${event.action}`,
+          actor: event.accountId === undefined || event.workforcePersonId === undefined
+            ? { actorId: "anonymous", actorType: "system" }
+            : { actorId: event.workforcePersonId, actorType: "authenticated_subject", workforcePersonId: event.workforcePersonId },
+          reason: { code: event.action },
+          resource: { resourceId: event.accountId ?? "anonymous", resourceType: "part_time_access.session" },
+          result: event.action === "login_failed" || event.action === "reauthentication_failed" ? "denied" : "succeeded",
+          trace: { operationId: randomUUID(), traceId: event.traceId ?? createTraceContext().traceId },
+        });
+      },
+    },
+    credentials: partTimeCredentials,
+    organization: partTimeOrganization,
+    roles: partTimeRoles,
+    sessions: activeSessions.store,
+  });
+  const partTimeAccess = createLocalAuthenticationHttpAdapter({
+    allowedOrigins: {
+      "internal-h5": configuration.sessions.internalH5AllowedOrigin,
+      "part-time": configuration.sessions.internalH5AllowedOrigin,
+      pc: configuration.sessions.pcAllowedOrigin,
+    },
+    service: partTimeAccessService,
   });
   const resolveAdministrationPrincipal = async (input: Readonly<{ credential: string; traceId: string }>) => {
-    const authenticated = await sessionService.resolvePrincipal(input.credential);
-    const workforce = await organization.resolveWorkforceContext(authenticated.authenticationSubject, new Date().toISOString());
-    const account = await workforceAccounts.getSubjectAccountByKeycloakUserId(authenticated.authenticationSubject.subject)
-      .catch((error: unknown) => {
-        if (typeof error === "object" && error !== null && "code" in error && error.code === "entity_not_found") {
-          throw Object.assign(new Error("workforce_account_not_found"), { code: "workforce_account_not_found" });
-        }
-        throw error;
-      });
-    if (account.status !== "active" || account.workforcePersonId !== workforce.workforcePersonId) {
-      throw Object.assign(new Error("employment_not_active"), { code: "employment_not_active" });
-    }
+    const authenticated = await accountAccessService.principal("pc", input.credential);
+    const workforce = await organization.resolveWorkforcePersonContext(authenticated.workforcePersonId, new Date().toISOString(), authenticated.currentAssignmentId);
     const subject = createWorkforceAuthorizationContext({
       activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId),
-      systemAdministrator: await grantPort.isSuperAdministrator(workforce.workforcePersonId),
+      ...(authenticated.currentAssignmentId === undefined ? {} : { selectedAssignmentId: authenticated.currentAssignmentId }),
+      systemAdministrator: await grantPort.isSystemAdministrator(workforce.workforcePersonId),
       workforcePersonId: workforce.workforcePersonId,
     });
     return Object.freeze({
@@ -944,41 +845,21 @@ export async function createProductionApiPlatformBindings(
         actorType: "authenticated_subject" as const,
         ...(subject.selectedAssignmentId === undefined ? {} : { assignmentId: subject.selectedAssignmentId }),
       }),
-      identitySubjectId: authenticated.authenticationSubject.subject,
-      reauthenticated: authenticated.reauthenticated === true,
+      accountId: authenticated.accountId,
+      reauthenticated: authenticated.reauthenticated,
       subject,
       workforce,
     });
   };
-  const keycloakAdministration = createKeycloakAdministrationPorts({
-    adminBaseUrl: configuration.workforceAdministration.keycloakAdminBaseUrl,
-    clientId: configuration.workforceAdministration.keycloakClientId,
-    clientSecret: configuration.workforceAdministration.keycloakClientSecret,
-    publicRealmBasePath: configuration.workforceAdministration.keycloakPublicRealmBasePath,
-    realm: configuration.workforceAdministration.keycloakRealm,
-    returnUri: configuration.workforceAdministration.returnUri,
-    timeoutMs: configuration.workforceAdministration.keycloakTimeoutMs,
-  });
   const workforceAdministration = createWorkforceAdministrationFacade({
-    accounts: {
-      beginIdentitySync: (command) => workforceAccounts.beginIdentitySync(command),
-      createAccount: (command) => workforceAccounts.createAccount(command),
-      getAccount: (accountId) => workforceAccounts.getAccount(accountId),
-      getIdentitySyncOperation: (operationId) => workforceAccounts.getIdentitySyncOperation(operationId),
-      linkKeycloakUser: (command) => workforceAccounts.linkKeycloakUser(command),
-      listAccounts: (input) => workforceAccounts.listAccounts(input),
-      listIdentifierHistory: (accountId) => workforceAccounts.listIdentifierHistory(accountId),
-      releasePhone: (command) => workforceAccounts.releasePhone(command),
-      setStatus: (command) => workforceAccounts.setStatus(command),
-      updateLoginIdentifiers: (command) => workforceAccounts.updateLoginIdentifiers(command),
-    },
+    accounts: workforceAccounts,
     audit: {
       async record(event) {
         await audit.record({
           action: `workforce_administration.${event.action}`,
           actor: { actorId: event.actorId, actorType: "authenticated_subject", workforcePersonId: event.actorId },
           reason: { code: "workforce_administration" },
-          resource: { resourceId: event.targetId, resourceType: "platform.workforce-access.account" },
+          resource: { resourceId: event.targetId, resourceType: "crm.workforce-access.account" },
           result: event.result,
           trace: { operationId: event.operationId, traceId: event.traceId },
         });
@@ -986,28 +867,16 @@ export async function createProductionApiPlatformBindings(
     },
     authorization: { requireAllowed: (subject, permission) => authorization.requireAllowed(subject, permission) },
     clock: () => new Date(),
-    credentialCeremonies: keycloakAdministration.credentialCeremonies,
-    crmAdministratorDepartmentId: "5a100000-0000-4000-8000-000000000002",
-    grants: grantPort,
-    identity: createDurableIdentityAdministrationPort({ direct: keycloakAdministration.identity, eventing }),
+    credentials: passwordCredentials,
     operations: createDurableAdministrationOperationPort(activeDatabase),
     organization,
     organizationDirectory,
     principals: { resolve: resolveAdministrationPrincipal },
-    recovery: {
-      async restore(input) {
-        const departments = await organizationDirectory.listDepartmentTree({ includeInactive: false });
-        const flatten = (nodes: typeof departments): readonly (typeof departments)[number][] => nodes.flatMap((node) => [node, ...flatten(node.children)]);
-        if (!flatten(departments).some(({ organizationUnitId }) => organizationUnitId === input.departmentId) ||
-          !(await organizationDirectory.listPositions(input.departmentId)).some(({ positionId }) => positionId === input.positionId)) {
-          throw new Error("organization_path_invalid");
-        }
-        const employmentId = deriveAdministrationOperationId(input.operationId, "employment");
-        await organization.createEmployment({ actor: input.actor, effectiveFrom: input.effectiveFrom, employmentId, operationId: deriveAdministrationOperationId(input.operationId, "create-employment"), reason: "workforce_administration:reactivate_account", traceId: input.traceId, workforcePersonId: input.workforcePersonId });
-        await organization.createAssignment({ actor: input.actor, assignmentId: deriveAdministrationOperationId(input.operationId, "assignment"), effectiveFrom: input.effectiveFrom, employmentId, operationId: deriveAdministrationOperationId(input.operationId, "create-assignment"), organizationUnitId: input.departmentId, positionId: input.positionId, reason: "workforce_administration:reactivate_account", traceId: input.traceId, workforcePersonId: input.workforcePersonId });
-      },
+    roles: fixedRoleGrants,
+    transactions: {
+      lockSystemAdministratorSet: async () => { await activeDatabase.execute("select pg_advisory_xact_lock(1095327565,1397311309)"); },
+      run: (work) => activeDatabase.withTransaction(work),
     },
-    transactions: { run: (work) => activeDatabase.withTransaction(work) },
   });
   const workbench = createWorkbenchBootstrapFacade({
     accountKinds: grantPort,
@@ -1018,7 +887,7 @@ export async function createProductionApiPlatformBindings(
         return Object.freeze({ actorId: resolved.actor.actorId, workforce: resolved.workforce });
       },
     },
-    registry: applicationRegistryQueries,
+    registry: crmNavigationRegistry,
   });
   const noRealtimeEvents: RealtimeEventSource = Object.freeze({ subscribe: () => () => undefined });
   const rabbitRealtimeEvents = configuration.realtime.enabled && configuration.realtime.rabbitUrl !== undefined
@@ -1026,36 +895,37 @@ export async function createProductionApiPlatformBindings(
     : undefined;
   if (rabbitRealtimeEvents !== undefined) await rabbitRealtimeEvents.start().catch(() => undefined);
   const resolveRealtimeIdentity = async (credential: string): Promise<RealtimeIdentity> => {
-    const [principal, session] = await Promise.all([sessionService.resolvePrincipal(credential), sessionService.sessionForMutation(credential)]);
-    const workforce = await organization.resolveWorkforceContext(principal.authenticationSubject, new Date().toISOString());
-    await authorization.requireAllowed({ activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId), workforcePersonId: workforce.workforcePersonId }, { action: "read", resource: "platform.workbench.shell" });
+    const principal = await accountAccessService.principal("pc", credential);
+    const workforce = await organization.resolveWorkforcePersonContext(principal.workforcePersonId, new Date().toISOString(), principal.currentAssignmentId);
+    await authorization.requireAllowed({ activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId), ...(principal.currentAssignmentId === undefined ? {} : { selectedAssignmentId: principal.currentAssignmentId }), workforcePersonId: workforce.workforcePersonId }, { action: "read", resource: "crm.workbench.shell" });
     return Object.freeze({
       activeAssignmentIds: workforce.assignments.map(({ assignmentId }) => assignmentId),
-      principalId: internalPrincipalId(principal),
-      sessionReference: session.sessionReference,
+      ...(principal.currentAssignmentId === undefined ? {} : { selectedAssignmentId: principal.currentAssignmentId }),
+      principalId: `account:${createHash("sha256").update(principal.accountId).digest("hex")}`,
+      sessionReference: principal.sessionId,
       workforcePersonId: workforce.workforcePersonId,
     });
   };
   const realtime = createRealtimeServer({
-    allowedOrigins: [configuration.pcBff.allowedOrigin],
+    allowedOrigins: [configuration.sessions.pcAllowedOrigin],
     authenticate: ({ credential }) => resolveRealtimeIdentity(credential),
-    credentialFromCookie: (cookie) => { try { return parsePcSessionCredential(cookie); } catch { return undefined; } },
+    credentialFromCookie: (cookie) => { try { return parseSurfaceSessionCookie("pc", cookie); } catch { return undefined; } },
     enabled: configuration.realtime.enabled,
     events: rabbitRealtimeEvents ?? noRealtimeEvents,
     maxConnectionsPerSession: configuration.realtime.maximumConnectionsPerSession,
     revalidationIntervalMs: 5_000,
     revalidate: async ({ credential, identity }) => {
       const current = await resolveRealtimeIdentity(credential);
-      return current.principalId === identity.principalId && current.sessionReference === identity.sessionReference && current.workforcePersonId === identity.workforcePersonId;
+      return current.principalId === identity.principalId && current.sessionReference === identity.sessionReference && current.workforcePersonId === identity.workforcePersonId && current.selectedAssignmentId === identity.selectedAssignmentId;
     },
     snapshots: {
       notification: async (identity, notificationId) => {
-        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds };
+        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds, ...(identity.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: identity.selectedAssignmentId }) };
         const [item, unread] = await Promise.all([notifications.get(actor, notificationId), notifications.unreadCount(actor)]);
         return Object.freeze({ notificationId: item.notificationId, stateVersion: item.stateVersion, templateKey: item.templateKey, templateVersion: item.templateVersion, title: item.title, summary: item.summary, bodyMarkdown: item.body, bodyFormat: item.bodyFormat, createdAt: item.createdAt, ...(item.readAt === undefined ? {} : { readAt: item.readAt }), ...(item.archivedAt === undefined ? {} : { archivedAt: item.archivedAt }), deepLink: item.deepLink, unread: { count: unread } });
       },
       task: async (identity, taskId) => {
-        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds };
+        const actor = { principalId: identity.principalId, workforcePersonId: identity.workforcePersonId, activeAssignmentIds: identity.activeAssignmentIds, ...(identity.selectedAssignmentId === undefined ? {} : { selectedAssignmentId: identity.selectedAssignmentId }) };
         const item = await tasks.getByProjectionId(actor, taskId);
         return Object.freeze({ taskId: item.projectionId, stateVersion: item.sourceVersion, title: item.title, summary: item.summary, status: item.status, deepLink: { applicationId: item.deepLink.appId, routeId: item.deepLink.routeId, resourceType: item.sourceType, resourceId: item.sourceTaskId } });
       },
@@ -1066,25 +936,19 @@ export async function createProductionApiPlatformBindings(
   return Object.freeze({
     ...unavailable,
     audit,
-    authentication: createPcAuthenticationHttpAdapter({
-      allowedOrigins: [configuration.pcBff.allowedOrigin],
-      cookieMaxAgeSeconds: configuration.pcBff.sessionAbsoluteTtlSeconds,
-      service: sessionService,
-    }),
-    authenticationCallbackUrl: (pathAndQuery: string) =>
-      authenticationCallbackUrl(pathAndQuery, configuration.pcBff.redirectUri),
-    browserSecurity: { allowedOrigins: [configuration.pcBff.allowedOrigin] },
+    accountAccess,
+    partTimeAccess,
+    browserSecurity: { allowedOrigins: { "internal-h5": configuration.sessions.internalH5AllowedOrigin, "part-time": configuration.sessions.internalH5AllowedOrigin, pc: configuration.sessions.pcAllowedOrigin } },
     authorization,
     authorizationTrace: {
       run: async <T>(traceId: string, work: () => Promise<T>) => authorizationTrace.run(traceId, work),
     },
-    sessionPolicy,
     async close() {
       if (state.closed) return;
       state.closed = true;
       queryDecisionTraces.clear();
       state.databaseCompatible = false;
-      state.authorizationPolicyReady = false;
+      state.authorizationRoleStoreReady = false;
       stopDatabaseProbes();
       await rabbitRealtimeEvents?.close();
       await closeResources(activeSessions, activeDatabase, cleanupTimeoutMs);
@@ -1106,10 +970,8 @@ export async function createProductionApiPlatformBindings(
     },
     organization,
     workbench,
-    workforceAdministration,
     queries: {
       ...unavailable.queries,
-      applicationRegistry: applicationRegistryQueries,
       fileCenter,
       forms: formQueries,
       notifications,
@@ -1119,10 +981,9 @@ export async function createProductionApiPlatformBindings(
       { healthy: !state.closed && state.databaseCompatible && state.databaseHealthy, name: "application-database", required: true },
       { healthy: !state.closed && activeSessions.isReady(), name: "session-store", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady, name: "database-runtime-role", required: true },
-      { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.authorizationPolicyReady, name: "authorization-policy", required: true },
+      { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.authorizationRoleStoreReady, name: "authorization-role-store", required: true },
       // This observes static Audit prerequisites; every actual append still fails closed independently.
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.auditCapabilityReady, name: "authentication-audit", required: true },
-      { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.applicationRegistryCapabilityReady, name: "application-registry-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.formSchemaCapabilityReady, name: "form-schema-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.taskQueryReady, name: "task-query", required: true },
       { healthy: !state.closed && state.databaseHealthy && state.runtimeRoleCapabilityReady && state.notificationQueryReady, name: "notification-query", required: true },
@@ -1130,7 +991,15 @@ export async function createProductionApiPlatformBindings(
       { healthy: !state.closed && (!configuration.realtime.enabled || rabbitRealtimeEvents?.health() === true), name: "realtime-rabbit-consumer", required: false },
     ],
     realtime,
-    sessions: { logout: sessionService.logout, resolvePrincipal: sessionService.resolvePrincipal, sessionForMutation: sessionService.sessionForMutation },
+    sessions: {
+      resolvePrincipal: (surface: AuthenticationSurface, credential: string) => accountAccessService.principal(surface, credential),
+      sessionForMutation: async (surface: AuthenticationSurface, credential: string) => {
+        const view = await accountAccessService.current(surface, credential);
+        const principal = await accountAccessService.principal(surface, credential);
+        return Object.freeze({ authenticatedAt: view.authenticatedAt, client: surface === "pc" ? "pc-web" as const : "internal-h5" as const, csrfToken: view.csrfToken, expiresAt: view.absoluteExpiresAt, sessionReference: principal.sessionId });
+      },
+    },
+    workforceAdministration,
   });
   } catch (error) {
     try {
@@ -1155,3 +1024,13 @@ export const defaultApiPlatformBindingFactory: ApiPlatformBindingFactory = Objec
   },
 });
 import { AsyncLocalStorage } from "node:async_hooks";
+
+const FIXED_PERMISSION_CATALOG = Object.freeze([
+  { action: "upload", resource: "crm.file-center.file" }, { action: "download", resource: "crm.file-center.file" },
+  { action: "read", resource: "crm.form-schema.form-release" }, { action: "validate", resource: "crm.form-schema.form-release" },
+  { action: "list", resource: "crm.notifications.in-app-notification" }, { action: "read", resource: "crm.notifications.in-app-notification" }, { action: "mark-read", resource: "crm.notifications.in-app-notification" }, { action: "archive", resource: "crm.notifications.in-app-notification" },
+  { action: "read", resource: "crm.notifications.template" }, { action: "manage", resource: "crm.notifications.template" }, { action: "publish", resource: "crm.notifications.template" }, { action: "activate", resource: "crm.notifications.template" },
+  { action: "list", resource: "crm.task-center.task-projection" }, { action: "read", resource: "crm.task-center.task-projection" }, { action: "complete", resource: "crm.task-center.task-projection" }, { action: "reconcile", resource: "crm.task-center.task-projection" },
+  { action: "read", resource: "crm.workbench.shell" }, { action: "read", resource: "crm.workforce-access.console" }, { action: "manage", resource: "crm.workforce-access.console" },
+  { action: "access", resource: "crm.application" },
+]);

@@ -6,7 +6,7 @@ paths:
       operationId: createFileUploadSession
       description: Creates an initial immutable content version and a short-lived upload session. Declared metadata is untrusted; the returned FileReference is not usable until trusted inspection and malware scanning make the content available.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.file-center, code: platform.file-center.file:upload, resource: platform.file-center.file, action: upload }
+      x-ai-crm-permission: { version: 1, owner: crm.file-center, code: crm.file-center.file:upload, resource: crm.file-center.file, action: upload }
       x-ai-crm-csrf: { mode: required, tokenHeader: X-CSRF-Token, originCheck: required }
       x-ai-crm-idempotency: { mode: required, keyHeader: Idempotency-Key, durableReplay: original-identities, ephemeralGrant: freshly-minted-within-original-session-expiry, conflictStatus: 409 }
       parameters: [ { $ref: "#/components/parameters/FileIdempotencyKey" }, { $ref: "#/components/parameters/FileCsrfToken" } ]
@@ -25,7 +25,7 @@ paths:
       operationId: confirmFileUpload
       description: Idempotently inspects the uploaded object and confirms trusted metadata. Success moves content only to pending_scan; it never makes content available and never exposes scanner or storage-provider internals.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.file-center, code: platform.file-center.file:upload, resource: platform.file-center.file, action: upload }
+      x-ai-crm-permission: { version: 1, owner: crm.file-center, code: crm.file-center.file:upload, resource: crm.file-center.file, action: upload }
       x-ai-crm-csrf: { mode: required, tokenHeader: X-CSRF-Token, originCheck: required }
       x-ai-crm-idempotency: { mode: required, keyHeader: Idempotency-Key, replay: original-result, conflictStatus: 409 }
       parameters: [ { $ref: "#/components/parameters/FileSessionId" }, { $ref: "#/components/parameters/FileIdempotencyKey" }, { $ref: "#/components/parameters/FileCsrfToken" } ]
@@ -42,7 +42,7 @@ paths:
       operationId: createFileDownloadGrant
       description: Reauthorizes both File Center access and the current owning resource reference before minting a fresh short-lived download grant. A grant is ephemeral, is not a permanent provider URL, and does not prove the owning resource remains accessible later.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.file-center, code: platform.file-center.file:download, resource: platform.file-center.file, action: download }
+      x-ai-crm-permission: { version: 1, owner: crm.file-center, code: crm.file-center.file:download, resource: crm.file-center.file, action: download }
       x-ai-crm-csrf: { mode: not-required, reason: read-only-short-lived-grant }
       x-ai-crm-idempotency: { mode: audit-operation-only, keyHeader: Idempotency-Key, replay: fresh-ephemeral-grant }
       parameters: [ { $ref: "#/components/parameters/FileIdempotencyKey" } ]

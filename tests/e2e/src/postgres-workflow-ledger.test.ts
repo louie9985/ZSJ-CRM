@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { WorkflowError } from "@ai-crm/platform-workflow";
+import { WorkflowError } from "@ai-crm/crm-workflow";
 import { describe, expect, it, vi } from "vitest";
 
 import type { E2ePostgresResult, E2ePostgresRuntime } from "./postgres-runtime.js";

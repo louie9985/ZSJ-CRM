@@ -56,7 +56,7 @@ export function createRabbitRealtimeEventSource(options: { readonly connectionUr
       try {
         nextConnection = await connect(options.connectionUrl);
         nextChannel = await nextConnection.createChannel();
-        const exchange = options.exchange ?? "ai-crm.platform.events.v1";
+        const exchange = options.exchange ?? "ai-crm.crm.events.v1";
         await nextChannel.checkExchange(exchange);
         const queue = await nextChannel.assertQueue("", { autoDelete: true, durable: false, exclusive: true, arguments: { "x-expires": 60_000 } });
         for (const routingKey of ["task-center.projection-changed.v1", "notifications.in-app-changed.v1", "authentication.pc-session-revoked.v1"]) await nextChannel.bindQueue(queue.queue, exchange, routingKey);

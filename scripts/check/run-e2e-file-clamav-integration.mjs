@@ -58,7 +58,7 @@ try {
     await delay(2_000);
   }
   if (!healthy) throw new Error("ClamAV did not become healthy within 180 seconds.");
-  run(process.execPath, [pnpmCli, "--filter", "@ai-crm/platform-file-center", "build"]);
+  run(process.execPath, [pnpmCli, "--filter", "@ai-crm/crm-file-center", "build"]);
   run(process.execPath, [pnpmCli, "--filter", "@ai-crm/worker", "build"]);
   run(process.execPath, ["tests/e2e/src/file-clamav-integration.mjs"]);
 } catch (error) {

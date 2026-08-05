@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Replace the legacy strict fixed-role revocation constraint with the intended non-strict constraint.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Takes a bounded table lock while replacing two check-constraint names in the reset local-development database.",
+  "dataImpact": "No row changes; grants revoked at their grant timestamp become valid.",
+  "backfill": "Not required.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 reset-only local-development migration plan; only obsolete check constraints are removed and immediately replaced.",
+  "recovery": "Retain the relaxed constraint during rollback because it accepts every previously valid grant interval.",
+  "forwardFix": "Append another reviewed authorization-owned migration. Do not rewrite this migration after application."
+}

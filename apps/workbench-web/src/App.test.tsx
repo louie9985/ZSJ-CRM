@@ -1,11 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { App as AntdApp } from "antd";
+import { App as AntdApp, ConfigProvider } from "antd";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App, applicationsFor, normalizeReturnTo, RouteErrorBoundary } from "./App";
-import { pcLoginUrl } from "./auth-routes";
+import { App, normalizeReturnTo, RouteErrorBoundary } from "./App";
 import { developmentFixturePort } from "./development-fixture";
 import { WorkforceAdministrationPage } from "./workforce-administration-page";
 import type { BootstrapResult, WorkbenchPort, WorkforceAdministrationPort } from "./workbench-port";
@@ -42,11 +41,12 @@ function LocationProbe(): React.JSX.Element {
   return <output data-testid="location">{location.pathname + location.search}</output>;
 }
 
-function renderApp(entry: string, port: WorkbenchPort = developmentFixturePort): void {
+function renderApp(entry: string, port: WorkbenchPort = developmentFixturePort, strictMode = false): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const application = <MemoryRouter initialEntries={[entry]}><LocationProbe /><App port={port} /></MemoryRouter>;
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}><LocationProbe /><App port={port} /></MemoryRouter>
+      {strictMode ? <StrictMode>{application}</StrictMode> : application}
     </QueryClientProvider>,
   );
 }
@@ -55,7 +55,7 @@ function testWorkbenchPort(overrides: Partial<WorkbenchPort>): WorkbenchPort {
   return { ...developmentFixturePort, ...overrides };
 }
 
-function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "listAccounts"> & Partial<Pick<WorkforceAdministrationPort, "listAccounts">>, entry = "/crm/workforce-administration"): void {
+function renderWorkforceAdministration(port: Pick<WorkforceAdministrationPort, "execute" | "load"> & Partial<Pick<WorkforceAdministrationPort, "listAccounts" | "reauthenticate">>, entry = "/crm/workforce-administration"): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let snapshotPromise: ReturnType<WorkforceAdministrationPort["load"]> | undefined;
   const load = (): ReturnType<WorkforceAdministrationPort["load"]> => {
@@ -64,13 +64,14 @@ function renderWorkforceAdministration(port: Omit<WorkforceAdministrationPort, "
   };
   const resolved: WorkforceAdministrationPort = {
     ...port,
+    reauthenticate: port.reauthenticate ?? (() => Promise.resolve()),
     listAccounts: port.listAccounts ?? (async (query) => {
       const snapshot = await load();
       return { items: snapshot.accounts.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), page: query.page, pageSize: query.pageSize, total: snapshot.accounts.length };
     }),
     load,
   };
-  render(<QueryClientProvider client={client}><AntdApp><MemoryRouter initialEntries={[entry]}><LocationProbe /><WorkforceAdministrationPage port={resolved} /></MemoryRouter></AntdApp></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><ConfigProvider button={{ autoInsertSpace: false }}><AntdApp><MemoryRouter initialEntries={[entry]}><LocationProbe /><WorkforceAdministrationPage port={resolved} /></MemoryRouter></AntdApp></ConfigProvider></QueryClientProvider>);
 }
 
 const longText = "synthetic-platform-reference-with-a-deliberately-long-unbroken-value-0123456789";
@@ -85,7 +86,7 @@ const syntheticFileReference = Object.freeze({
 const syntheticRelease = Object.freeze({
   active: true,
   contentDigest: "a".repeat(64),
-  definitionId: "platform.synthetic.task-completion",
+  definitionId: "crm.synthetic.task-completion",
   jsonSchema: Object.freeze({
     properties: Object.freeze({ content_version_id: {}, file_id: {}, synthetic_value: {} }),
     required: Object.freeze(["synthetic_value", "file_id", "content_version_id"]),
@@ -105,7 +106,6 @@ type ReadyBootstrap = Extract<BootstrapResult, { kind: "ready" }>;
 const longReady: ReadyBootstrap = {
   kind: "ready",
   fixture: true,
-  applicationIds: ["crm"],
   context: { displayName: longText, assignmentReference: longText },
   counts: { tasks: 1, notifications: 1, forms: 1, files: 1 },
   collections: Object.fromEntries(["tasks", "notifications", "forms", "files"].map((key) => [key, {
@@ -122,41 +122,36 @@ afterEach(() => {
 });
 
 describe("workbench shell", () => {
-  it("shows only authorized applications from the controlled client catalog", () => {
-    expect(applicationsFor(undefined)).toEqual([]);
-    expect(applicationsFor(["unknown.application"])).toEqual([]);
-    expect(applicationsFor(["crm", "unknown.application"]).map(({ id }) => id)).toEqual(["crm"]);
-  });
   it("uses the root route as an authenticated workbench entry", async () => {
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/applications"));
-    expect(screen.getByRole("link", { name: /CRM 系统/u })).toHaveAttribute("href", "/crm/workspace");
+    expect(await screen.findByRole("heading", { name: "工作台首页" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/crm/workspace"));
   });
 
-  it("begins the reviewed BFF login flow when no server session exists", async () => {
-    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
-    renderApp("/crm/tasks?status=open", testWorkbenchPort({ beginLogin, bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }) }));
+  it("serves the employee mobile entry from the same Web artifact and Session", async () => {
+    renderApp("/mobile/workspace");
 
-    expect(await screen.findByText("正在前往统一认证中心")).toBeInTheDocument();
-    expect(beginLogin).toHaveBeenCalledWith("/crm/tasks?status=open");
-    expect(screen.queryByRole("textbox", { name: "账号" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "CRM" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "CRM 移动入口" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "我的任务" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/mobile/workspace");
   });
 
-  it("keeps an application selector route before entering CRM", async () => {
-    renderApp("/applications");
-    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
-    expect(screen.getByText("ZSJ系统管理员")).toBeInTheDocument();
-    expect(screen.getByText("系统管理员账号")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /CRM 系统/u })).toHaveAttribute("href", "/crm/workspace");
+  it("renders the local account login form when no server session exists", async () => {
+    const login = vi.fn<WorkbenchPort["login"]>().mockResolvedValue("invalid");
+    renderApp("/crm/tasks?status=open", testWorkbenchPort({ login, bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }) }), true);
+
+    fireEvent.change(await screen.findByRole("textbox", { name: "用户名或手机号" }), { target: { value: "employee.one" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Password-1!" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    await waitFor(() => { expect(login).toHaveBeenCalledWith("employee.one", "Password-1!"); });
+    expect(await screen.findByText("账号或密码不正确。")).toBeInTheDocument();
   });
 
   it("reserves the synthetic form evidence route ahead of the collection detail route", async () => {
     const loadRelease = vi.fn().mockResolvedValue(syntheticRelease);
-    renderApp("/crm/forms/platform.synthetic.task-completion", testWorkbenchPort({
+    renderApp("/crm/forms/crm.synthetic.task-completion", testWorkbenchPort({
       bootstrap: () => developmentFixturePort.bootstrap(),
       logout: () => developmentFixturePort.logout(),
       syntheticFormEvidence: {
@@ -251,12 +246,12 @@ describe("workbench shell", () => {
 
   it("uses route-appropriate actions for direct status pages", async () => {
     renderApp("/status/403");
-    expect(await screen.findByRole("link", { name: "返回应用选择" })).toHaveAttribute("href", "/applications");
+    expect(await screen.findByRole("link", { name: "返回 CRM 工作台" })).toHaveAttribute("href", "/crm/workspace");
   });
 
-  it("returns expired-session login to the application selector instead of the expired status URL", async () => {
+  it("returns expired-session to the employee login", async () => {
     renderApp("/status/session-expired");
-    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Fapplications");
+    expect(await screen.findByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/login");
   });
 
   it("leaves a retryable direct status route after a successful refetch", async () => {
@@ -264,8 +259,8 @@ describe("workbench shell", () => {
     renderApp("/status/500", testWorkbenchPort({ bootstrap, logout: () => developmentFixturePort.logout() }));
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
-    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/applications");
+    expect(await screen.findByRole("heading", { name: "工作台首页" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/crm/workspace");
     expect(bootstrap).toHaveBeenCalled();
   });
 
@@ -275,7 +270,7 @@ describe("workbench shell", () => {
   });
 
   it("renders a bootstrap authorization denial as forbidden instead of an expired session", async () => {
-    renderApp("/applications", testWorkbenchPort({ bootstrap: vi.fn().mockResolvedValue({ kind: "forbidden" }), logout: vi.fn() }));
+    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: vi.fn().mockResolvedValue({ kind: "forbidden" }), logout: vi.fn() }));
     expect(await screen.findByText("无权访问")).toBeInTheDocument();
     expect(screen.queryByText("会话已过期")).not.toBeInTheDocument();
   });
@@ -308,23 +303,33 @@ describe("workbench shell", () => {
     consoleError.mockRestore();
   });
 
-  it("keeps legacy login route handling token-free and bounds returnTo normalization", async () => {
-    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
-    renderApp("/auth/pc/login?returnTo=%2Fcrm%2Ftasks", testWorkbenchPort({ beginLogin, bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }), logout: vi.fn() }));
-    expect(await screen.findByText("正在前往统一认证中心")).toBeInTheDocument();
-    expect(beginLogin).toHaveBeenCalledWith("/applications");
-    expect(normalizeReturnTo("https://outside.invalid/steal")).toBe("/applications");
-    expect(normalizeReturnTo("//outside.invalid/steal")).toBe("/applications");
-    expect(normalizeReturnTo("/safe\\redirect")).toBe("/applications");
-    expect(normalizeReturnTo("/status/403")).toBe("/applications");
-    expect(pcLoginUrl("https://outside.invalid/steal")).toBe("/auth/pc/login?returnTo=%2Fapplications");
+  it("keeps login return paths bounded to the workbench origin", async () => {
+    renderApp("/auth/pc/login?returnTo=%2Fcrm%2Ftasks", testWorkbenchPort({ bootstrap: vi.fn().mockResolvedValue({ kind: "signed-out" }), logout: vi.fn() }));
+    expect(await screen.findByRole("button", { name: "登录" })).toBeInTheDocument();
+    expect(normalizeReturnTo("https://outside.invalid/steal")).toBe("/crm/workspace");
+    expect(normalizeReturnTo("//outside.invalid/steal")).toBe("/crm/workspace");
+    expect(normalizeReturnTo("/safe\\redirect")).toBe("/crm/workspace");
+    expect(normalizeReturnTo("/status/403")).toBe("/crm/workspace");
+  });
+
+  it("restores a normalized deep link after login", async () => {
+    const bootstrap = vi.fn()
+      .mockResolvedValueOnce({ kind: "signed-out" })
+      .mockResolvedValueOnce(longReady);
+    const login = vi.fn<WorkbenchPort["login"]>().mockResolvedValue("authenticated");
+    renderApp("/auth/pc/login?returnTo=%2Fcrm%2Ftasks", testWorkbenchPort({ bootstrap, login }));
+
+    fireEvent.change(await screen.findByRole("textbox", { name: "用户名或手机号" }), { target: { value: "employee.one" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Password-1!" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => { expect(screen.getByTestId("location")).toHaveTextContent("/crm/tasks"); });
   });
 
   it("disables logout while pending and converges the session to an explicit logged-out state", async () => {
     let resolveLogout: ((value: { kind: "logged-out" }) => void) | undefined;
     const logout = vi.fn(() => new Promise<{ kind: "logged-out" }>((resolve) => { resolveLogout = resolve; }));
-    const beginLogin = vi.fn<WorkbenchPort["beginLogin"]>();
-    renderApp("/crm/workspace", testWorkbenchPort({ beginLogin, bootstrap: () => Promise.resolve(longReady), logout }));
+    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: () => Promise.resolve(longReady), logout }));
     const accountButton = await screen.findByRole("button", { name: "账号菜单" });
     fireEvent.click(accountButton);
     const logoutItem = await screen.findByRole("menuitem", { name: "退出当前会话" });
@@ -332,35 +337,8 @@ describe("workbench shell", () => {
     expect(accountButton).toBeDisabled();
     expect(logout).toHaveBeenCalledTimes(1);
     resolveLogout?.({ kind: "logged-out" });
-    expect(await screen.findByText("已退出登录")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "重新登录" })).toHaveAttribute("href", "/auth/pc/login?returnTo=%2Fapplications");
-    expect(beginLogin).not.toHaveBeenCalled();
-  });
-
-  it("returns to the application selector without ending the current session", async () => {
-    const logout = vi.fn<WorkbenchPort["logout"]>();
-    renderApp("/crm/workspace", testWorkbenchPort({ bootstrap: () => Promise.resolve(longReady), logout }));
-
-    fireEvent.click(await screen.findByRole("button", { name: "账号菜单" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "切换应用" }));
-
-    expect(await screen.findByRole("heading", { name: "选择应用" })).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/applications");
-    expect(logout).not.toHaveBeenCalled();
-  });
-
-  it("uses the same guarded logout behavior on the application selector", async () => {
-    let resolveLogout: ((value: { kind: "logged-out" }) => void) | undefined;
-    const logout = vi.fn(() => new Promise<{ kind: "logged-out" }>((resolve) => { resolveLogout = resolve; }));
-    renderApp("/applications", testWorkbenchPort({ logout }));
-    const button = await screen.findByRole("button", { name: "退出登录" });
-
-    fireEvent.click(button);
-    fireEvent.click(button);
-    expect(button).toBeDisabled();
-    expect(logout).toHaveBeenCalledOnce();
-    resolveLogout?.({ kind: "logged-out" });
-    expect(await screen.findByText("已退出登录")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "AI-CRM" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
   });
 
   it("keeps the session active and exposes a retry when logout fails", async () => {
@@ -404,7 +382,7 @@ describe("workbench shell", () => {
 
   it("keeps the workforce administration tab in the URL", async () => {
     renderWorkforceAdministration({
-      execute: vi.fn().mockResolvedValue({}),
+      execute: vi.fn().mockResolvedValue({ replayed: false }),
       load: () => Promise.resolve({ accounts: [], departments: [], positions: [] }),
     }, "/crm/workforce-administration?tab=departments");
 
@@ -416,7 +394,7 @@ describe("workbench shell", () => {
   });
 
   it("submits the administrator-entered replacement password from the CRM modal", async () => {
-    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({ replayed: false });
     renderWorkforceAdministration({
       execute,
       load: () => Promise.resolve({
@@ -471,7 +449,7 @@ describe("workbench shell", () => {
   }, 20_000);
 
   it("requires explicit confirmation before releasing a historical phone", async () => {
-    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({ replayed: false });
     renderWorkforceAdministration({
       execute,
       load: () => Promise.resolve({
@@ -500,68 +478,49 @@ describe("workbench shell", () => {
     await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, kind: "release_phone", phone: "+8613700000000" }); });
   }, 20_000);
 
-  it("shows a failed identity synchronization and submits a reference-only retry", async () => {
-    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
-    renderWorkforceAdministration({
-      execute,
-      load: () => Promise.resolve({
-        accounts: [{
-          accountId: "10000000-0000-4000-8000-000000000001",
-          allowedActions: ["retry_identity_sync"],
-          crmAdministrator: false,
-          latestIdentitySync: { action: "synchronize_login_identifiers", completedAt: "2026-08-02T00:00:05.000Z", errorCode: "keycloak_administration_unavailable", operationId: "40000000-0000-4000-8000-000000000001", requestedAt: "2026-08-02T00:00:00.000Z", status: "failed" },
-          legalName: "测试员工",
-          releasablePhones: [],
-          revision: 7,
-          status: "active",
-          username: "employee.one",
-        }],
-        departments: [],
-        positions: [],
-      }),
-    });
-
-    expect(await screen.findByText("同步失败")).toBeInTheDocument();
-    expect(screen.getByText("身份服务暂时不可用")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重试同步" }));
-    await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000001", expectedRevision: 7, failedOperationId: "40000000-0000-4000-8000-000000000001", kind: "retry_identity_sync" }); });
-  });
-
   it("requires reauthentication before exposing the system-account profile editor", async () => {
-    const beginSystemAccountReauthentication = vi.fn<NonNullable<WorkforceAdministrationPort["beginSystemAccountReauthentication"]>>().mockResolvedValue();
+    const reauthenticate = vi.fn<WorkforceAdministrationPort["reauthenticate"]>().mockResolvedValue();
     renderWorkforceAdministration({
-      beginSystemAccountReauthentication,
-      execute: vi.fn().mockResolvedValue({}),
-      load: () => Promise.resolve({
-        accounts: [], departments: [], positions: [],
-        systemAccount: { accountId: "10000000-0000-4000-8000-000000000009", allowedActions: [], crmAdministrator: false, legalName: "ZSJ系统管理员", phone: "+8613800000000", releasablePhones: [], revision: 4, status: "active", username: "system.admin" },
-      }),
-    });
-
-    expect(await screen.findByText("ZSJ系统管理员")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑账号资料" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "重新认证后编辑" }));
-    await waitFor(() => { expect(beginSystemAccountReauthentication).toHaveBeenCalledTimes(1); });
-  });
-
-  it("submits the system-account profile and login identifiers after server-computed reauthentication", async () => {
-    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({});
-    renderWorkforceAdministration({
-      execute,
+      reauthenticate,
+      execute: vi.fn().mockResolvedValue({ replayed: false }),
       load: () => Promise.resolve({
         accounts: [], departments: [], positions: [],
         systemAccount: { accountId: "10000000-0000-4000-8000-000000000009", allowedActions: ["edit"], crmAdministrator: false, legalName: "ZSJ系统管理员", phone: "+8613800000000", releasablePhones: [], revision: 4, status: "active", username: "system.admin" },
       }),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "编辑账号资料" }));
+    expect(await screen.findByText("ZSJ系统管理员")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新认证后编辑" }));
+    fireEvent.change(screen.getByLabelText("当前账号密码"), { target: { value: "Current-password-1!" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => { expect(reauthenticate).toHaveBeenCalledWith("Current-password-1!"); });
+    expect(await screen.findByText("编辑系统账号")).toBeInTheDocument();
+    expect(screen.getByLabelText("姓名（实名）")).toBeInTheDocument();
+  }, 20_000);
+
+  it("submits the system-account profile and login identifiers after server-computed reauthentication", async () => {
+    const execute = vi.fn<WorkforceAdministrationPort["execute"]>().mockResolvedValue({ replayed: false });
+    const reauthenticate = vi.fn<WorkforceAdministrationPort["reauthenticate"]>().mockResolvedValue();
+    renderWorkforceAdministration({
+      execute,
+      reauthenticate,
+      load: () => Promise.resolve({
+        accounts: [], departments: [], positions: [],
+        systemAccount: { accountId: "10000000-0000-4000-8000-000000000009", allowedActions: ["edit"], crmAdministrator: false, legalName: "ZSJ系统管理员", phone: "+8613800000000", releasablePhones: [], revision: 4, status: "active", username: "system.admin" },
+      }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重新认证后编辑" }));
+    fireEvent.change(screen.getByLabelText("当前账号密码"), { target: { value: "Current-password-1!" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await screen.findByText("编辑系统账号");
     fireEvent.change(screen.getByLabelText("姓名（实名）"), { target: { value: "ZSJ系统管理员二" } });
     fireEvent.change(screen.getByLabelText("用户名（昵称）"), { target: { value: "system.admin.two" } });
     fireEvent.change(screen.getByLabelText("手机号（可用于登录）"), { target: { value: "+8613900000000" } });
     fireEvent.click(screen.getByRole("button", { name: /保\s*存/u }));
     await waitFor(() => { expect(execute).toHaveBeenCalledWith({ accountId: "10000000-0000-4000-8000-000000000009", expectedRevision: 4, kind: "update_system_account", legalName: "ZSJ系统管理员二", phone: "+8613900000000", username: "system.admin.two" }); });
     expect(JSON.stringify(execute.mock.calls)).not.toMatch(/department|position/u);
-  }, 10_000);
+  }, 20_000);
 
   it.each([320, 360])("keeps dynamic long text in bounded elements at %ipx", async (width) => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: width });

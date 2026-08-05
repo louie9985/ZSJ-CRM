@@ -1,6 +1,6 @@
-import type { EventEnvelope, EventingCore, RabbitDelivery, ValidatedMessage } from "@ai-crm/platform-eventing-outbox";
-import { EventingError } from "@ai-crm/platform-eventing-outbox";
-import { TaskCenterError } from "@ai-crm/platform-task-center";
+import type { EventEnvelope, EventingCore, RabbitDelivery, ValidatedMessage } from "@ai-crm/crm-eventing-outbox";
+import { EventingError } from "@ai-crm/crm-eventing-outbox";
+import { TaskCenterError } from "@ai-crm/crm-task-center";
 import { describe, expect, it, vi } from "vitest";
 import type { RabbitConsumerAdapter } from "./handlers.js";
 import {
@@ -13,7 +13,7 @@ import { taskProjectionBindingId, taskProjectionRuntimePolicy } from "./task-pro
 const envelope = (dataOverride: Record<string, unknown> = {}): EventEnvelope => ({
   specversion: "1.0",
   id: "018f3f7a-9ec6-7c65-8e6e-6c9e43043111",
-  source: "urn:ai-crm:platform.task-center",
+  source: "urn:ai-crm:crm.task-center",
   type: "task-center.projection-lifecycle.v1",
   time: "2026-07-28T00:00:00.000Z",
   datacontenttype: "application/json",

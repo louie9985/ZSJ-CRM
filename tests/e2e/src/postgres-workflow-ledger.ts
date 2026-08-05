@@ -6,7 +6,7 @@ import {
   type WorkflowCommandResult,
   type WorkflowCommandStatus,
   type WorkflowOperation,
-} from "@ai-crm/platform-workflow";
+} from "@ai-crm/crm-workflow";
 
 import { requireE2ePostgresRuntime, type E2ePostgresRuntime } from "./postgres-runtime.js";
 

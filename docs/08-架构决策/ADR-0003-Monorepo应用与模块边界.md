@@ -28,9 +28,9 @@
 
 ### 平台与领域模块
 
-- `packages/platform-modules/` 保存与具体业务无关的平台能力。
+- `packages/crm-modules/` 保存与具体业务无关的平台能力。
 - `packages/domain-modules/` 只保存已经确认边界的业务领域模块。
-- `packages/platform-sdk/` 向领域模块和应用提供稳定、与厂商无关的平台接口。
+- `packages/crm-sdk/` 向领域模块和应用提供稳定、与厂商无关的平台接口。
 - `contracts/` 保存 HTTP、事件、任务、权限、错误和共享模型契约；契约先于实现变更。
 - `packages/api-client/` 保存由 OpenAPI 生成的客户端及其最薄封装。
 - `packages/shared-ui/` 只接收已经证明跨应用复用的 UI，不作为工作台组件的默认存放位置。
@@ -38,7 +38,7 @@
 ### 依赖规则
 
 1. `apps/*` 可以装配平台模块和已确认领域模块，但不能成为业务规则所有者。
-2. 领域模块只能通过公开契约和 `platform-sdk` 使用平台能力，不直接依赖 Keycloak、Flowable、RabbitMQ、Redis 或存储厂商。
+2. 领域模块只能通过公开契约和 `crm-sdk` 使用平台能力，不直接依赖 Keycloak、Flowable、RabbitMQ、Redis 或存储厂商。
 3. 平台模块不能依赖领域模块。
 4. 一个模块不能查询或修改另一个模块的表。
 5. 模块间不能使用深层文件导入，只能通过各包公开入口交互。

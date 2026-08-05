@@ -8,6 +8,7 @@ type RealtimeCollections = Readonly<{ notifications: PlatformCollection; tasks: 
 
 export const collectionPollingIntervalMs = 30_000;
 export const realtimeFallbackDelayMs = 15_000;
+export const sessionLivenessIntervalMs = 5_000;
 const realtimeProtocol = "ai-crm.realtime.v1";
 
 interface NotificationRealtimeMessage {
@@ -131,6 +132,40 @@ export function usePolledCollections(
     void refetch().finally(connect);
     return () => { stopped = true; if (fallbackTimer !== undefined) clearTimeout(fallbackTimer); if (reconnectTimer !== undefined) clearTimeout(reconnectTimer); socket?.close(1000, "component-unmounted"); };
   }, [options, port, queryClient, refetch, sessionScope]);
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const isStopped = (): boolean => stopped;
+    const schedule = (): void => {
+      if (!stopped) timer = setTimeout(() => { void check(); }, sessionLivenessIntervalMs);
+    };
+    const check = async (): Promise<void> => {
+      if (stopped) return;
+      try {
+        const response = await fetch("/auth/pc/session", {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+          method: "GET",
+        });
+        if (isStopped()) return;
+        if (response.status === 401) {
+          queryClient.clear();
+          options?.onSessionRevoked?.();
+          return;
+        }
+      } catch {
+        // Network and dependency failures are retried; only an explicit 401 ends the session.
+      }
+      if (isStopped()) return;
+      schedule();
+    };
+    schedule();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [options, queryClient, sessionScope]);
 
   const collections = { ...initial, notifications: polling.data.notifications, tasks: polling.data.tasks };
   return { ...collections, collections, unreadCount };

@@ -4,7 +4,7 @@ Store one OpenAPI source document per owning module. Files in this directory are
 
 Every operation intended for an external client must be explicitly classified for the external audience. CI generates a separate external allowlist bundle; unclassified or internal operations never enter that bundle by default.
 
-Each external operation also declares exactly which access mode it accepts: anonymous, invitation capability, or authenticated Keycloak session. Missing classification defaults to authenticated-and-denied-until-authorized. A single request must not union invitation and login grants. Invitation schemas are added only with their first confirmed business owner and resource; see [ADR-0019](../../docs/08-架构决策/ADR-0019-外部端分级访问与邀请授权.md).
+The current generated surface is internal-only. A future external operation must declare its access mode and live in a separately reviewed allowlist; no generic external identity or invitation model is present.
 
 Protected platform operations declare one reviewed `x-ai-crm-permission` binding and an exact internal/external audience. Operations introduced after the BFF session baseline also declare `x-ai-crm-csrf` and `x-ai-crm-idempotency` semantics. `required` CSRF means both the session-bound `X-CSRF-Token` and the trusted `Origin`/`Referer` check are mandatory. A read-only POST may explicitly declare CSRF not required, but that declaration does not make it externally accessible or bypass current authorization.
 

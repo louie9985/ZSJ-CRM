@@ -36,7 +36,7 @@
 - Taro：跨端编译、页面生命周期、路由、环境能力和构建入口。
 - React 与 TypeScript：组件和应用代码。
 - NutUI React Taro 版：移动组件与基础交互。
-- OpenAPI 生成客户端与 `platform-sdk` 的端适用子集：服务端契约接入。
+- OpenAPI 生成客户端与 `crm-sdk` 的端适用子集：服务端契约接入。
 
 Taro、React、TypeScript 和 NutUI 均使用开源项目，项目不 Fork 或自研跨端运行时。项目自研的是应用壳层、页面、设计适配、端能力适配和业务交互。
 

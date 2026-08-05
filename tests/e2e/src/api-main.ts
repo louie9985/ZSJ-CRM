@@ -13,7 +13,7 @@ import {
   type TaskLifecycleEvent,
   type TaskOperation,
   type TaskProjectionKey,
-} from "@ai-crm/platform-task-center";
+} from "@ai-crm/crm-task-center";
 
 import {
   createWalkingSkeletonSource,
@@ -33,10 +33,10 @@ export const e2eTaskFixture = Object.freeze({
   actorContextReference: "actor-context.e2e-task",
   credential: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   csrfToken: "ccccccccccccccccccccccccccccccccccccccccccc",
-  issuer: "https://identity.e2e.invalid/realms/walking-skeleton",
+  accountId: "account.e2e-task",
+  workforcePersonId: "person.e2e-task",
   sourceTaskId: "source-task.e2e-api",
   sourceType: walkingSkeletonSourceType,
-  subject: "subject.e2e-task",
   workflowTaskId: "workflow-task.e2e-api",
 });
 
@@ -46,7 +46,7 @@ export interface E2eProcessBindingOptions {
 }
 
 function stableActorId(): string {
-  return `subject:${createHash("sha256").update(`${e2eTaskFixture.issuer}\0${e2eTaskFixture.subject}`).digest("hex")}`;
+  return `account:${createHash("sha256").update(e2eTaskFixture.accountId).digest("hex")}`;
 }
 
 function exactActor(actor: TaskActor): boolean {
@@ -116,7 +116,7 @@ function createE2eTaskCenter(options: E2eProcessBindingOptions) {
   });
   const initialEvent: TaskLifecycleEvent = Object.freeze({
     assigneeReference: e2eTaskFixture.activeAssignmentId,
-    deepLink: Object.freeze({ appId: "platform.synthetic", routeId: "platform.synthetic.detail" }),
+    deepLink: Object.freeze({ appId: "crm.synthetic", routeId: "crm.synthetic.detail" }),
     eventId: "e2e00000-0000-5000-8000-000000000001",
     occurredAt: "2026-07-31T00:00:00.000Z",
     sourceTaskId: e2eTaskFixture.sourceTaskId,
@@ -135,28 +135,30 @@ function createE2eTaskCenter(options: E2eProcessBindingOptions) {
 export function createE2eProcessBindings(options: E2eProcessBindingOptions = {}): ApiPlatformBindings {
   const tasks = createE2eTaskCenter(options);
   const principal = Object.freeze({
-    authenticationSubject: Object.freeze({ issuer: e2eTaskFixture.issuer, subject: e2eTaskFixture.subject }),
-    clientId: "pc-web",
+    accountId: e2eTaskFixture.accountId,
+    currentAssignmentId: e2eTaskFixture.activeAssignmentId,
     expiresAt: "2099-01-01T00:00:00.000Z",
     issuedAt: "2026-07-31T00:00:00.000Z",
+    reauthenticated: false,
+    sessionId: "session.e2e-task",
+    workforcePersonId: e2eTaskFixture.workforcePersonId,
   });
   const requireCredential = (credential: string) => credential === e2eTaskFixture.credential
     ? Promise.resolve(principal)
-    : Promise.reject(new BrowserSessionFailure("authentication_session_invalid"));
+    : Promise.reject(new BrowserSessionFailure("authentication_required"));
   const bindings = {
     audit: { readSensitive: unavailable, record: unavailable },
-    authentication: {
-      beginLogin: authenticationUnavailable,
-      completeLogin: authenticationUnavailable,
-      currentSession: authenticationUnavailable,
+    accountAccess: {
+      assignment: authenticationUnavailable,
+      login: authenticationUnavailable,
       logout: authenticationUnavailable,
-      refresh: authenticationUnavailable,
+      reauthentication: authenticationUnavailable,
+      session: authenticationUnavailable,
     },
-    authenticationCallbackUrl: () => "http://e2e.invalid/auth/pc/callback",
-    browserSecurity: { allowedOrigins: ["http://e2e.invalid"] },
+    browserSecurity: { allowedOrigins: { "internal-h5": "http://internal-h5.e2e.invalid", pc: "http://e2e.invalid" } },
     authorization: {
       requireAllowed: (_subject: unknown, permission: { readonly action: string; readonly resource: string }) => permission.action === "complete"
-        && permission.resource === "platform.task-center.task-projection"
+        && permission.resource === "crm.task-center.task-projection"
         ? Promise.resolve({ allowed: true, decisionId: "decision.e2e-http-task-complete", evaluatedAt: "2026-07-31T00:00:00.000Z", policyVersion: "e2e-task-v1", reason: "allowed" })
         : Promise.reject(new Error("e2e_operation_denied")),
     },
@@ -168,13 +170,12 @@ export function createE2eProcessBindings(options: E2eProcessBindingOptions = {})
     },
     databaseCompatibility: { assertCompatible: () => undefined },
     organization: {
-      resolveWorkforceContext: (subject: { readonly issuer: string; readonly subject: string }, at: string) => subject.issuer === e2eTaskFixture.issuer && subject.subject === e2eTaskFixture.subject
+      resolveWorkforcePersonContext: (workforcePersonId: string, at: string, assignmentId?: string) => workforcePersonId === e2eTaskFixture.workforcePersonId && (assignmentId === undefined || assignmentId === e2eTaskFixture.activeAssignmentId)
         ? Promise.resolve({
           assignments: [{ assignmentId: e2eTaskFixture.activeAssignmentId, employmentId: "employment.e2e-task", organizationUnitId: "unit.e2e-task", positionId: "position.e2e-task" }],
           employmentIds: ["employment.e2e-task"],
           resolvedAt: at,
-          subject,
-          workforcePersonId: "person.e2e-task",
+          workforcePersonId: e2eTaskFixture.workforcePersonId,
         })
         : Promise.reject(new Error("e2e_workforce_not_found")),
     },
@@ -187,8 +188,12 @@ export function createE2eProcessBindings(options: E2eProcessBindingOptions = {})
     },
     readiness: () => [{ healthy: true, name: "e2e-process-bindings", required: true }],
     sessions: {
-      resolvePrincipal: requireCredential,
-      sessionForMutation: (credential: string) => requireCredential(credential).then(() => ({
+      resolvePrincipal: (surface: "internal-h5" | "pc", credential: string) => surface === "pc"
+        ? requireCredential(credential)
+        : Promise.reject(new BrowserSessionFailure("authentication_required")),
+      sessionForMutation: (surface: "internal-h5" | "pc", credential: string) => (surface === "pc"
+        ? requireCredential(credential)
+        : Promise.reject(new BrowserSessionFailure("authentication_required"))).then(() => ({
         authenticatedAt: "2026-07-31T00:00:00.000Z",
         client: "pc-web" as const,
         csrfToken: e2eTaskFixture.csrfToken,

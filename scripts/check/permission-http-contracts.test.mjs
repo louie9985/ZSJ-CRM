@@ -12,11 +12,9 @@ const readJson = async (path) => JSON.parse(await readFile(resolve(root, path), 
 const readYaml = async (path) => YAML.parse(await readFile(resolve(root, path), "utf8"));
 
 const protectedDocuments = [
-  "contracts/http/modules/app-registry.openapi.yaml",
   "contracts/http/modules/file-center.openapi.yaml",
   "contracts/http/modules/form-schema.openapi.yaml",
   "contracts/http/modules/notifications.openapi.yaml",
-  "contracts/http/modules/session-policy.openapi.yaml",
   "contracts/http/modules/task-center.openapi.yaml",
   "contracts/http/modules/workbench.openapi.yaml",
   "contracts/http/modules/workforce-administration.openapi.yaml",
@@ -73,24 +71,6 @@ test("protected platform HTTP operations map completely to reviewed platform Per
   assert.equal(Object.hasOwn(catalog, "grants"), false);
 });
 
-test("protected platform management commands use a separate reviewed permission catalog", async () => {
-  const [schema, catalog, httpCatalog] = await Promise.all([
-    readJson("contracts/permissions/platform-management-permission-catalog.v1.schema.json"),
-    readJson("contracts/permissions/platform-management-permission-catalog.v1.json"),
-    readJson("contracts/permissions/platform-permission-catalog.v1.json"),
-  ]);
-  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
-  assert.equal(validate(catalog), true, JSON.stringify(validate.errors));
-  assert.deepEqual(catalog.permissions, [{
-    action: "publish",
-    code: "platform.authorization.policy:publish",
-    owner: "platform.authorization",
-    resource: "platform.authorization.policy",
-    scopeDimensions: [],
-  }]);
-  const httpCodes = new Set(httpCatalog.permissions.map(({ code }) => code));
-  assert.equal(httpCodes.has(catalog.permissions[0].code), false, "management authority must not imply an HTTP surface");
-});
 
 test("new platform HTTP contracts declare bounded CSRF and idempotency semantics", async () => {
   const documents = await Promise.all(protectedDocuments.slice(0, 3).map(readYaml));
@@ -122,7 +102,7 @@ test("new platform HTTP contracts declare bounded CSRF and idempotency semantics
   const confirmUpload = operations.get("confirmFileUpload");
   assert.equal(Object.hasOwn(confirmUpload.responses, "410"), false, "public File Center errors cannot distinguish expired upload sessions from other operation conflicts");
   assert.match(confirmUpload.responses["409"].description, /intentionally not distinguished/u);
-  for (const operationId of ["getInternalApplicationRegistry", "resolveInternalApplicationDeepLink", "getFormRelease", "validateFormSubmission"]) {
+  for (const operationId of ["getFormRelease", "validateFormSubmission"]) {
     assert.equal(operations.get(operationId)["x-ai-crm-csrf"].mode, "not-required");
   }
   assert.equal(operations.get("createFileDownloadGrant")["x-ai-crm-idempotency"].mode, "audit-operation-only");
@@ -151,15 +131,15 @@ test("permission binding schemas reject undeclared authority and mismatched shap
   const validate = new Ajv2020({ allErrors: true, strict: true }).compile(bindingSchema);
   assert.equal(validate({
     version: 1,
-    owner: "platform.task-center",
-    code: "platform.task-center.task-projection:read",
-    resource: "platform.task-center.task-projection",
+    owner: "crm.task-center",
+    code: "crm.task-center.task-projection:read",
+    resource: "crm.task-center.task-projection",
     action: "read",
     role: "administrator",
   }), false);
   assert.equal(validate({
     version: 1,
-    owner: "platform.task-center",
+    owner: "crm.task-center",
     code: "task:read",
     resource: "task",
     action: "read",

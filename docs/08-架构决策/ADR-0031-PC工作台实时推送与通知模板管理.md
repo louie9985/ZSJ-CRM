@@ -30,7 +30,7 @@
 
 ### 1. 同源原生 WebSocket 与 HTTP 补偿
 
-API HTTP Server 在 `/realtime` 接受 RFC 6455 Upgrade，子协议固定为 `ai-crm.realtime.v1`。握手必须校验 PC Origin allowlist、HTTP-only BFF Session、唯一 Workforce Person、有效 Employment 和 `platform.workbench.shell:read`。禁止 URL Token、查询票据、Keycloak Token和客户端自选身份。
+API HTTP Server 在 `/realtime` 接受 RFC 6455 Upgrade，子协议固定为 `ai-crm.realtime.v1`。握手必须校验 PC Origin allowlist、HTTP-only BFF Session、唯一 Workforce Person、有效 Employment 和 `crm.workbench.shell:read`。禁止 URL Token、查询票据、Keycloak Token和客户端自选身份。
 
 WebSocket 只发送完整展示快照与刷新信号。首次连接和每次重连均先通过 HTTP 同步 Task、Notification 和未读数，再以 `connection.ready` 建立实时基线；服务端不保留供浏览器请求重放的消息历史。断线超过十五秒后，PC Web 启动三十秒降级轮询，恢复后立即停止。RabbitMQ 或实时消费者故障使实时健康状态 degraded，但不使 HTTP readiness 失败。
 
@@ -42,7 +42,7 @@ WebSocket 只发送完整展示快照与刷新信号。首次连接和每次重�
 
 ### 3. PC Session 并发策略
 
-PC Session v2 保存服务端确定的 `clientType=pc-web`，Redis 使用 HMAC subject index，不能暴露或按明文主体扫描。`platform.authentication.pc-session.concurrent-limit` 默认 1、范围 1–5；`platform.authentication.pc-session.revocation-target-seconds` 默认 5、范围 5–60。
+PC Session v2 保存服务端确定的 `clientType=pc-web`，Redis 使用 HMAC subject index，不能暴露或按明文主体扫描。`crm.authentication.pc-session.concurrent-limit` 默认 1、范围 1–5；`crm.authentication.pc-session.revocation-target-seconds` 默认 5、范围 5–60。
 
 新登录以原子操作登记并撤销最旧的超额同类 Session；新登录成功，旧 Session 失败关闭。策略降低后 HTTP 请求与活动 WebSocket 在目标时限内重新检查。撤销产生 Audit 与 Outbox 信号，RabbitMQ 故障时由周期检查兜底。Session v2 上线一次性失效旧版 PC Session，不扫描旧 Redis 数据。业务配置不能保存 Session Secret 或 HMAC Key。
 

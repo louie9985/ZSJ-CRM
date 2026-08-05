@@ -4,9 +4,9 @@ import {
   createFormSchemaService,
   createMemoryFormSchemaStore,
   type FormSchemaQueryService,
-} from "@ai-crm/platform-form-schema";
+} from "@ai-crm/crm-form-schema";
 
-const definitionId = "platform.synthetic.task-completion";
+const definitionId = "crm.synthetic.task-completion";
 const actor = Object.freeze({ actorId: "system.e2e-browser-form", actorType: "system" as const });
 
 export async function createBrowserFormEvidenceFixture(): Promise<Readonly<{

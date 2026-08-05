@@ -28,13 +28,13 @@ GRANT SELECT, INSERT ON e2e_walking_skeleton.form_submissions TO ai_crm_runtime;
 
 -- The disposable E2E orchestrator composes otherwise separate API and Worker responsibilities.
 -- These grants are installed only by the explicitly invoked E2E migration runner.
-GRANT USAGE ON SCHEMA audit, form_schema, platform_task_center TO ai_crm_runtime;
+GRANT USAGE ON SCHEMA audit, form_schema, crm_task_center TO ai_crm_runtime;
 GRANT SELECT, INSERT ON audit.records TO ai_crm_runtime;
 GRANT SELECT, INSERT, UPDATE ON audit.operation_receipts TO ai_crm_runtime;
 GRANT SELECT, INSERT, UPDATE ON form_schema.drafts, form_schema.release_status TO ai_crm_runtime;
 GRANT SELECT, INSERT ON form_schema.releases TO ai_crm_runtime;
 GRANT SELECT, INSERT, UPDATE ON form_schema.operation_receipts TO ai_crm_runtime;
 GRANT INSERT ON form_schema.outbox_events TO ai_crm_runtime;
-GRANT SELECT, INSERT, UPDATE ON platform_task_center.task_projections, platform_task_center.task_commands TO ai_crm_runtime;
-GRANT SELECT, INSERT ON platform_task_center.projection_events TO ai_crm_runtime;
-GRANT DELETE ON platform_task_center.task_commands TO ai_crm_runtime;
+GRANT SELECT, INSERT, UPDATE ON crm_task_center.task_projections, crm_task_center.task_commands TO ai_crm_runtime;
+GRANT SELECT, INSERT ON crm_task_center.projection_events TO ai_crm_runtime;
+GRANT DELETE ON crm_task_center.task_commands TO ai_crm_runtime;

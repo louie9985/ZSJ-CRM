@@ -2,8 +2,8 @@ import type { WorkbenchPort } from "./workbench-port";
 import { createSameSiteCollectionPollingPort } from "./same-site-collection-port";
 import { createSameSiteSyntheticFormEvidencePort } from "./same-site-synthetic-form-evidence-port";
 import { createSameSiteWorkbenchPort } from "./same-site-workbench-port";
+import { createSameSitePartTimePort } from "./same-site-part-time-port";
 import type { NotificationTemplatePort } from "./notification-template-port";
-import type { SessionPolicyPort } from "./session-policy-port";
 import type { WorkforceAdministrationPort } from "./workbench-port";
 
 const notificationTemplates: NotificationTemplatePort = {
@@ -14,33 +14,29 @@ const notificationTemplates: NotificationTemplatePort = {
   publish: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().publish(...input),
   save: async (...input) => (await import("./notification-template-port")).createNotificationTemplatePort().save(...input),
 };
-const sessionPolicy: SessionPolicyPort = {
-  get: async () => (await import("./session-policy-port")).createSessionPolicyPort().get(),
-  update: async (...input) => (await import("./session-policy-port")).createSessionPolicyPort().update(...input),
-};
 const workforceAdministration: WorkforceAdministrationPort = {
-  beginSystemAccountReauthentication: async () => { await (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().beginSystemAccountReauthentication?.(); },
   execute: async (...input) => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().execute(...input),
   listAccounts: async (...input) => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().listAccounts(...input),
   load: async () => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().load(),
+  reauthenticate: async (...input) => (await import("./same-site-workforce-administration-port")).createSameSiteWorkforceAdministrationPort().reauthenticate(...input),
 };
 
 const connectedPort: WorkbenchPort = {
   ...createSameSiteWorkbenchPort(),
+  partTime: createSameSitePartTimePort(),
   ...createSameSiteCollectionPollingPort(),
   notificationTemplates,
-  sessionPolicy,
   workforceAdministration,
 };
 
 const unavailableProductionPort: WorkbenchPort = {
-  beginLogin: () => undefined,
+  login: () => Promise.resolve("unavailable"),
   bootstrap: () => Promise.resolve({ kind: "maintenance" }),
   logout: () => Promise.resolve({ kind: "session-expired" }),
 };
 
 const lazyDevelopmentPort: WorkbenchPort = {
-  beginLogin: () => undefined,
+  login: () => Promise.resolve("authenticated"),
   bootstrap: async () => {
     const { developmentFixturePort } = await import("./development-fixture");
     return developmentFixturePort.bootstrap();
@@ -68,6 +64,7 @@ const lazyDevelopmentPort: WorkbenchPort = {
       if (fixture === undefined) throw new Error("workforce_fixture_missing");
       return fixture.load();
     },
+    reauthenticate: () => Promise.resolve(),
   },
 };
 

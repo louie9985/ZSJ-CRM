@@ -2,7 +2,7 @@
 
 ## Scope facts
 
-- The scenario uses the public `@ai-crm/platform-file-center` package entry point and the public `ClamAvMalwareScanner` export from `@ai-crm/worker`.
+- The scenario uses the public `@ai-crm/crm-file-center` package entry point and the public `ClamAvMalwareScanner` export from `@ai-crm/worker`.
 - It runs the pinned `clamav/clamav:1.4.5-debian` image in an isolated container, network, volume, and random loopback port.
 - File bytes live only in process memory. The malicious fixture is the standard EICAR test string and is never written to the repository or a host temporary file.
 

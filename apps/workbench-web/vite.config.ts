@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const bffTarget = process.env["AI_CRM_WORKBENCH_BFF_ORIGIN"] ?? "http://127.0.0.1:8088";
+const bffTarget = process.env["AI_CRM_WORKBENCH_BFF_ORIGIN"] ?? "http://127.0.0.1:13001";
 
 function vendorChunk(id: string): string | undefined {
   const path = id.replaceAll("\\", "/");
@@ -18,7 +18,6 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 3000,
     proxy: {
-      "/application-registry": { changeOrigin: true, target: bffTarget },
       "/auth": { changeOrigin: true, target: bffTarget },
       "/authentication": { changeOrigin: true, target: bffTarget },
       "/files": { changeOrigin: true, target: bffTarget },

@@ -10,7 +10,7 @@
 
 此前完成的纯前端工作台 Demo 作为后续 PC 工作台的**设计与交互参考基线**。开发应用壳、导航、列表、详情、任务、通知、审批、表单和操作反馈时，应先检查本文件提炼的 Demo 模式，保持工作密度、信息层级和操作习惯的连续性。
 
-Demo 不是正式项目的代码基线、运行架构或业务事实源。正式项目仍使用 Vite、React Router、TanStack Query、OpenAPI 生成客户端、`platform-sdk` 和服务端事实源，不恢复 Umi Max、Umi Model、纯前端 Action Engine 或 `localStorage` 业务持久化。
+Demo 不是正式项目的代码基线、运行架构或业务事实源。正式项目仍使用 Vite、React Router、TanStack Query、OpenAPI 生成客户端、`crm-sdk` 和服务端事实源，不恢复 Umi Max、Umi Model、纯前端 Action Engine 或 `localStorage` 业务持久化。
 
 临时 Demo 目录可以删除。本文是删除后仍需保留的自包含参考口径；删除或继续修改 Demo 均不会自动改变已接受 ADR、正式契约和已确认业务规则。
 
@@ -110,10 +110,10 @@ Demo 的 `RecordInbox` 使用约 300px 左侧检索列表和右侧详情，适�
 | Demo 机制 | 正式项目实现 | 迁移约束 |
 |---|---|---|
 | Umi 路由与 `history` | React Router 显式路由与导航 API | 路由 ID、守卫和错误边界可定位、可测试 |
-| Umi Initial State/Model | BFF `/me`、`platform-sdk`、TanStack Query | 不保存 Keycloak Token，不复制全局业务 Store |
+| Umi Initial State/Model | Account/Access Session、`crm-sdk`、TanStack Query | 浏览器只持有 HttpOnly 不透明 Cookie，不复制全局业务 Store |
 | 岗位切换器 | 不采用此 Demo 交互 | 顶栏不提供岗位切换入口，不从 Demo 推断角色或任职规则 |
 | 前端角色路由判断 | Application Registry + Authorization View | 前端只控制呈现，API 仍逐次授权 |
-| `dept3Store` | 平台模块/未来领域模块的服务端事实 + Query Cache | Cache 不是事实源，禁止跨模块表查询 |
+| `dept3Store` | CRM 核心模块/未来领域模块的服务端事实 + Query Cache | Cache 不是事实源，禁止跨模块表查询 |
 | Action Engine | 正式 HTTP Command + 服务端事务/授权/审计 | 先改契约，再实现；失败语义显式 |
 | `localStorage` 业务持久化 | PostgreSQL 模块自有 Schema/Repository | 浏览器只保存允许的非敏感 UI 偏好 |
 | Mock Seed/Adapter | OpenAPI 生成 Client + MSW/测试 Fixture | Fixture 只放测试，不提升为业务模型 |
@@ -161,7 +161,7 @@ AI Agent 不得为满足视觉参考而创建 Lead、Customer、Student、Order�
 - 一级分类固定为工作台、日历、审批、通知、邮件、设置。公共二级项来自统一代码目录，并与服务端 `navigationIds` 求交集；无可见子项的分类隐藏。设置二级项只承载所有岗位通用的设置能力，不承载岗位或管理员专属操作入口。
 - 工作台二级项由当前 `workspaceProfileId` 的岗位内容项和服务端授权的管理工具项共同组成，再与 `navigationIds` 求交集；内容组件仍由 profile 的代码注册提供。员工账号管理属于系统管理员工作台工具，不进入设置。重复或非法注册在启动时失败。
 - 未配置或未知 profile 只显示 `crm.workspace.unconfigured` 中性空工作台，不能回退到其他部门或岗位页面。
-- 应用选择页始终保留，只显示服务端 `applicationIds` 与受控客户端应用目录的交集；缺失或未知 ID 不显示入口。
+- 登录成功直接进入 `/crm/workspace`；CRM 是唯一应用，不显示应用选择页或应用目录。
 - 菜单过滤仅改善体验，不能替代 BFF/API 对直接深链和数据请求的授权拒绝。
 
 ## 10. 参考文件清单

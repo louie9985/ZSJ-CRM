@@ -12,7 +12,7 @@
 
 ## Allowed Assumptions
 
-- `platform.task-center` and `platform.notifications` may own business-neutral technical permissions for their existing HTTP capabilities.
+- `crm.task-center` and `crm.notifications` may own business-neutral technical permissions for their existing HTTP capabilities.
 - The unread count uses the same Notification `list` permission because it is an aggregate over the same current-principal visible collection, not a separate resource authority.
 - These platform HTTP permissions currently declare no scope dimensions. Policy publication may bind them only with an explicit resource-wide scope; Task Center/Notification ownership checks remain mandatory.
 
@@ -44,8 +44,8 @@
 
 - `node --test scripts/check/permission-http-contracts.test.mjs`: 2/2 passed. It validates both schemas, all nine HTTP operation bindings, eight unique catalog declarations, exact PermissionRequest/code agreement, Owner namespace ownership, full catalog use, and absence of role/grant fields.
 - `pnpm exec eslint scripts/check/permission-http-contracts.test.mjs --max-warnings 0`: passed.
-- `pnpm --filter @ai-crm/platform-task-center test`: 35/35 ordinary tests passed; 3 PostgreSQL integration tests remained intentionally skipped by the ordinary package command.
-- `pnpm --filter @ai-crm/platform-notifications test`: 18/18 ordinary tests passed; 3 PostgreSQL integration tests remained intentionally skipped by the ordinary package command.
+- `pnpm --filter @ai-crm/crm-task-center test`: 35/35 ordinary tests passed; 3 PostgreSQL integration tests remained intentionally skipped by the ordinary package command.
+- `pnpm --filter @ai-crm/crm-notifications test`: 18/18 ordinary tests passed; 3 PostgreSQL integration tests remained intentionally skipped by the ordinary package command.
 - Read-only `renderArtifacts(process.cwd())`: all source OpenAPI documents, JSON Schemas, and AsyncAPI documents validated and five artifacts rendered in memory; generated files were not written by this line.
 - `git diff --check`: passed.
 

@@ -23,12 +23,6 @@
       "restoreEvidence": { "evidenceRef": "evidence://synthetic/database/ai-crm/restore", "evidenceDigest": "sha256:2133333333333333333333333333333333333333333333333333333333333333" },
       "verificationEvidence": { "evidenceRef": "evidence://synthetic/database/ai-crm/verification", "evidenceDigest": "sha256:2144444444444444444444444444444444444444444444444444444444444444" }
     },
-    "keycloak": {
-      "backupArtifact": { "evidenceRef": "evidence://synthetic/database/keycloak/backup-artifact", "evidenceDigest": "sha256:2211111111111111111111111111111111111111111111111111111111111111" },
-      "backupEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/backup", "evidenceDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
-      "restoreEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/restore", "evidenceDigest": "sha256:2233333333333333333333333333333333333333333333333333333333333333" },
-      "verificationEvidence": { "evidenceRef": "evidence://synthetic/database/keycloak/verification", "evidenceDigest": "sha256:2244444444444444444444444444444444444444444444444444444444444444" }
-    },
     "flowable": {
       "backupArtifact": { "evidenceRef": "evidence://synthetic/database/flowable/backup-artifact", "evidenceDigest": "sha256:2311111111111111111111111111111111111111111111111111111111111111" },
       "backupEvidence": { "evidenceRef": "evidence://synthetic/database/flowable/backup", "evidenceDigest": "sha256:2322222222222222222222222222222222222222222222222222222222222222" },
@@ -57,7 +51,6 @@
   "configurationArtifacts": {
     "compose": { "evidenceRef": "evidence://synthetic/configuration/compose", "evidenceDigest": "sha256:6111111111111111111111111111111111111111111111111111111111111111" },
     "nginx": { "evidenceRef": "evidence://synthetic/configuration/nginx", "evidenceDigest": "sha256:6222222222222222222222222222222222222222222222222222222222222222" },
-    "keycloakRealm": { "evidenceRef": "evidence://synthetic/configuration/keycloak-realm", "evidenceDigest": "sha256:6333333333333333333333333333333333333333333333333333333333333333" },
     "flowableConfiguration": { "evidenceRef": "evidence://synthetic/configuration/flowable", "evidenceDigest": "sha256:6444444444444444444444444444444444444444444444444444444444444444" },
     "infrastructureInventory": { "evidenceRef": "evidence://synthetic/configuration/infrastructure-inventory", "evidenceDigest": "sha256:6555555555555555555555555555555555555555555555555555555555555555" }
   },

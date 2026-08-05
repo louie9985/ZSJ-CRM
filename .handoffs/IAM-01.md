@@ -1,8 +1,10 @@
 # IAM-01 Keycloak、BFF 与 Auth Context
 
+> **历史记录，禁止继续执行。** 本任务中的 Keycloak、OIDC、Auth Context 验证器和外部身份结论已于 2026-08-04 被 ADR-0034 取代；不得据此恢复已删除代码。
+
 - Status: G2 approved
 - Owner: 当前会话
-- Allowed paths: `packages/platform-modules/auth-context`、`apps/api` 的认证适配边界、`deploy/keycloak`、认证 HTTP/错误契约、生成契约制品、根 Lockfile、本任务 handoff
+- Allowed paths: `packages/crm-modules/auth-context`、`apps/api` 的认证适配边界、`deploy/keycloak`、认证 HTTP/错误契约、生成契约制品、根 Lockfile、本任务 handoff
 
 ## Known Facts
 

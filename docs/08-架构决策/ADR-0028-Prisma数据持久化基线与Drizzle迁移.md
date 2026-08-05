@@ -12,7 +12,7 @@
 - 项目负责人要求全项目统一使用 Prisma，不再以 Drizzle 作为默认 ORM 或 Schema 工具。
 - 当前仓库已经存在 Drizzle 依赖、六份 Drizzle Schema 源码、共享数据库运行时、十五份已提交 SQL 迁移，以及大量直接使用参数化 SQL 的模块 Repository。
 - 已执行或可能已执行的历史 SQL 迁移是数据库历史事实，不能为了更换 ORM 而改写、重排或删除。
-- 模块不得跨模块查询或修改表；ORM 生成类型和事务句柄不得成为 HTTP、事件、`platform-sdk` 或模块公共契约。
+- 模块不得跨模块查询或修改表；ORM 生成类型和事务句柄不得成为 HTTP、事件、`crm-sdk` 或模块公共契约。
 - Transactional Outbox/Inbox 必须继续与模块本地状态变更处于同一个 PostgreSQL 事务。
 
 ## 允许的假设

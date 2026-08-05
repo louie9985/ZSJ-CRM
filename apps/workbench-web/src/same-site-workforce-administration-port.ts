@@ -5,19 +5,13 @@ import type {
   WorkforceAccountPage,
   WorkforceAccountQuery,
   WorkforceAccountView,
-  WorkforceIdentitySyncOperationView,
   WorkforceAdministrationCommand,
   WorkforceAdministrationPort,
   WorkforceAdministrationSnapshot,
 } from "./workbench-port";
 
 type FetchPort = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-type NavigatePort = (url: string) => void;
-
-const accountActions = new Set<WorkforceAccountAction>(["deactivate", "edit", "grant_crm_administrator", "reactivate", "release_phone", "reset_password", "retry_identity_sync", "revoke_crm_administrator", "transfer"]);
-const identitySyncActions = new Set<WorkforceIdentitySyncOperationView["action"]>(["disable", "revoke_sessions", "synchronize_login_identifiers"]);
-const identitySyncStatuses = new Set<WorkforceIdentitySyncOperationView["status"]>(["failed", "pending", "succeeded", "superseded"]);
-const identitySyncErrors = new Set<NonNullable<WorkforceIdentitySyncOperationView["errorCode"]>>(["eventing_handler_timeout", "identity_sync_failed", "keycloak_administration_unavailable", "keycloak_entity_conflict"]);
+const accountActions = new Set<WorkforceAccountAction>(["deactivate", "edit", "grant_crm_administrator", "reactivate", "release_phone", "reset_password", "revoke_crm_administrator", "transfer"]);
 
 function record(value: unknown, code: string): Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(code);
@@ -53,25 +47,13 @@ function phones(value: unknown): readonly string[] {
   return Object.freeze(parsed);
 }
 
-function identitySync(value: unknown): WorkforceIdentitySyncOperationView {
-  const item = record(value, "workforce_identity_sync_invalid");
-  const action = text(item["action"], "workforce_identity_sync_invalid", 64) as WorkforceIdentitySyncOperationView["action"];
-  const status = text(item["status"], "workforce_identity_sync_invalid", 32) as WorkforceIdentitySyncOperationView["status"];
-  const errorCode = optionalText(item["errorCode"], "workforce_identity_sync_invalid") as WorkforceIdentitySyncOperationView["errorCode"];
-  if (!identitySyncActions.has(action) || !identitySyncStatuses.has(status) || (errorCode !== undefined && !identitySyncErrors.has(errorCode)) || (status === "failed") !== (errorCode !== undefined)) throw new Error("workforce_identity_sync_invalid");
-  const completedAt = optionalText(item["completedAt"], "workforce_identity_sync_invalid");
-  const retryOfOperationId = optionalText(item["retryOfOperationId"], "workforce_identity_sync_invalid");
-  return Object.freeze({ action, ...(completedAt === undefined ? {} : { completedAt }), ...(errorCode === undefined ? {} : { errorCode }), operationId: text(item["operationId"], "workforce_identity_sync_invalid"), requestedAt: text(item["requestedAt"], "workforce_identity_sync_invalid", 40), ...(retryOfOperationId === undefined ? {} : { retryOfOperationId }), status });
-}
-
 function account(value: unknown): WorkforceAccountView {
   const item = record(value, "workforce_account_invalid");
   const status = text(item["status"], "workforce_account_status_invalid", 32);
-  if (!["active", "credential_pending", "disabled", "failed", "provisioning"].includes(status)) throw new Error("workforce_account_status_invalid");
+  if (status !== "active" && status !== "disabled") throw new Error("workforce_account_status_invalid");
   const departmentId = optionalText(item["departmentId"], "workforce_department_id_invalid");
   const departmentName = optionalText(item["departmentName"], "workforce_department_name_invalid");
   const phone = optionalText(item["phone"], "workforce_phone_invalid");
-  const latestIdentitySync = item["latestIdentitySync"] === undefined ? undefined : identitySync(item["latestIdentitySync"]);
   const positionId = optionalText(item["positionId"], "workforce_position_id_invalid");
   const positionName = optionalText(item["positionName"], "workforce_position_name_invalid");
   return Object.freeze({
@@ -81,7 +63,6 @@ function account(value: unknown): WorkforceAccountView {
     ...(departmentId === undefined ? {} : { departmentId }),
     ...(departmentName === undefined ? {} : { departmentName }),
     legalName: text(item["legalName"], "workforce_legal_name_invalid", 64),
-    ...(latestIdentitySync === undefined ? {} : { latestIdentitySync }),
     ...(phone === undefined ? {} : { phone }),
     ...(positionId === undefined ? {} : { positionId }),
     ...(positionName === undefined ? {} : { positionName }),
@@ -120,24 +101,27 @@ async function json(response: Response, code: string): Promise<unknown> {
   return body;
 }
 
+async function request(fetchPort: FetchPort, input: RequestInfo | URL, init: RequestInit, code: string): Promise<Response> {
+  try { return await fetchPort(input, init); }
+  catch { throw new Error(code); }
+}
+
 export function createSameSiteWorkforceAdministrationPort(
   fetchPort: FetchPort = globalThis.fetch,
-  navigate: NavigatePort = (url) => { globalThis.location.assign(url); },
 ): WorkforceAdministrationPort {
   return Object.freeze({
-    async beginSystemAccountReauthentication(): Promise<void> {
-      const session = record(await json(await fetchPort("/auth/pc/session", { credentials: "same-origin", headers: { Accept: "application/json" } }), "workforce_session_unavailable"), "workforce_session_invalid");
+    async reauthenticate(password: string): Promise<void> {
+      const session = record(await json(await request(fetchPort, "/auth/pc/session", { credentials: "same-origin", headers: { Accept: "application/json" } }, "workforce_session_unavailable"), "workforce_session_unavailable"), "workforce_session_invalid");
+      const accountId = text(session["accountId"], "workforce_session_invalid", 255);
       const csrfToken = text(session["csrfToken"], "workforce_session_invalid", 512);
-      const body = record(await json(await fetchPort("/auth/pc/reauthentication?returnTo=%2Fcrm%2Fworkforce-administration", {
+      const reauthenticated = record(await json(await request(fetchPort, "/auth/pc/reauthentication", {
+        body: JSON.stringify({ password }),
         credentials: "same-origin",
-        headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+        headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
         method: "POST",
-      }), "workforce_reauthentication_failed"), "workforce_reauthentication_invalid");
-      const location = text(body["redirectUrl"], "workforce_reauthentication_location_invalid", 4096);
-      if (/[\0\r\n]/u.test(location)) throw new Error("workforce_reauthentication_location_invalid");
-      const parsed = new URL(location, globalThis.location.origin);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("workforce_reauthentication_location_invalid");
-      navigate(parsed.href);
+      }, "workforce_reauthentication_failed"), "workforce_reauthentication_failed"), "workforce_reauthentication_invalid");
+      const reauthenticatedUntil = text(reauthenticated["reauthenticatedUntil"], "workforce_reauthentication_invalid", 64);
+      if (text(reauthenticated["accountId"], "workforce_reauthentication_invalid", 255) !== accountId || !Number.isFinite(Date.parse(reauthenticatedUntil)) || Date.parse(reauthenticatedUntil) <= Date.now()) throw new Error("workforce_reauthentication_invalid");
     },
     async load(): Promise<WorkforceAdministrationSnapshot> {
       const body = record(await json(await fetchPort("/workforce-administration", { credentials: "same-origin", headers: { Accept: "application/json" } }), "workforce_administration_unavailable"), "workforce_snapshot_invalid");
@@ -163,7 +147,7 @@ export function createSameSiteWorkforceAdministrationPort(
       if (page < 1 || pageSize < 1 || pageSize > 100) throw new Error("workforce_account_page_invalid");
       return Object.freeze({ items: Object.freeze(body["items"].map(account)), page, pageSize, total });
     },
-    async execute(command: WorkforceAdministrationCommand): Promise<{ readonly credentialRedirectUrl?: string }> {
+    async execute(command: WorkforceAdministrationCommand): Promise<{ readonly replayed: boolean }> {
       const session = record(await json(await fetchPort("/auth/pc/session", { credentials: "same-origin", headers: { Accept: "application/json" } }), "workforce_session_unavailable"), "workforce_session_invalid");
       const csrfToken = text(session["csrfToken"], "workforce_session_invalid", 512);
       const response = record(await json(await fetchPort("/workforce-administration/commands", {
@@ -172,9 +156,8 @@ export function createSameSiteWorkforceAdministrationPort(
         headers: { Accept: "application/json", "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), "X-CSRF-Token": csrfToken },
         method: "POST",
       }), "workforce_command_failed"), "workforce_command_result_invalid");
-      const credentialRedirectUrl = optionalText(response["credentialRedirectUrl"], "workforce_credential_url_invalid");
-      if (credentialRedirectUrl !== undefined && (!credentialRedirectUrl.startsWith("/") || credentialRedirectUrl.startsWith("//"))) throw new Error("workforce_credential_url_invalid");
-      return Object.freeze(credentialRedirectUrl === undefined ? {} : { credentialRedirectUrl });
+      if (typeof response["replayed"] !== "boolean") throw new Error("workforce_command_result_invalid");
+      return Object.freeze({ replayed: response["replayed"] });
     },
   });
 }

@@ -8,7 +8,6 @@ export interface PlatformItem {
   bodyFormat?: "plain-text" | "restricted-markdown";
   createdAt?: string;
   deepLink?: {
-    applicationId: string;
     routeId: string;
     resourceId: string;
     resourceType: string;
@@ -40,23 +39,12 @@ export type BootstrapResult =
       };
       counts: { tasks: number; notifications: number; forms: number; files: number };
       collections: Record<"tasks" | "notifications" | "forms" | "files", PlatformCollection>;
-      applicationIds?: readonly string[];
       navigationIds?: readonly string[];
       workspaceProfileId?: string;
     };
 
-export type WorkforceAccountStatus = "active" | "credential_pending" | "disabled" | "failed" | "provisioning";
-export type WorkforceAccountAction = "deactivate" | "edit" | "grant_crm_administrator" | "reactivate" | "release_phone" | "reset_password" | "retry_identity_sync" | "revoke_crm_administrator" | "transfer";
-
-export interface WorkforceIdentitySyncOperationView {
-  readonly action: "disable" | "revoke_sessions" | "synchronize_login_identifiers";
-  readonly completedAt?: string;
-  readonly errorCode?: "eventing_handler_timeout" | "identity_sync_failed" | "keycloak_administration_unavailable" | "keycloak_entity_conflict";
-  readonly operationId: string;
-  readonly requestedAt: string;
-  readonly retryOfOperationId?: string;
-  readonly status: "failed" | "pending" | "succeeded" | "superseded";
-}
+export type WorkforceAccountStatus = "active" | "disabled";
+export type WorkforceAccountAction = "deactivate" | "edit" | "grant_crm_administrator" | "reactivate" | "release_phone" | "reset_password" | "revoke_crm_administrator" | "transfer";
 
 export interface WorkforceAccountView {
   readonly accountId: string;
@@ -65,7 +53,6 @@ export interface WorkforceAccountView {
   readonly departmentId?: string;
   readonly departmentName?: string;
   readonly legalName: string;
-  readonly latestIdentitySync?: WorkforceIdentitySyncOperationView;
   readonly phone?: string;
   readonly positionId?: string;
   readonly positionName?: string;
@@ -125,8 +112,6 @@ export type WorkforceAdministrationCommand =
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "reset_password"; readonly password: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
-  | { readonly accountId: string; readonly ceremonyOperationId: string; readonly expectedRevision: number; readonly kind: "complete_credential_ceremony" }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "reactivate_account"; readonly positionId: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "set_crm_administrator"; readonly enabled: boolean }
   | { readonly departmentId: string; readonly kind: "create_department"; readonly name: string; readonly parentDepartmentId?: string }
@@ -137,22 +122,32 @@ export type WorkforceAdministrationCommand =
   | { readonly expectedRevision: number; readonly kind: "deactivate_position" | "reactivate_position"; readonly positionId: string };
 
 export interface WorkforceAdministrationPort {
-  beginSystemAccountReauthentication?(): Promise<void>;
-  execute(command: WorkforceAdministrationCommand): Promise<{ readonly credentialRedirectUrl?: string }>;
+  execute(command: WorkforceAdministrationCommand): Promise<{ readonly replayed: boolean }>;
   listAccounts(query: WorkforceAccountQuery): Promise<WorkforceAccountPage>;
   load(): Promise<WorkforceAdministrationSnapshot>;
+  reauthenticate(password: string): Promise<void>;
 }
 
 export interface WorkbenchPort {
-  beginLogin(returnTo: string): void;
+  login(identifier: string, password: string): Promise<"authenticated" | "invalid" | "rate-limited" | "security-rejected" | "unavailable">;
   bootstrap(): Promise<BootstrapResult>;
   logout(): Promise<{ kind: "logged-out" | "session-expired" }>;
+  partTime?: PartTimePort;
   pollCollections?(): Promise<Readonly<Pick<Extract<BootstrapResult, { kind: "ready" }>["collections"], "tasks" | "notifications">>>;
   notificationTemplates?: import("./notification-template-port").NotificationTemplatePort;
-  sessionPolicy?: import("./session-policy-port").SessionPolicyPort;
   workforceAdministration?: WorkforceAdministrationPort;
   syntheticFormEvidence?: import("./synthetic-form-evidence-page").SyntheticFormEvidencePort & {
     readonly fileReference: import("./synthetic-form-evidence-page").SyntheticFormFileReference;
     loadRelease(): Promise<import("./synthetic-form-evidence-page").SyntheticFormEvidenceRelease>;
   };
+}
+
+export type PartTimeBootstrapResult =
+  | { readonly kind: "logged-out" }
+  | { readonly kind: "ready"; readonly displayName: string };
+
+export interface PartTimePort {
+  login(identifier: string, password: string): Promise<"authenticated" | "invalid" | "rate-limited" | "security-rejected" | "unavailable">;
+  bootstrap(): Promise<PartTimeBootstrapResult>;
+  logout(): Promise<{ kind: "logged-out" | "session-expired" }>;
 }

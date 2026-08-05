@@ -3,7 +3,7 @@ import {
   type JobEnvelope,
   type MessageHandler,
   type ValidatedMessage,
-} from "@ai-crm/platform-eventing-outbox";
+} from "@ai-crm/crm-eventing-outbox";
 
 import {
   walkingSkeletonSourceType,

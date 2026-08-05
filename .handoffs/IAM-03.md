@@ -3,7 +3,7 @@
 - Status: review/fix loop complete; G2 accepted
 - Owner: 当前会话
 - Branch: `codex/IAM-03-authorization-core`
-- Allowed paths: `packages/platform-modules/authorization`, `contracts/permissions`, the corresponding `packages/platform-sdk` entry, dependency manifests, tests, and directly related documentation
+- Allowed paths: `packages/crm-modules/authorization`, `contracts/permissions`, the corresponding `packages/crm-sdk` entry, dependency manifests, tests, and directly related documentation
 
 ## Known Facts
 

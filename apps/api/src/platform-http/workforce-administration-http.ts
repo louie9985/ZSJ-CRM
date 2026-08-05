@@ -1,4 +1,4 @@
-export type WorkforceAccountStatus = "active" | "credential_pending" | "disabled" | "failed" | "provisioning";
+export type WorkforceAccountStatus = "active" | "disabled";
 
 export type WorkforceAdministrationCommand =
   | { readonly departmentId: string; readonly initialPassword: string; readonly kind: "create_account"; readonly legalName: string; readonly phone?: string; readonly positionId: string; readonly username: string }
@@ -7,8 +7,6 @@ export type WorkforceAdministrationCommand =
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "deactivate_account" }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "reset_password"; readonly password: string }
   | { readonly accountId: string; readonly expectedRevision: number; readonly kind: "release_phone"; readonly phone: string }
-  | { readonly accountId: string; readonly expectedRevision: number; readonly failedOperationId: string; readonly kind: "retry_identity_sync" }
-  | { readonly accountId: string; readonly ceremonyOperationId: string; readonly expectedRevision: number; readonly kind: "complete_credential_ceremony" }
   | { readonly accountId: string; readonly departmentId: string; readonly expectedRevision: number; readonly kind: "reactivate_account"; readonly positionId: string }
   | { readonly accountId: string; readonly enabled: boolean; readonly expectedRevision: number; readonly kind: "set_crm_administrator" }
   | { readonly departmentId: string; readonly kind: "create_department"; readonly name: string; readonly parentDepartmentId?: string }
@@ -32,7 +30,6 @@ export interface WorkforceAccountView {
   readonly departmentId?: string;
   readonly departmentName?: string;
   readonly legalName: string;
-  readonly latestIdentitySync?: WorkforceIdentitySyncOperationView;
   readonly phone?: string;
   readonly positionId?: string;
   readonly positionName?: string;
@@ -40,16 +37,6 @@ export interface WorkforceAccountView {
   readonly revision: number;
   readonly status: WorkforceAccountStatus;
   readonly username: string;
-}
-
-export interface WorkforceIdentitySyncOperationView {
-  readonly action: "disable" | "revoke_sessions" | "synchronize_login_identifiers";
-  readonly completedAt?: string;
-  readonly errorCode?: "eventing_handler_timeout" | "identity_sync_failed" | "keycloak_administration_unavailable" | "keycloak_entity_conflict";
-  readonly operationId: string;
-  readonly requestedAt: string;
-  readonly retryOfOperationId?: string;
-  readonly status: "failed" | "pending" | "succeeded" | "superseded";
 }
 
 export interface WorkforceDepartmentView {
@@ -96,7 +83,7 @@ export interface WorkforceAccountPage {
 }
 
 export interface WorkforceAdministrationFacade {
-  execute(input: Readonly<WorkforceAdministrationFacadeCommand>): Promise<Readonly<{ credentialRedirectUrl?: string }>>;
+  execute(input: Readonly<WorkforceAdministrationFacadeCommand>): Promise<Readonly<{ replayed: boolean }>>;
   listAccounts(input: Readonly<{ credential: string; query: WorkforceAccountQuery; traceId: string }>): Promise<Readonly<WorkforceAccountPage>>;
   load(input: Readonly<{ credential: string; traceId: string }>): Promise<Readonly<WorkforceAdministrationSnapshot>>;
 }
@@ -127,9 +114,9 @@ const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
 const CREDENTIAL = /^[A-Za-z0-9_-]{32,512}$/u;
 const USERNAME = /^[A-Za-z0-9._-]{4,32}$/u;
 const PHONE = /^\+?[0-9]{6,20}$/u;
-const ACCOUNT_ACTIONS = new Set(["deactivate", "edit", "grant_crm_administrator", "reactivate", "release_phone", "reset_password", "retry_identity_sync", "revoke_crm_administrator", "transfer"]);
+const ACCOUNT_ACTIONS = new Set(["deactivate", "edit", "grant_crm_administrator", "reactivate", "release_phone", "reset_password", "revoke_crm_administrator", "transfer"]);
 const DIRECTORY_ACTIONS = new Set(["deactivate", "edit", "reactivate"]);
-const STATUSES = new Set<WorkforceAccountStatus>(["active", "credential_pending", "disabled", "failed", "provisioning"]);
+const STATUSES = new Set<WorkforceAccountStatus>(["active", "disabled"]);
 
 class InvalidRequest extends Error {}
 class PasswordPolicyViolation extends Error {}
@@ -230,14 +217,6 @@ function command(value: unknown): WorkforceAdministrationCommand {
       const parsed = exact(candidate, ["accountId", "expectedRevision", "kind", "phone"]);
       return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, phone: phone(parsed["phone"]) });
     }
-    case "retry_identity_sync": {
-      const parsed = exact(candidate, ["accountId", "expectedRevision", "failedOperationId", "kind"]);
-      return Object.freeze({ accountId: uuid(parsed["accountId"]), expectedRevision: revision(parsed["expectedRevision"]), failedOperationId: uuid(parsed["failedOperationId"]), kind });
-    }
-    case "complete_credential_ceremony": {
-      const parsed = exact(candidate, ["accountId", "ceremonyOperationId", "expectedRevision", "kind"]);
-      return Object.freeze({ accountId: uuid(parsed["accountId"]), ceremonyOperationId: uuid(parsed["ceremonyOperationId"]), expectedRevision: revision(parsed["expectedRevision"]), kind });
-    }
     case "reactivate_account": {
       const parsed = exact(candidate, ["accountId", "departmentId", "expectedRevision", "kind", "positionId"]);
       return Object.freeze({ accountId: uuid(parsed["accountId"]), departmentId: uuid(parsed["departmentId"]), expectedRevision: revision(parsed["expectedRevision"]), kind, positionId: uuid(parsed["positionId"]) });
@@ -322,31 +301,19 @@ function actions(value: unknown, allowed: ReadonlySet<string>): readonly string[
   return Object.freeze(result);
 }
 
-function identitySync(value: unknown): WorkforceIdentitySyncOperationView {
-  const parsed = exact(value, ["action", "operationId", "requestedAt", "status"], ["completedAt", "errorCode", "retryOfOperationId"], true);
-  const action = parsed["action"]; const status = parsed["status"];
-  if (typeof action !== "string" || !["disable", "revoke_sessions", "synchronize_login_identifiers"].includes(action) || typeof status !== "string" || !["failed", "pending", "succeeded", "superseded"].includes(status)) return invalidResult();
-  const completedAt = Object.hasOwn(parsed, "completedAt") ? resultText(parsed["completedAt"], 40) : undefined;
-  const errorCode = parsed["errorCode"];
-  if (errorCode !== undefined && (typeof errorCode !== "string" || !["eventing_handler_timeout", "identity_sync_failed", "keycloak_administration_unavailable", "keycloak_entity_conflict"].includes(errorCode))) return invalidResult();
-  const retryOfOperationId = Object.hasOwn(parsed, "retryOfOperationId") ? resultUuid(parsed["retryOfOperationId"]) : undefined;
-  return Object.freeze({ action: action as WorkforceIdentitySyncOperationView["action"], ...(completedAt === undefined ? {} : { completedAt }), ...(errorCode === undefined ? {} : { errorCode: errorCode as NonNullable<WorkforceIdentitySyncOperationView["errorCode"]> }), operationId: resultUuid(parsed["operationId"]), requestedAt: resultText(parsed["requestedAt"], 40), ...(retryOfOperationId === undefined ? {} : { retryOfOperationId }), status: status as WorkforceIdentitySyncOperationView["status"] });
-}
-
 function account(value: unknown): WorkforceAccountView {
-  const parsed = exact(value, ["accountId", "allowedActions", "crmAdministrator", "legalName", "releasablePhones", "revision", "status", "username"], ["departmentId", "departmentName", "latestIdentitySync", "phone", "positionId", "positionName"], true);
+  const parsed = exact(value, ["accountId", "allowedActions", "crmAdministrator", "legalName", "releasablePhones", "revision", "status", "username"], ["departmentId", "departmentName", "phone", "positionId", "positionName"], true);
   if (typeof parsed["accountId"] !== "string" || !UUID.test(parsed["accountId"]) || typeof parsed["crmAdministrator"] !== "boolean" || typeof parsed["revision"] !== "number" || !Number.isSafeInteger(parsed["revision"]) || parsed["revision"] < 0 || typeof parsed["status"] !== "string" || !STATUSES.has(parsed["status"] as WorkforceAccountStatus) || typeof parsed["username"] !== "string" || !USERNAME.test(parsed["username"])) return invalidResult();
   const optional = (key: string, maximum: number): string | undefined => Object.hasOwn(parsed, key) ? resultText(parsed[key], maximum) : undefined;
   const departmentId = Object.hasOwn(parsed, "departmentId") ? resultUuid(parsed["departmentId"]) : undefined;
   const departmentName = optional("departmentName", 64);
-  const latestIdentitySync = Object.hasOwn(parsed, "latestIdentitySync") ? identitySync(parsed["latestIdentitySync"]) : undefined;
   const positionId = Object.hasOwn(parsed, "positionId") ? resultUuid(parsed["positionId"]) : undefined;
   const positionName = optional("positionName", 64);
   const parsedPhone = Object.hasOwn(parsed, "phone") ? resultPhone(parsed["phone"]) : undefined;
   return Object.freeze({
     accountId: parsed["accountId"].toLowerCase(), allowedActions: actions(parsed["allowedActions"], ACCOUNT_ACTIONS), crmAdministrator: parsed["crmAdministrator"],
     ...(departmentId === undefined ? {} : { departmentId }), ...(departmentName === undefined ? {} : { departmentName }),
-    legalName: resultText(parsed["legalName"], 64), ...(latestIdentitySync === undefined ? {} : { latestIdentitySync }), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }),
+    legalName: resultText(parsed["legalName"], 64), ...(parsedPhone === undefined ? {} : { phone: parsedPhone }),
     ...(positionId === undefined ? {} : { positionId }), ...(positionName === undefined ? {} : { positionName }), releasablePhones: resultPhones(parsed["releasablePhones"]),
     revision: parsed["revision"], status: parsed["status"] as WorkforceAccountStatus, username: parsed["username"],
   });
@@ -399,12 +366,9 @@ function accountPage(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function commandResult(value: unknown): Readonly<Record<string, unknown>> {
-  const parsed = exact(value, [], ["credentialRedirectUrl", "replayed"], true);
-  const replayed = parsed["replayed"] === true;
-  if (!Object.hasOwn(parsed, "credentialRedirectUrl")) return Object.freeze({ replayed });
-  const url = resultText(parsed["credentialRedirectUrl"], 2048);
-  if (!url.startsWith("/") || url.startsWith("//") || /(?:password|token|secret)=/iu.test(url)) return invalidResult();
-  return Object.freeze({ credentialRedirectUrl: url, replayed });
+  const parsed = exact(value, ["replayed"], [], true);
+  if (typeof parsed["replayed"] !== "boolean") return invalidResult();
+  return Object.freeze({ replayed: parsed["replayed"] });
 }
 
 function headers(traceId?: string): Readonly<Record<string, string>> {

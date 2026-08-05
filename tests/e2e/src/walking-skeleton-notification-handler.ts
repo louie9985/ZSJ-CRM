@@ -4,16 +4,16 @@ import {
   type JobEnvelope,
   type MessageHandler,
   type ValidatedMessage,
-} from "@ai-crm/platform-eventing-outbox";
+} from "@ai-crm/crm-eventing-outbox";
 import type {
   NotificationActor,
   NotificationCenter,
   NotificationDeepLink,
   NotificationIntent,
   RecipientSelector,
-} from "@ai-crm/platform-notifications";
+} from "@ai-crm/crm-notifications";
 
-export const walkingSkeletonNotificationJobType = "platform.notifications.intent-submit" as const;
+export const walkingSkeletonNotificationJobType = "crm.notifications.intent-submit" as const;
 
 export interface WalkingSkeletonNotificationActorResolver {
   resolve(reference: string): Promise<NotificationActor>;

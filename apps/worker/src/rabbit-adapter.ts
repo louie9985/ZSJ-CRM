@@ -9,7 +9,7 @@ import {
   type Message,
   type Options,
 } from "amqplib";
-import type { RabbitConfirmChannel, RabbitDelivery } from "@ai-crm/platform-eventing-outbox";
+import type { RabbitConfirmChannel, RabbitDelivery } from "@ai-crm/crm-eventing-outbox";
 import type { RabbitConsumerAdapter } from "./handlers.js";
 import type { RabbitConnectionConfiguration } from "./rabbit-config.js";
 

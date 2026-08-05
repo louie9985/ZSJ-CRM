@@ -16,14 +16,13 @@ const directories = [
     "eventing-outbox",
     "task-center",
     "audit",
-    "app-registry",
     "form-schema",
     "business-configuration",
     "notifications",
     "file-center",
     "authorization",
     "workforce-access",
-  ].map((name) => resolve(import.meta.dirname, `../../platform-modules/${name}/migrations`)),
+  ].map((name) => resolve(import.meta.dirname, `../../crm-modules/${name}/migrations`)),
 ];
 
 function runtime(executor: Pool): RuntimeRoleCapabilityRuntime {

@@ -77,11 +77,11 @@ Provide a stable, business-neutral Workflow Facade over Flowable definitions, ve
 
 ## Verification Evidence
 
-- `pnpm --filter @ai-crm/platform-workflow lint`: passed.
-- `pnpm --filter @ai-crm/platform-workflow typecheck`: passed.
-- `pnpm --filter @ai-crm/platform-workflow test`: 42 passed, 1 integration test skipped by the unit runner.
+- `pnpm --filter @ai-crm/crm-workflow lint`: passed.
+- `pnpm --filter @ai-crm/crm-workflow typecheck`: passed.
+- `pnpm --filter @ai-crm/crm-workflow test`: 42 passed, 1 integration test skipped by the unit runner.
 - `pnpm contracts:check`: 28/28 package contract checks passed.
-- `pnpm --filter @ai-crm/platform-workflow test:integration`: 1/1 passed against isolated PostgreSQL and Flowable 7.2.0, covering deployment, exact version query, start, list, claim, release, complete, history, cancel, and cleanup.
+- `pnpm --filter @ai-crm/crm-workflow test:integration`: 1/1 passed against isolated PostgreSQL and Flowable 7.2.0, covering deployment, exact version query, start, list, claim, release, complete, history, cancel, and cleanup.
 - `pnpm check`: 140/140 tasks passed.
 - `git diff --check`: passed.
 - PRC-01 integration containers, network, volume, and temporary test resources were removed; no matching Docker residue remains.

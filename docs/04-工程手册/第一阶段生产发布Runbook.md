@@ -1,7 +1,7 @@
 # 第一阶段生产发布 Runbook
 
 - 状态：OPS-01 基线；首次真实发布仍受 CMP-01、E2E-01、OPS-02、容量评审和人工批准阻塞
-- 架构依据：ADR-0021、ADR-0022、ADR-0023
+- 架构依据：ADR-0021、ADR-0022、ADR-0023、ADR-0034
 - 适用拓扑：两台 Ubuntu CVM、两个独立 Docker Compose Project
 
 ## 1. 发布前失败关闭门
@@ -27,7 +27,7 @@
 4. 分别执行 `docker compose ... config --quiet`。Host B 另输出一份受限的已渲染 Compose 临时文件，执行 `node scripts/check/verify-worker-drain.mjs <rendered-host-b.yml>`；应用 drain 秒数必须是正整数并严格小于解析后的 Compose stop grace，等于、未解析变量或仅有字符串均停止发布。保留安全摘要/结果后删除临时文件。
 5. 仅在批准的 BFF 单上一版本密钥轮换窗口，为每台主机显式追加匹配的 `compose.host-*.bff-previous-key.yml`。未轮换时不得声明 previous ID 或挂载 previous key；启用时 ID、typed `*_FILE` 与单一命名文件必须齐全，否则停止。完成兼容窗口后移除 overlay 和主机文件，再执行 `docker compose ... pull`。
 
-Keycloak 首次管理员建立或恢复必须在受控维护窗口使用独立、临时、文件式凭据执行并进入安全审计；完成后立即撤销。常驻 Keycloak Compose 服务不挂载 bootstrap 管理员凭据，也不使用开发 Realm import。
+初始 `system_administrator` 只允许通过受限密码文件和幂等 bootstrap 建立；命令不得打印密码。完成后立即撤销初始密码文件并按受控流程设置正式凭据，账号、人员、任职、角色和审计必须原子落库。
 
 ## 3. 串行发布顺序
 
@@ -45,7 +45,7 @@ Keycloak 首次管理员建立或恢复必须在受控维护窗口使用独立�
 - 触发条件包括新实例不就绪、关键业务中立路径失败、错误率持续越界、消息无法安全消费、敏感信息进入观测或无法确认数据兼容。
 - 先停止继续放量并 Drain 新 Worker，再把受影响主机切回上一批准的不可变应用镜像。每台回滚后重新执行健康和冒烟。
 - 数据库迁移不随镜像自动回滚。兼容扩展保留；不可逆变更使用已批准前滚修复或恢复点，并升级为事故处置。
-- Keycloak、Flowable、RabbitMQ、Nginx 或 Secret 变更分别使用自己的版本化回滚/轮换步骤，不能由应用镜像回滚暗中覆盖。
+- Account/Access 数据与 Session Secret、Flowable、RabbitMQ、Nginx 或其他 Secret 变更分别使用自己的版本化回滚/轮换步骤，不能由应用镜像回滚暗中覆盖。
 
 ## 5. 主机/入口故障
 

@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "organization",
+  "purpose": "Expose the Assignment-to-workforce-person invariant as a composite reference target for assignment-scoped authorization grants.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Builds a unique index on the small organization.assignments table and then attaches a UNIQUE constraint.",
+  "dataImpact": "No row changes; duplicate assignment/person pairs fail closed.",
+  "backfill": "Not required because assignment_id is already the primary key.",
+  "destructive": false,
+  "recovery": "Drop assignments_id_person_unique only after removing every reviewed foreign key that depends on it.",
+  "forwardFix": "Append a reviewed organization-owned migration. Do not rewrite this migration after application."
+}

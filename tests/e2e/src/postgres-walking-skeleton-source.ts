@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { TaskLifecycleEvent } from "@ai-crm/platform-task-center";
+import type { TaskLifecycleEvent } from "@ai-crm/crm-task-center";
 
 import {
   WalkingSkeletonSourceError,
@@ -236,7 +236,7 @@ export function createPostgresWalkingSkeletonSource(options: {
           }
           const lifecycleEvent: TaskLifecycleEvent = Object.freeze({
             assigneeReference: state.assignee_reference,
-            deepLink: Object.freeze({ appId: "platform.synthetic", routeId: "platform.synthetic.detail" }),
+            deepLink: Object.freeze({ appId: "crm.synthetic", routeId: "crm.synthetic.detail" }),
             eventId: input.command.workflowCompletionEventId,
             occurredAt: clock().toISOString(),
             sourceTaskId: state.source_task_id,

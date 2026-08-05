@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EventingError } from "@ai-crm/platform-eventing-outbox";
-import { TaskCenterError } from "@ai-crm/platform-task-center";
+import { EventingError } from "@ai-crm/crm-eventing-outbox";
+import { TaskCenterError } from "@ai-crm/crm-task-center";
 import {
   classifyTaskProjectionError,
   taskProjectionBindingId,
@@ -11,7 +11,7 @@ import {
 
 describe("Task projection runtime policy", () => {
   it("seals the ADR-0027 runtime values and fixed TTL topology", () => {
-    expect(taskProjectionBindingId).toBe("platform.task-center.projection.v1");
+    expect(taskProjectionBindingId).toBe("crm.task-center.projection.v1");
     expect(taskProjectionConsumerId).toBe(taskProjectionBindingId);
     expect(taskProjectionRuntimePolicy).toEqual({
       backoffSeconds: [30, 300],
@@ -19,30 +19,30 @@ describe("Task projection runtime policy", () => {
       handler: "task-center.postgres-projection-apply.v1",
       id: "taskProjectionLifecyclePolicyV1",
       maxAttempts: 3,
-      owner: "platform.task-center",
+      owner: "crm.task-center",
       policyVersion: 1,
       prefetch: 2,
       timeoutMs: 10_000,
     });
     expect(taskProjectionRabbitTopology).toMatchObject({
       bindingId: taskProjectionBindingId,
-      deadLetterExchange: "ai-crm.platform.dead-letter.v1",
-      deadLetterQueue: "ai-crm.platform.task-center.projection.dead.v1",
-      exchange: "ai-crm.platform.events.v1",
-      queue: "ai-crm.platform.task-center.projection.v1",
+      deadLetterExchange: "ai-crm.crm.dead-letter.v1",
+      deadLetterQueue: "ai-crm.crm.task-center.projection.dead.v1",
+      exchange: "ai-crm.crm.events.v1",
+      queue: "ai-crm.crm.task-center.projection.v1",
       routingKey: "task-center.projection-lifecycle.v1",
     });
     expect(taskProjectionRabbitTopology.retryLayers).toEqual([
       {
         delaySeconds: 30,
-        exchange: "ai-crm.platform.retry.v1",
-        queue: "ai-crm.platform.task-center.projection.retry.30s.v1",
+        exchange: "ai-crm.crm.retry.v1",
+        queue: "ai-crm.crm.task-center.projection.retry.30s.v1",
         routingKey: "task-center.projection-lifecycle.v1.retry.30s",
       },
       {
         delaySeconds: 300,
-        exchange: "ai-crm.platform.retry.v1",
-        queue: "ai-crm.platform.task-center.projection.retry.300s.v1",
+        exchange: "ai-crm.crm.retry.v1",
+        queue: "ai-crm.crm.task-center.projection.retry.300s.v1",
         routingKey: "task-center.projection-lifecycle.v1.retry.300s",
       },
     ]);

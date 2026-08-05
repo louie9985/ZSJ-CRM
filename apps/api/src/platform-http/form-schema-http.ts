@@ -1,5 +1,5 @@
-import { AuthorizationDeniedError, AuthorizationUnavailableError, type PermissionRequest } from "@ai-crm/platform-authorization";
-import { FormSchemaError, type FormActor, type FormQueryContext, type FormSchemaQueryService } from "@ai-crm/platform-form-schema";
+import { AuthorizationDeniedError, AuthorizationUnavailableError, type PermissionRequest } from "@ai-crm/crm-authorization";
+import { FormSchemaError, type FormActor, type FormQueryContext, type FormSchemaQueryService } from "@ai-crm/crm-form-schema";
 
 import { BrowserSessionFailure } from "../auth/errors.js";
 
@@ -197,7 +197,7 @@ function queryContext(value: unknown): FormQueryContext {
 }
 
 function permission(operation: Route["operation"]): PermissionRequest {
-  return Object.freeze({ action: operation, resource: "platform.form-schema.form-release" });
+  return Object.freeze({ action: operation, resource: "crm.form-schema.form-release" });
 }
 
 function mapped(error: unknown): TransportFailure {

@@ -4,7 +4,7 @@ import {
   InMemoryTaskCenterStore,
   type TaskCenterStore,
   type TaskLifecycleEvent,
-} from "@ai-crm/platform-task-center";
+} from "@ai-crm/crm-task-center";
 
 import {
   createWalkingSkeletonSource,
@@ -151,7 +151,7 @@ describe("Walking Skeleton authoritative source", () => {
     });
     const event: TaskLifecycleEvent = {
       assigneeReference: "assignment.synthetic",
-      deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" },
+      deepLink: { appId: "crm.synthetic", routeId: "crm.synthetic.detail" },
       eventId: "30000000-0000-4000-8000-000000000010",
       occurredAt: "2026-07-30T00:00:00.000Z",
       sourceTaskId: "source-task.synthetic",

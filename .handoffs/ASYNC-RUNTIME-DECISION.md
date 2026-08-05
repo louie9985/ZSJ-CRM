@@ -50,11 +50,11 @@
 - `.handoffs/CMP-01-ASYNCAPI.md`
 - `contracts/asyncapi/topology.asyncapi.yaml`
 - `contracts/asyncapi/README.md`
-- `packages/platform-modules/eventing-outbox/src/index.ts`
-- `packages/platform-modules/eventing-outbox/src/types.ts`
-- `packages/platform-modules/eventing-outbox/src/rabbit.ts`
-- `packages/platform-modules/eventing-outbox/src/publisher.ts`
-- `packages/platform-modules/eventing-outbox/src/operations.ts`
+- `packages/crm-modules/eventing-outbox/src/index.ts`
+- `packages/crm-modules/eventing-outbox/src/types.ts`
+- `packages/crm-modules/eventing-outbox/src/rabbit.ts`
+- `packages/crm-modules/eventing-outbox/src/publisher.ts`
+- `packages/crm-modules/eventing-outbox/src/operations.ts`
 
 ## 允许修改路径
 

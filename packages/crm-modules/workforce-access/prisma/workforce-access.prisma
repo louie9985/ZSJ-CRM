@@ -1,0 +1,93 @@
+model WorkforceAccessAccount {
+  accountId          String   @id @db.Uuid @map("account_id")
+  workforcePersonId  String   @unique @db.Uuid @map("workforce_person_id")
+  username           String   @db.VarChar(32)
+  usernameNormalized String   @db.VarChar(32) @map("username_normalized")
+  phone              String?  @db.VarChar(21)
+  status             String   @db.VarChar(24)
+  revision           Int
+  securityRevision   Int      @default(0) @map("security_revision")
+  createdAt          DateTime @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("accounts")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessPasswordCredential {
+  accountId    String   @id @db.Uuid @map("account_id")
+  passwordHash String   @db.Text @map("password_hash")
+  revision     Int
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("password_credentials")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessLoginIdentifierHistory {
+  identifierId   String    @id @db.Uuid @map("identifier_id")
+  accountId      String    @db.Uuid @map("account_id")
+  kind           String    @db.VarChar(16)
+  value          String    @db.VarChar(64)
+  normalizedValue String   @db.VarChar(64) @map("normalized_value")
+  releasedAt     DateTime? @db.Timestamptz(6) @map("released_at")
+
+  @@index([accountId], map: "login_identifier_history_account_idx")
+  @@index([kind, normalizedValue], map: "login_identifier_history_lookup_idx")
+  @@map("login_identifier_history")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessOperation {
+  operationId String   @id @db.Uuid @map("operation_id")
+  accountId   String   @db.Uuid @map("account_id")
+  fingerprint String   @db.VarChar(64)
+  status      String   @db.VarChar(16)
+  traceId     String   @db.VarChar(128) @map("trace_id")
+  errorCode   String?  @db.VarChar(64) @map("error_code")
+  result      Json?
+  recordedAt  DateTime @db.Timestamptz(6) @map("recorded_at")
+
+  @@index([accountId, recordedAt], map: "operations_account_time_idx")
+  @@map("operations")
+  @@schema("workforce_access")
+}
+
+model PartTimeAccessAccount {
+  accountId       String   @id @db.Uuid @map("account_id")
+  partTimePersonId String  @unique @db.Uuid @map("part_time_person_id")
+  username        String   @db.VarChar(32)
+  usernameNormalized String @unique @db.VarChar(32) @map("username_normalized")
+  phone           String?  @db.VarChar(21)
+  status          String   @db.VarChar(24)
+  revision        Int
+  securityRevision Int     @default(0) @map("security_revision")
+  createdAt       DateTime @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("accounts")
+  @@schema("part_time_access")
+}
+
+model PartTimeAccessPasswordCredential {
+  accountId    String   @id @db.Uuid @map("account_id")
+  passwordHash String   @db.Text @map("password_hash")
+  revision     Int
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("password_credentials")
+  @@schema("part_time_access")
+}
+
+model PartTimeAccessLoginIdentifierHistory {
+  identifierId   String    @id @db.Uuid @map("identifier_id")
+  accountId      String    @db.Uuid @map("account_id")
+  kind           String    @db.VarChar(16)
+  value          String    @db.VarChar(64)
+  normalizedValue String   @db.VarChar(64) @map("normalized_value")
+  releasedAt     DateTime? @db.Timestamptz(6) @map("released_at")
+
+  @@index([accountId], map: "part_time_login_identifier_account_idx")
+  @@map("login_identifier_history")
+  @@schema("part_time_access")
+}

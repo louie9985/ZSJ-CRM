@@ -1,24 +1,24 @@
-import { createEventingCore, type JobEnvelope, type ValidatedMessage } from "@ai-crm/platform-eventing-outbox";
-import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
+import { createEventingCore, type JobEnvelope, type ValidatedMessage } from "@ai-crm/crm-eventing-outbox";
+import { InMemoryEventingStore } from "@ai-crm/crm-eventing-outbox/testing";
 import {
   createNotificationCenter,
   InMemoryNotificationStore,
   type NotificationActor,
-} from "@ai-crm/platform-notifications";
+} from "@ai-crm/crm-notifications";
 import { describe, expect, it, vi } from "vitest";
 
 import { createWalkingSkeletonNotificationMessageHandler } from "./walking-skeleton-notification-handler.js";
 
 const actor: NotificationActor = { activeAssignmentIds: ["assignment.synthetic"], principalId: "principal.synthetic" };
 const intent = {
-  deepLink: { applicationId: "platform.synthetic", resourceId: "source-task.synthetic", resourceType: "synthetic-resource", routeId: "platform.synthetic.detail" },
+  deepLink: { applicationId: "crm.synthetic", resourceId: "source-task.synthetic", resourceType: "synthetic-resource", routeId: "crm.synthetic.detail" },
   idempotencyKey: "notification.synthetic-0001",
   intentId: "40000000-0000-4000-8000-000000000002",
   producer: "tests.walking-skeleton",
   selectors: [{ referenceId: "assignment.synthetic", selectorType: "assignment" }],
   sourceId: "source-task.synthetic",
   sourceType: "tests.walking-skeleton",
-  templateKey: "platform.synthetic.notice",
+  templateKey: "crm.synthetic.notice",
   templateVersion: 1,
   variables: { subject: "synthetic task" },
 } as const;
@@ -27,7 +27,7 @@ const job = (overrides: Partial<JobEnvelope> = {}): JobEnvelope => ({
   correlationId: "40000000-0000-4000-8000-000000000003",
   idempotencyKey: "notification-job.synthetic-0001",
   jobId: "40000000-0000-4000-8000-000000000001",
-  jobType: "platform.notifications.intent-submit",
+  jobType: "crm.notifications.intent-submit",
   jobVersion: 1,
   payload: { actorContextReference: "actor-context.synthetic", intent },
   policy: { backoffSeconds: [30, 300], failureDisposition: "isolate", maxAttempts: 3, timeoutMs: 10_000 },
@@ -67,7 +67,7 @@ const setup = async (allowed = true) => {
   await center.publishTemplate({
     actor,
     bodyTemplate: "Open {{subject}}.",
-    notificationType: "platform.synthetic",
+    notificationType: "crm.synthetic",
     ownerReference: "tests.walking-skeleton",
     publishedAt: "2026-07-30T00:00:00.000Z",
     templateKey: intent.templateKey,

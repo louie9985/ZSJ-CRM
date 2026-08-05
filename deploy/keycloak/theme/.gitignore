@@ -1,7 +1,0 @@
-node_modules/
-dist/
-dist_keycloak/
-public/keycloakify-dev-resources/
-*.tsbuildinfo
-vite.config.js
-vite.config.d.ts

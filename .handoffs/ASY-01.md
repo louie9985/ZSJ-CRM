@@ -33,7 +33,7 @@
 ## 实现证据
 
 - 新增传输中立 Event v1 与私有 Job v1 JSON Schema；Job 自带有界重试、退避、超时、失败隔离和幂等键。
-- 追加迁移 `0000000003_eventing_outbox_inbox_core` 创建模块自有 `platform_eventing` Schema，以及 Outbox、Inbox、Job、隔离事实表；迁移有锁、数据、恢复和前滚元数据。
+- 追加迁移 `0000000003_eventing_outbox_inbox_core` 创建模块自有 `crm_eventing` Schema，以及 Outbox、Inbox、Job、隔离事实表；迁移有锁、数据、恢复和前滚元数据。
 - 公共 API 提供事务性 Outbox/Inbox Core、正式 `DatabaseRuntime` 事务参与、PostgreSQL 持久化 Port、Publisher、Rabbit Confirm/Return 边界、重试/死信交付包装、授权审计重放、积压快照与只读漂移对账。
 - Publisher Confirm 后才推进状态；Confirm 成功但状态更新丢失时允许稳定 ID 重发。Mandatory publish 的 `Basic.Return` 被视为可重试失败。
 - 消费者副作用与 Inbox receipt 在同一事务提交；ACK 仅在 `consume` 返回后发生。重复 ACK 丢失只提交一次副作用。

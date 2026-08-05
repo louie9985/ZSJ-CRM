@@ -14,12 +14,12 @@ describe("workforce authorization context", () => {
     })).toEqual({ activeAssignmentIds: [assignmentId], selectedAssignmentId: assignmentId, workforcePersonId });
   });
 
-  it("does not bind a system administrator to an Assignment", () => {
+  it("selects the sole active Assignment even when the account also has a global role", () => {
     expect(createWorkforceAuthorizationContext({
       activeAssignmentIds: [assignmentId],
       systemAdministrator: true,
       workforcePersonId,
-    })).toEqual({ activeAssignmentIds: [assignmentId], workforcePersonId });
+    })).toEqual({ activeAssignmentIds: [assignmentId], selectedAssignmentId: assignmentId, workforcePersonId });
   });
 
   it("fails closed without selecting one of multiple active Assignments", () => {
@@ -31,5 +31,14 @@ describe("workforce authorization context", () => {
       activeAssignmentIds: [assignmentId, "10000000-0000-4000-8000-000000000003"],
       workforcePersonId,
     });
+  });
+
+  it("rejects an explicitly selected inactive Assignment instead of falling back", () => {
+    expect(() => createWorkforceAuthorizationContext({
+      activeAssignmentIds: [assignmentId],
+      selectedAssignmentId: "10000000-0000-4000-8000-000000000099",
+      systemAdministrator: true,
+      workforcePersonId,
+    })).toThrow("authorization_selected_assignment_inactive");
   });
 });

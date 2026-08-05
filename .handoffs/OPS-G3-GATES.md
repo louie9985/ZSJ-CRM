@@ -64,7 +64,7 @@
 
 ## Migration Changes
 
-不新增、不编辑、不执行迁移。门禁只枚举仓库中完整受审的 `packages/database/migrations` 与 `packages/platform-modules/*/migrations` 文件集，并验证制品中的同一文件集、大小和摘要；不得自动同步 Schema。
+不新增、不编辑、不执行迁移。门禁只枚举仓库中完整受审的 `packages/database/migrations` 与 `packages/crm-modules/*/migrations` 文件集，并验证制品中的同一文件集、大小和摘要；不得自动同步 Schema。
 
 ## Dependencies
 
@@ -113,7 +113,7 @@
 
 ### Implemented
 
-- 新增确定性迁移制品 manifest：递归覆盖仓库 `packages/database/migrations` 与 `packages/platform-modules/*/migrations` 的全部普通文件，记录安全相对路径、字节数和 SHA-256；拒绝无迁移、路径逃逸、畸形/重复/未排序条目、未知版本、符号链接及覆盖已有输出。
+- 新增确定性迁移制品 manifest：递归覆盖仓库 `packages/database/migrations` 与 `packages/crm-modules/*/migrations` 的全部普通文件，记录安全相对路径、字节数和 SHA-256；拒绝无迁移、路径逃逸、畸形/重复/未排序条目、未知版本、符号链接及覆盖已有输出。
 - 新增 API+Worker 联合制品门禁：两份解包制品都必须在固定根位置包含 `ai-crm-migrations.manifest.json` 和完整 `packages/**/migrations`；同一外部批准摘要绑定两份规范化 manifest，并拒绝任一制品缺目录、缺/多文件或内容变化。单制品命令仅保留作诊断。
 - 新增 Worker 已渲染 Compose 数值门禁：解析复合 `us/ms/s/m/h` duration，要求应用 drain 为正整数秒且严格小于 stop grace；变量表达式、无单位、零/负数、未知单位、相等或超过均失败关闭。支持受限文件或 stdin。
 - 新增 Host A/Host B previous-key rotation overlay。普通基础 Compose 完全不声明或挂载 previous key；显式追加 overlay 时只向 API 添加 previous ID、typed `*_FILE` 与单一命名 Secret 文件，缺 ID/Secret root/文件时失败关闭。

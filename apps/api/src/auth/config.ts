@@ -1,169 +1,49 @@
-import {
-  configuration,
-  loadConfiguration,
-  type LoadConfigurationOptions,
-} from "@ai-crm/config";
-import { timingSafeEqual } from "node:crypto";
+import { configuration, loadConfiguration, type LoadConfigurationOptions } from "@ai-crm/config";
 
 import { BrowserSessionFailure } from "./errors.js";
-import type { KeyEncryptionKey } from "./session-security.js";
 
-export interface PcBffConfiguration {
-  readonly allowedOrigin: string;
-  readonly keycloakClientId: string;
-  readonly keycloakAudience: string;
-  readonly keycloakClientSecret: string;
-  readonly keycloakIssuer: string;
-  readonly loginTransactionTtlSeconds: number;
-  readonly oidcTimeoutSeconds: number;
-  readonly postLogoutRedirectUri: string;
-  readonly redirectUri: string;
-  readonly refreshLeaseTtlMs: number;
+export interface InternalSessionConfiguration {
+  readonly internalH5AllowedOrigin: string;
+  readonly pcAllowedOrigin: string;
   readonly redisConnectTimeoutMs: number;
   readonly redisPassword: string;
   readonly redisUrl: string;
-  readonly sessionAbsoluteTtlSeconds: number;
-  readonly sessionDecryptionKeys: readonly Readonly<KeyEncryptionKey>[];
-  readonly sessionEncryptionKey: Readonly<KeyEncryptionKey>;
-  readonly sessionIdleTtlSeconds: number;
   readonly sessionIndexingKey: Uint8Array;
-  readonly sessionConcurrentLimit: number;
-  readonly sessionRevocationTargetSeconds: number;
 }
 
-const pcBffSchema = {
-  allowedOrigin: configuration.url("AI_CRM_PC_ALLOWED_ORIGIN", { protocols: ["https:", "http:"] }),
-  keycloakClientId: configuration.string("AI_CRM_PC_OIDC_CLIENT_ID", { maxLength: 255 }),
-  keycloakAudience: configuration.string("AI_CRM_OIDC_API_AUDIENCE", { maxLength: 255 }),
-  keycloakClientSecret: configuration.secretFile("AI_CRM_PC_OIDC_CLIENT_SECRET_FILE"),
-  keycloakIssuer: configuration.url("AI_CRM_KEYCLOAK_ISSUER", { protocols: ["https:", "http:"] }),
-  loginTransactionTtlSeconds: configuration.integer("AI_CRM_PC_LOGIN_TRANSACTION_TTL_SECONDS", {
-    maximum: 900,
-    minimum: 30,
-  }),
-  oidcTimeoutSeconds: configuration.integer("AI_CRM_PC_OIDC_TIMEOUT_SECONDS", {
-    maximum: 60,
-    minimum: 1,
-  }),
-  postLogoutRedirectUri: configuration.url("AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI", { protocols: ["https:", "http:"] }),
-  redirectUri: configuration.url("AI_CRM_PC_OIDC_REDIRECT_URI", { protocols: ["https:", "http:"] }),
-  refreshLeaseTtlMs: configuration.integer("AI_CRM_PC_REFRESH_LEASE_TTL_MS", {
-    maximum: 120_000,
-    minimum: 1_000,
-  }),
-  redisConnectTimeoutMs: configuration.integer("AI_CRM_REDIS_CONNECT_TIMEOUT_MS", {
-    maximum: 60_000,
-    minimum: 100,
-  }),
+const schema = {
+  internalH5AllowedOrigin: configuration.url("AI_CRM_INTERNAL_H5_ALLOWED_ORIGIN", { protocols: ["https:", "http:"] }),
+  pcAllowedOrigin: configuration.url("AI_CRM_PC_ALLOWED_ORIGIN", { protocols: ["https:", "http:"] }),
+  redisConnectTimeoutMs: configuration.integer("AI_CRM_REDIS_CONNECT_TIMEOUT_MS", { maximum: 60_000, minimum: 100 }),
   redisPassword: configuration.secretFile("AI_CRM_REDIS_PASSWORD_FILE"),
   redisUrl: configuration.url("AI_CRM_REDIS_URL", { protocols: ["redis:", "rediss:"] }),
-  sessionAbsoluteTtlSeconds: configuration.integer("AI_CRM_PC_SESSION_ABSOLUTE_TTL_SECONDS", {
-    maximum: 31_536_000,
-    minimum: 60,
-  }),
-  sessionEncryptionKey: configuration.secretFile("AI_CRM_PC_SESSION_ENCRYPTION_KEY_FILE"),
-  sessionEncryptionKeyId: configuration.string("AI_CRM_PC_SESSION_ENCRYPTION_KEY_ID", {
-    maxLength: 64,
-    pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/u,
-  }),
-  sessionPreviousEncryptionKey: configuration.optionalSecretFile("AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_FILE"),
-  sessionPreviousEncryptionKeyId: configuration.optionalString("AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID", {
-    maxLength: 64,
-    pattern: /^[A-Za-z0-9][A-Za-z0-9._-]*$/u,
-  }),
-  sessionIdleTtlSeconds: configuration.integer("AI_CRM_PC_SESSION_IDLE_TTL_SECONDS", {
-    maximum: 31_536_000,
-    minimum: 60,
-  }),
-  sessionIndexingKey: configuration.secretFile("AI_CRM_PC_SESSION_INDEX_KEY_FILE"),
-  sessionConcurrentLimit: configuration.integer("AI_CRM_PC_SESSION_CONCURRENT_LIMIT", { default: 1, maximum: 5, minimum: 1 }),
-  sessionRevocationTargetSeconds: configuration.integer("AI_CRM_PC_SESSION_REVOCATION_TARGET_SECONDS", { default: 5, maximum: 60, minimum: 5 }),
+  sessionIndexingKey: configuration.secretFile("AI_CRM_SESSION_INDEX_KEY_FILE"),
 } as const;
 
-function secureWebUrl(value: string, name: string): void {
+function allowedOrigin(value: string): string {
   const url = new URL(value);
-  const loopback = ["127.0.0.1", "::1", "localhost"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(loopback && url.protocol === "http:")) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
+  const loopback = ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !(loopback && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || (value !== url.origin && value !== `${url.origin}/`)) {
+    throw new BrowserSessionFailure("authentication_dependency_unavailable");
   }
-  if (url.username || url.password) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  if (name === "allowed origin" && value !== url.origin && value !== `${url.origin}/`) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
+  return url.origin;
 }
 
 function decodeKey(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]{43}$/u.test(value)) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
+  if (!/^[A-Za-z0-9_-]{43}$/u.test(value)) throw new BrowserSessionFailure("authentication_dependency_unavailable");
   const key = Buffer.from(value, "base64url");
-  if (key.byteLength !== 32 || key.toString("base64url") !== value) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
+  if (key.byteLength !== 32 || key.toString("base64url") !== value) throw new BrowserSessionFailure("authentication_dependency_unavailable");
   return new Uint8Array(key);
 }
 
-export async function loadPcBffConfiguration(
-  options: LoadConfigurationOptions = {},
-): Promise<Readonly<PcBffConfiguration>> {
-  const raw = await loadConfiguration(pcBffSchema, options);
-  secureWebUrl(raw.allowedOrigin, "allowed origin");
-  secureWebUrl(raw.keycloakIssuer, "issuer");
-  secureWebUrl(raw.postLogoutRedirectUri, "post logout redirect URI");
-  secureWebUrl(raw.redirectUri, "redirect URI");
-  if (new URL(raw.postLogoutRedirectUri).origin !== new URL(raw.allowedOrigin).origin) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  if (!/^[A-Za-z0-9_-]{43}$/u.test(raw.keycloakClientSecret)) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  if (raw.sessionAbsoluteTtlSeconds < raw.sessionIdleTtlSeconds) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  const encryptionKey = decodeKey(raw.sessionEncryptionKey);
-  const indexingKey = decodeKey(raw.sessionIndexingKey);
-  if (timingSafeEqual(encryptionKey, indexingKey)) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  const previousPairComplete = raw.sessionPreviousEncryptionKey !== undefined &&
-    raw.sessionPreviousEncryptionKeyId !== undefined;
-  if (previousPairComplete !== (raw.sessionPreviousEncryptionKey !== undefined ||
-    raw.sessionPreviousEncryptionKeyId !== undefined)) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
-  const currentKey = Object.freeze({ id: raw.sessionEncryptionKeyId, value: encryptionKey });
-  const previousKey = previousPairComplete
-    ? Object.freeze({
-      id: raw.sessionPreviousEncryptionKeyId,
-      value: decodeKey(raw.sessionPreviousEncryptionKey),
-    })
-    : undefined;
-  if (previousKey !== undefined && (previousKey.id === currentKey.id ||
-    timingSafeEqual(previousKey.value, currentKey.value) || timingSafeEqual(previousKey.value, indexingKey))) {
-    throw new BrowserSessionFailure("authentication_session_invalid");
-  }
+export async function loadInternalSessionConfiguration(options: LoadConfigurationOptions = {}): Promise<Readonly<InternalSessionConfiguration>> {
+  const raw = await loadConfiguration(schema, options);
   return Object.freeze({
-    allowedOrigin: new URL(raw.allowedOrigin).origin,
-    keycloakClientId: raw.keycloakClientId,
-    keycloakAudience: raw.keycloakAudience,
-    keycloakClientSecret: raw.keycloakClientSecret,
-    keycloakIssuer: raw.keycloakIssuer.replace(/\/$/u, ""),
-    loginTransactionTtlSeconds: raw.loginTransactionTtlSeconds,
-    oidcTimeoutSeconds: raw.oidcTimeoutSeconds,
-    postLogoutRedirectUri: raw.postLogoutRedirectUri,
-    redirectUri: raw.redirectUri,
-    refreshLeaseTtlMs: raw.refreshLeaseTtlMs,
+    internalH5AllowedOrigin: allowedOrigin(raw.internalH5AllowedOrigin),
+    pcAllowedOrigin: allowedOrigin(raw.pcAllowedOrigin),
     redisConnectTimeoutMs: raw.redisConnectTimeoutMs,
     redisPassword: raw.redisPassword,
     redisUrl: raw.redisUrl,
-    sessionAbsoluteTtlSeconds: raw.sessionAbsoluteTtlSeconds,
-    sessionDecryptionKeys: Object.freeze(previousKey === undefined ? [currentKey] : [currentKey, previousKey]),
-    sessionEncryptionKey: currentKey,
-    sessionIdleTtlSeconds: raw.sessionIdleTtlSeconds,
-    sessionIndexingKey: indexingKey,
-    sessionConcurrentLimit: raw.sessionConcurrentLimit,
-    sessionRevocationTargetSeconds: raw.sessionRevocationTargetSeconds,
+    sessionIndexingKey: decodeKey(raw.sessionIndexingKey),
   });
 }

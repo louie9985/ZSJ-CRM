@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { ApplicationRegistryQueryService } from "@ai-crm/platform-app-registry";
-import type { OrganizationDirectoryServiceApi, WorkforceContext } from "@ai-crm/platform-organization";
+import type { OrganizationDirectoryServiceApi, WorkforcePersonContext } from "@ai-crm/crm-organization";
 
 import type { WorkbenchBootstrapFacade, WorkbenchBootstrapView } from "../platform-http/workbench-http.js";
 import { createWorkforceAuthorizationContext } from "../workforce-authorization-context.js";
@@ -10,19 +9,36 @@ import { crmWorkspaceRegistry, type WorkspaceRegistry } from "./workspace-regist
 export interface WorkbenchPrincipalPort {
   resolve(input: Readonly<{ credential: string; traceId: string }>): Promise<Readonly<{
     actorId: string;
-    workforce: WorkforceContext;
+    workforce: WorkforcePersonContext;
+  }>>;
+}
+
+export interface CrmNavigationRegistry {
+  readonly resolveDeepLink?: (...input: readonly unknown[]) => Promise<unknown>;
+  loadRegistry(input: Readonly<{
+    readonly audience: "internal";
+    readonly context: Readonly<{
+      readonly actor: Readonly<{ readonly actorId: string; readonly assignmentId?: string; readonly actorType: string; readonly workforcePersonId: string }>;
+      readonly subject: unknown;
+      readonly traceId: string;
+    }>;
+  }>): Promise<Readonly<{
+    readonly applications?: readonly unknown[];
+    readonly navigation: readonly Readonly<{ enabled: boolean; navigationId: string; order: number; applicationId?: string; routeId?: string }>[];
+    readonly routes?: readonly unknown[];
+    readonly version?: number;
   }>>;
 }
 
 export interface WorkbenchAccountKindPort {
-  isSuperAdministrator(workforcePersonId: string): Promise<boolean>;
+  isSystemAdministrator(workforcePersonId: string): Promise<boolean>;
 }
 
 export interface WorkbenchFacadeDependencies {
   readonly accountKinds: WorkbenchAccountKindPort;
   readonly directory: Pick<OrganizationDirectoryServiceApi, "getPersonProfile">;
   readonly principals: WorkbenchPrincipalPort;
-  readonly registry: ApplicationRegistryQueryService;
+  readonly registry: CrmNavigationRegistry;
   readonly workspaces?: WorkspaceRegistry;
 }
 
@@ -40,7 +56,7 @@ export function createWorkbenchBootstrapFacade(dependencies: WorkbenchFacadeDepe
       }
       const [profile, systemAdministrator] = await Promise.all([
         dependencies.directory.getPersonProfile(workforcePersonId),
-        dependencies.accountKinds.isSuperAdministrator(workforcePersonId),
+        dependencies.accountKinds.isSystemAdministrator(workforcePersonId),
       ]);
       const subject = createWorkforceAuthorizationContext({
         activeAssignmentIds: resolved.workforce.assignments.map(({ assignmentId }) => assignmentId),
@@ -66,11 +82,7 @@ export function createWorkbenchBootstrapFacade(dependencies: WorkbenchFacadeDepe
         .sort((left, right) => left.order - right.order || left.navigationId.localeCompare(right.navigationId, "en"))
         .map(({ navigationId }) => navigationId);
       const workspaces = dependencies.workspaces ?? crmWorkspaceRegistry;
-      const applicationIds = registry.applications
-        .filter(({ applicationId, enabled }) => enabled && workspaces.hasApplication(applicationId))
-        .map(({ applicationId }) => applicationId)
-        .sort((left, right) => left.localeCompare(right, "en"));
-      const assignmentReference = selectedAssignmentId;
+      const assignmentReference = systemAdministrator ? undefined : selectedAssignmentId;
       const assignment = resolved.workforce.assignments[0];
       const workspaceProfileId = workspaces.resolve({
         applicationId: "crm",
@@ -78,7 +90,6 @@ export function createWorkbenchBootstrapFacade(dependencies: WorkbenchFacadeDepe
       });
       return Object.freeze({
         accountKind: systemAdministrator ? "system_administrator" : "workforce",
-        applicationIds: Object.freeze(applicationIds),
         ...(assignmentReference === undefined ? {} : { assignmentReference }),
         displayName: profile.realName,
         navigationIds: Object.freeze(navigationIds),

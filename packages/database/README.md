@@ -16,6 +16,6 @@ Migration `0000000011` additively extends the registry with persisted minimum-in
 
 The explicit Legacy PostgreSQL runtime advertises `abortSignalSupport: true`. It remains available only where active statement interruption itself is the capability under test. Production composition uses Prisma and must not infer that pre/post signal checks can terminate an already executing provider query.
 
-The root `pnpm db:migrate` command discovers versioned SQL migrations under `packages/database/migrations` and each `packages/platform-modules/*/migrations` directory, then applies the combined list in global version order under the migration lock. Module `migrate` commands remain available for isolated ownership tests; deployment uses the root command.
+The root `pnpm db:migrate` command discovers versioned SQL migrations under `packages/database/migrations` and each `packages/crm-modules/*/migrations` directory, then applies the combined list in global version order under the migration lock. Module `migrate` commands remain available for isolated ownership tests; deployment uses the root command.
 
 See [ADR-0028](../../docs/08-架构决策/ADR-0028-Prisma数据持久化基线与Drizzle迁移.md), the retained governance in [ADR-0011](../../docs/08-架构决策/ADR-0011-PostgreSQL与Drizzle数据持久化基线.md), and the [database migration baseline](../../docs/04-工程手册/数据库与迁移基线.md).

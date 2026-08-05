@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { TaskCommandResult, CompleteTaskCommand } from "@ai-crm/platform-task-center";
+import type { TaskCommandResult, CompleteTaskCommand } from "@ai-crm/crm-task-center";
 
 import type { E2ePostgresRuntime } from "./postgres-runtime.js";
 

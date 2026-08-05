@@ -15,17 +15,15 @@
   "dependencies": {
     "@ai-crm/api": "workspace:*",
     "@ai-crm/database": "workspace:*",
-    "@ai-crm/platform-app-registry": "workspace:*",
-    "@ai-crm/platform-audit": "workspace:*",
-    "@ai-crm/platform-auth-context": "workspace:*",
-    "@ai-crm/platform-authorization": "workspace:*",
-    "@ai-crm/platform-eventing-outbox": "workspace:*",
-    "@ai-crm/platform-file-center": "workspace:*",
-    "@ai-crm/platform-form-schema": "workspace:*",
-    "@ai-crm/platform-notifications": "workspace:*",
-    "@ai-crm/platform-organization": "workspace:*",
-    "@ai-crm/platform-task-center": "workspace:*",
-    "@ai-crm/platform-workflow": "workspace:*",
+    "@ai-crm/crm-audit": "workspace:*",
+    "@ai-crm/crm-authorization": "workspace:*",
+    "@ai-crm/crm-eventing-outbox": "workspace:*",
+    "@ai-crm/crm-file-center": "workspace:*",
+    "@ai-crm/crm-form-schema": "workspace:*",
+    "@ai-crm/crm-notifications": "workspace:*",
+    "@ai-crm/crm-organization": "workspace:*",
+    "@ai-crm/crm-task-center": "workspace:*",
+    "@ai-crm/crm-workflow": "workspace:*",
     "@ai-crm/worker": "workspace:*"
   }
 }

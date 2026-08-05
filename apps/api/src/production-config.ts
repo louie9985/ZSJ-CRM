@@ -2,7 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { configuration, loadConfiguration, type LoadConfigurationOptions } from "@ai-crm/config";
 
-import { loadPcBffConfiguration, type PcBffConfiguration } from "./auth/config.js";
+import { loadInternalSessionConfiguration, type InternalSessionConfiguration } from "./auth/config.js";
 
 const schema = {
   applicationSchemaVersion: configuration.string("AI_CRM_API_SCHEMA_VERSION", {
@@ -39,24 +39,7 @@ const schema = {
   cosSecretKey: configuration.optionalSecretFile("AI_CRM_COS_SECRET_KEY_FILE"),
   cosTimeoutMs: configuration.integer("AI_CRM_COS_TIMEOUT_MS", { default: 10_000, maximum: 120_000, minimum: 100 }),
   localFileStorageRoot: configuration.optionalString("AI_CRM_LOCAL_FILE_STORAGE_ROOT", { maxLength: 512 }),
-  jwksCacheMaxAgeMs: configuration.integer("AI_CRM_OIDC_JWKS_CACHE_MAX_AGE_MS", {
-    default: 3_600_000, maximum: 86_400_000, minimum: 1_000,
-  }),
-  jwksCooldownMs: configuration.integer("AI_CRM_OIDC_JWKS_COOLDOWN_MS", {
-    default: 30_000, maximum: 3_600_000, minimum: 1_000,
-  }),
-  jwksUri: configuration.url("AI_CRM_KEYCLOAK_JWKS_URI", { protocols: ["https:", "http:"] }),
-  keycloakAdminBaseUrl: configuration.url("AI_CRM_KEYCLOAK_ADMIN_BASE_URL", { protocols: ["https:", "http:"] }),
-  keycloakAdministrationClientId: configuration.string("AI_CRM_KEYCLOAK_ADMIN_CLIENT_ID", { maxLength: 255 }),
-  keycloakAdministrationClientSecret: configuration.secretFile("AI_CRM_KEYCLOAK_ADMIN_CLIENT_SECRET_FILE"),
-  keycloakAdministrationTimeoutMs: configuration.integer("AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS", { maximum: 60_000, minimum: 100 }),
-  keycloakCredentialReturnUri: configuration.url("AI_CRM_KEYCLOAK_CREDENTIAL_RETURN_URI", { protocols: ["https:", "http:"] }),
-  keycloakPublicRealmBasePath: configuration.string("AI_CRM_KEYCLOAK_PUBLIC_REALM_BASE_PATH", { maxLength: 255, pattern: /^\/realms\/[A-Za-z0-9._-]+$/u }),
-  keycloakRealm: configuration.string("AI_CRM_KEYCLOAK_REALM", { maxLength: 255, pattern: /^[A-Za-z0-9._-]+$/u }),
   migrationsRoot: configuration.string("AI_CRM_MIGRATIONS_ROOT", { maxLength: 512 }),
-  oidcClockToleranceSeconds: configuration.integer("AI_CRM_OIDC_CLOCK_TOLERANCE_SECONDS", {
-    default: 30, maximum: 300, minimum: 1,
-  }),
   realtimeEnabled: configuration.boolean("AI_CRM_REALTIME_ENABLED", { default: false }),
   realtimeMaximumConnectionsPerSession: configuration.integer("AI_CRM_REALTIME_MAX_CONNECTIONS_PER_SESSION", { default: 8, maximum: 32, minimum: 1 }),
   realtimeRabbitUrl: configuration.optionalSecretFile("AI_CRM_REALTIME_RABBIT_URL_FILE"),
@@ -87,26 +70,7 @@ export interface ProductionApiConfiguration {
     readonly uploadSessionTtlMs: number;
   }>;
   readonly migrations: readonly string[];
-  readonly workforceAdministration: Readonly<{
-    readonly keycloakAdminBaseUrl: string;
-    readonly keycloakClientId: string;
-    readonly keycloakClientSecret: string;
-    readonly keycloakPublicRealmBasePath: string;
-    readonly keycloakRealm: string;
-    readonly keycloakTimeoutMs: number;
-    readonly returnUri: string;
-  }>;
-  readonly oidcVerifier: Readonly<{
-    readonly audience: string;
-    readonly clientId: string;
-    readonly clockToleranceSeconds: number;
-    readonly issuer: string;
-    readonly jwksCacheMaxAgeMs: number;
-    readonly jwksCooldownMs: number;
-    readonly jwksTimeoutMs: number;
-    readonly jwksUri: string;
-  }>;
-  readonly pcBff: Readonly<PcBffConfiguration>;
+  readonly sessions: Readonly<InternalSessionConfiguration>;
   readonly realtime: Readonly<{
     readonly enabled: boolean;
     readonly maximumConnectionsPerSession: number;
@@ -116,25 +80,24 @@ export interface ProductionApiConfiguration {
 
 const migrationDirectories = [
   "packages/database/migrations",
-  "packages/platform-modules/app-registry/migrations",
-  "packages/platform-modules/audit/migrations",
-  "packages/platform-modules/authorization/migrations",
-  "packages/platform-modules/business-configuration/migrations",
-  "packages/platform-modules/eventing-outbox/migrations",
-  "packages/platform-modules/file-center/migrations",
-  "packages/platform-modules/form-schema/migrations",
-  "packages/platform-modules/notifications/migrations",
-  "packages/platform-modules/organization/migrations",
-  "packages/platform-modules/task-center/migrations",
-  "packages/platform-modules/workforce-access/migrations",
+  "packages/crm-modules/audit/migrations",
+  "packages/crm-modules/authorization/migrations",
+  "packages/crm-modules/business-configuration/migrations",
+  "packages/crm-modules/eventing-outbox/migrations",
+  "packages/crm-modules/file-center/migrations",
+  "packages/crm-modules/form-schema/migrations",
+  "packages/crm-modules/notifications/migrations",
+  "packages/crm-modules/organization/migrations",
+  "packages/crm-modules/task-center/migrations",
+  "packages/crm-modules/workforce-access/migrations",
 ] as const;
 
 export async function loadProductionApiConfiguration(
   options: LoadConfigurationOptions = {},
 ): Promise<Readonly<ProductionApiConfiguration>> {
-  const [raw, pcBff] = await Promise.all([
+  const [raw, sessions] = await Promise.all([
     loadConfiguration(schema, options),
-    loadPcBffConfiguration(options),
+    loadInternalSessionConfiguration(options),
   ]);
   if (!isAbsolute(raw.migrationsRoot)) throw new Error("api_migrations_root_invalid");
   if (raw.databaseHealthProbeTimeoutMs >= raw.databaseHealthProbeIntervalMs) {
@@ -148,13 +111,12 @@ export async function loadProductionApiConfiguration(
     const localRoot = raw.localFileStorageRoot;
     if (localRoot === undefined) throw new Error("api_local_file_storage_root_required");
     if (!isAbsolute(localRoot)) throw new Error("api_local_file_storage_root_invalid");
-    const allowedOrigin = new URL(pcBff.allowedOrigin);
-    if (allowedOrigin.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(allowedOrigin.hostname)) {
+    const browserOrigins = [sessions.pcAllowedOrigin, sessions.internalH5AllowedOrigin].map((origin) => new URL(origin));
+    if (browserOrigins.some((origin) => origin.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname))) {
       throw new Error("api_local_file_storage_dev_only");
     }
   }
   if (raw.fileStorageProvider === "cos" && raw.cosSecretId === raw.cosSecretKey) throw new Error("api_cos_credentials_not_separated");
-  if (raw.keycloakAdministrationClientSecret === pcBff.keycloakClientSecret) throw new Error("api_keycloak_credentials_not_separated");
   if (raw.fileCenterMaximumScanBytes > raw.fileCenterMaximumUploadBytes) throw new Error("api_file_center_size_window_invalid");
   if (raw.realtimeEnabled && raw.realtimeRabbitUrl === undefined) throw new Error("api_realtime_rabbit_configuration_required");
   if (raw.realtimeRabbitUrl !== undefined) {
@@ -201,26 +163,7 @@ export async function loadProductionApiConfiguration(
       uploadSessionTtlMs: raw.fileCenterUploadSessionTtlMs,
     }),
     migrations: Object.freeze(migrationDirectories.map((directory) => resolve(raw.migrationsRoot, directory))),
-    workforceAdministration: Object.freeze({
-      keycloakAdminBaseUrl: raw.keycloakAdminBaseUrl.replace(/\/$/u, ""),
-      keycloakClientId: raw.keycloakAdministrationClientId,
-      keycloakClientSecret: raw.keycloakAdministrationClientSecret,
-      keycloakPublicRealmBasePath: raw.keycloakPublicRealmBasePath,
-      keycloakRealm: raw.keycloakRealm,
-      keycloakTimeoutMs: raw.keycloakAdministrationTimeoutMs,
-      returnUri: raw.keycloakCredentialReturnUri,
-    }),
-    oidcVerifier: Object.freeze({
-      audience: pcBff.keycloakAudience,
-      clientId: pcBff.keycloakClientId,
-      clockToleranceSeconds: raw.oidcClockToleranceSeconds,
-      issuer: pcBff.keycloakIssuer,
-      jwksCacheMaxAgeMs: raw.jwksCacheMaxAgeMs,
-      jwksCooldownMs: raw.jwksCooldownMs,
-      jwksTimeoutMs: pcBff.oidcTimeoutSeconds * 1_000,
-      jwksUri: raw.jwksUri,
-    }),
-    pcBff,
+    sessions,
     realtime: Object.freeze({ enabled: raw.realtimeEnabled, maximumConnectionsPerSession: raw.realtimeMaximumConnectionsPerSession, ...(raw.realtimeRabbitUrl === undefined ? {} : { rabbitUrl: raw.realtimeRabbitUrl }) }),
   });
 }

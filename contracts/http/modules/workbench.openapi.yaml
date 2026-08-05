@@ -4,16 +4,16 @@ paths:
   /workbench/bootstrap:
     get:
       operationId: getWorkbenchBootstrap
-      description: Resolves the current opaque BFF session, unique workforce context, authorized applications and navigation without exposing provider tokens. Concurrent active Assignments fail closed.
+      description: Resolves the current opaque CRM session, workforce context and authorized CRM navigation without exposing provider tokens. Concurrent active Assignments fail closed.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.workbench, code: platform.workbench.shell:read, resource: platform.workbench.shell, action: read }
+      x-ai-crm-permission: { version: 1, owner: crm.workbench, code: crm.workbench.shell:read, resource: crm.workbench.shell, action: read }
       x-ai-crm-csrf: { mode: not-required, reason: read-only }
       x-ai-crm-idempotency: { mode: none, reason: read-only }
       responses:
         "200": { description: Browser-safe current workbench context., content: { application/json: { schema: { $ref: "#/components/schemas/WorkbenchBootstrap" } } } }
         "401": { description: No valid BFF session. }
         "403": { description: The authenticated subject is not an active internal account. }
-        "503": { description: "A required identity, organization, authorization or registry dependency is unavailable." }
+        "503": { description: "A required identity, organization, authorization or CRM dependency is unavailable." }
 components:
   schemas:
     WorkbenchBootstrap:
@@ -23,7 +23,6 @@ components:
       properties:
         kind: { const: ready }
         fixture: { const: false }
-        applicationIds: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, pattern: "^[a-z][a-z0-9_.-]{0,127}$" } }
         workspaceProfileId: { type: string, pattern: "^[a-z][a-z0-9_.-]{0,127}$" }
         context:
           type: object

@@ -3,7 +3,7 @@
 - Status: INDEPENDENT REVIEW FIXES IMPLEMENTED; awaiting reviewer recheck, production activation blocked
 - Owner: Authorization capability implementation
 - Branch: `codex/cmp-auth-policy-publication`
-- Allowed paths: `contracts/permissions/**`, `packages/platform-modules/authorization/**`, directly related documentation and this handoff
+- Allowed paths: `contracts/permissions/**`, `packages/crm-modules/authorization/**`, directly related documentation and this handoff
 
 ## Known Facts
 

@@ -32,7 +32,7 @@
 
 - 新增已接受 ADR-0027。
 - 策略 ID：`taskProjectionLifecyclePolicyV1`。
-- Owner/Handler：`platform.task-center` / `task-center.postgres-projection-apply.v1`。
+- Owner/Handler：`crm.task-center` / `task-center.postgres-projection-apply.v1`。
 - `maxAttempts=3`，`backoffSeconds=[30,300]`，`timeoutMs=10000`，`prefetch=2`，`concurrency=1`。
 - 仅 `TASK_STORAGE_UNAVAILABLE`、`eventing_storage_unavailable`、`eventing_conflict`、`eventing_handler_timeout` 且 `retryable=true` 可重试；未知错误终止隔离。
 - AsyncAPI 新增 30 秒与 300 秒队列级固定 TTL 延迟层，明确无消费者，到期 DLX 回主路由。
@@ -67,7 +67,7 @@
 
 ## Review Findings And Resolution
 
-- P1：首次契约修改引用了 `ai-crm.platform.retry.v1` 但未声明交换机本身。已新增耐久 direct exchange 和只允许 30/300 秒两个 routing key 的 Mandatory/Confirm 重试发布 Operation，契约测试锁定名称和路由。
+- P1：首次契约修改引用了 `ai-crm.crm.retry.v1` 但未声明交换机本身。已新增耐久 direct exchange 和只允许 30/300 秒两个 routing key 的 Mandatory/Confirm 重试发布 Operation，契约测试锁定名称和路由。
 - P1：首稿错误白名单遗漏 ACK 前的 Eventing Inbox 存储失败、可重试冲突和 Handler 超时，会把短暂基础设施故障直接送入 DLQ。已增加三个稳定 Eventing 错误码，并强制错误实例及 `retryable=true`；伪造 plain object 和未知异常仍终止。
 - P1 open activation boundary：Task Center `apply()` 尚未接收并把 `AbortSignal` 传播到 PostgreSQL 执行。当前不创建虚假的“可中止 Handler”，生产 activation 继续 false。下一实现必须证明超时后底层操作真正结束，不得只超时外层 Promise。
 

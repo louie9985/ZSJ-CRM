@@ -9,7 +9,7 @@
 ## 已知事实
 
 - 第一阶段需要业务中立的异步执行底座，但具体 CRM 事件、倒计时、SLA 和调度周期尚未确认。
-- HTTP API 与 Worker 已是独立组合入口，领域模块只能依赖契约和 `platform-sdk`。
+- HTTP API 与 Worker 已是独立组合入口，领域模块只能依赖契约和 `crm-sdk`。
 - Flowable、业务状态、统一任务投影、提醒和后台 Job 已被划分为不同事实源或执行机制。
 - 项目负责人确认第一阶段直接使用 RabbitMQ 和 Redis，并自研 Transactional Outbox/Inbox。
 
@@ -65,7 +65,7 @@ Publisher 在“RabbitMQ 已接收但数据库尚未标记完成”时崩溃会�
 - `contracts/events/` 保存传输中立的 CloudEvents/JSON Schema 领域或平台事件，不出现交换机、队列、重试次数和 RabbitMQ 客户端类型。
 - `contracts/asyncapi/` 保存 RabbitMQ 通道、绑定、路由和投递语义，并引用事件契约。
 - `contracts/jobs/` 保存 Worker 私有任务载荷。Job 是“如何执行”，不能被其他模块当成稳定领域事件订阅。
-- 领域模块只通过事件发布接口、任务调度接口或 `platform-sdk` 使用能力，不直接调用 RabbitMQ/Redis 客户端，也不能访问 Outbox/Inbox 表。
+- 领域模块只通过事件发布接口、任务调度接口或 `crm-sdk` 使用能力，不直接调用 RabbitMQ/Redis 客户端，也不能访问 Outbox/Inbox 表。
 
 ### 6. 延迟、周期任务、重试与死信
 

@@ -4,7 +4,7 @@
 - Branch: `task/PLT-02-form-configuration`
 - Owner: Agent B
 - Independent Reviewer: Agent D
-- Allowed paths: `packages/platform-modules/form-schema`, `packages/platform-modules/business-configuration`, `contracts/forms`, `contracts/configuration`, and this handoff
+- Allowed paths: `packages/crm-modules/form-schema`, `packages/crm-modules/business-configuration`, `contracts/forms`, `contracts/configuration`, and this handoff
 
 ## Known Facts
 
@@ -60,10 +60,10 @@
 
 ### Owner Verification Evidence
 
-- `pnpm --filter @ai-crm/platform-form-schema typecheck`, `lint`, `test`: passed 2026-07-26 after Review Round 1 repairs; 9/9 executed tests passed and PostgreSQL-only tests were intentionally skipped in the unit command.
-- `pnpm --filter @ai-crm/platform-business-configuration typecheck`, `lint`, `test`: passed 2026-07-26 after Review Round 1 repairs; 9/9 executed tests passed and PostgreSQL-only tests were intentionally skipped in the unit command.
-- `pnpm --filter @ai-crm/platform-form-schema test:integration`: passed 2026-07-26 against an isolated PostgreSQL 17.5 container; 2/2 tests passed.
-- `pnpm --filter @ai-crm/platform-business-configuration test:integration`: passed 2026-07-26 against an isolated PostgreSQL 17.5 container; 4/4 tests passed, including immutable termination, historical resolution, duplicate replay, replacement serialization, and database guards.
+- `pnpm --filter @ai-crm/crm-form-schema typecheck`, `lint`, `test`: passed 2026-07-26 after Review Round 1 repairs; 9/9 executed tests passed and PostgreSQL-only tests were intentionally skipped in the unit command.
+- `pnpm --filter @ai-crm/crm-business-configuration typecheck`, `lint`, `test`: passed 2026-07-26 after Review Round 1 repairs; 9/9 executed tests passed and PostgreSQL-only tests were intentionally skipped in the unit command.
+- `pnpm --filter @ai-crm/crm-form-schema test:integration`: passed 2026-07-26 against an isolated PostgreSQL 17.5 container; 2/2 tests passed.
+- `pnpm --filter @ai-crm/crm-business-configuration test:integration`: passed 2026-07-26 against an isolated PostgreSQL 17.5 container; 4/4 tests passed, including immutable termination, historical resolution, duplicate replay, replacement serialization, and database guards.
 - `pnpm contracts:check`: passed 2026-07-26 after Review Round 1 repairs; contract sources and generated artifacts were deterministic and 28/28 package checks passed.
 - `pnpm check`: passed 2026-07-26 after Review Round 1 repairs; 140/140 Turbo tasks passed.
 - `git diff --check`: passed 2026-07-26 after Review Round 1 repairs.

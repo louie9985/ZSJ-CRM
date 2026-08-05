@@ -26,9 +26,9 @@ For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.
 ## Architecture Boundaries
 
 - `apps/` contains independently runnable and deployable programs.
-- `packages/platform-modules/` contains business-neutral platform capabilities.
+- `packages/crm-modules/` contains CRM-internal core capabilities.
 - `packages/domain-modules/` is reserved for confirmed business domains.
-- Domain modules may depend on `platform-sdk` and contracts. They must not depend directly on Keycloak, Flowable, RabbitMQ, Redis, or storage vendors.
+- Domain modules may depend on `crm-sdk` and contracts. They must not depend directly on authentication credentials, Flowable, RabbitMQ, Redis, or storage vendors.
 - No module may query another module's tables directly.
 - No deep imports across module boundaries. Import only through each package's public entry point.
 - PostgreSQL data is partitioned by module-owned schemas and repositories. Database row types, Prisma generated models/inputs, query arguments, raw queries, and transaction clients are not public module contracts.
@@ -42,11 +42,11 @@ For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.
 - Published form and business-configuration versions are immutable. Runtime decisions that depend on them record the resolved version; client rendering and visibility rules never replace server-side validation or authorization.
 - Notification intent, in-app notification state, task state, and external-channel delivery are separate facts. A notification never proves that work was completed or that a provider message was read.
 - Domain modules request notifications through stable contracts. They must not call WeCom, SMS, email, push, or other channel providers directly.
-- `workbench-web`, `internal-mobile`, and `external-portal` are separate applications and deployment artifacts. External clients must consume an allowlisted external OpenAPI surface, never a complete internal client hidden by UI checks.
+- `workbench-web` and `internal-mobile` are separate applications and deployment artifacts. The current stage has no external client surface.
 - Taro applications isolate target-specific behavior behind adapters. They must not import Ant Design/ProComponents or assume the PC Web React major; shared UI is promoted only after real cross-application reuse.
-- PC Web and H5 clients use isolated BFF HTTP-only sessions; the WeChat Mini Program may hold only a short-lived opaque server-session handle. Client code and domain modules must never receive Keycloak tokens, provider secrets, or the WeChat `session_key`.
-- External provider identifiers are trusted only after server-side verification and Keycloak subject establishment. Do not auto-link identities by phone, email, name, `userid`, `openid`, or `unionid`.
-- Keycloak owns provider federation; `organization` owns the effective association from an internal Keycloak subject to a workforce person. WeCom login identity, directory-source mapping, and notification address are separate concerns and must not share tables or grant access implicitly.
+- PC Web and internal H5 use isolated HttpOnly opaque server sessions. Client code and domain modules must never receive password hashes, session records, provider secrets, or future access tokens.
+- `workforce-access` owns the unique Account-to-Workforce-Person association and password credential. `organization` owns Person, Employment and Assignment facts; `authorization` owns role grants and Permission decisions. These modules cooperate only through public ports and never query each other's tables.
+- Do not auto-link identities by phone, email, name or external provider identifiers. The current stage has no provider federation, external identity or WeChat Mini Program authentication.
 - Internal access fails closed without a unique workforce person and active employment. Closing one assignment revokes only that context; it does not imply departure or delete history.
 - External operations explicitly choose anonymous, restricted-invitation, or authenticated access. An invitation capability is not an identity, must not be unioned with login grants, and never bypasses the owning module's current resource-state check.
 - Do not create a generic external-user model, invitation table, anonymous endpoint, or external-access package until a confirmed domain scenario owns the resource and contract.
@@ -55,7 +55,7 @@ For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.
 - Domain modules must not import provider SDKs or adapter implementations. Provider responses and Webhooks become business facts only after the owning module accepts them through reviewed commands or events.
 - Do not create a concrete payment, SMS, WeCom, WeChat, course-platform, question-bank, or AI adapter/schema until its capability Owner, provider protocol, test account, data boundary, idempotency, retry, callback, reconciliation, authorization, and acceptance scenario are confirmed.
 - The first production topology is two Tencent Cloud Ubuntu CVMs with a separate self-hosted Docker Compose project per host. Do not introduce Kubernetes, Docker Swarm, or production managed PostgreSQL/Redis/RabbitMQ without a new accepted ADR.
-- Two API replicas do not make Nginx, PostgreSQL, Redis, RabbitMQ, Keycloak, or Flowable highly available. Do not claim automatic failover, an SLA, RPO, or RTO until the topology and recovery drills prove it.
+- Two API replicas do not make Nginx, PostgreSQL, Redis, RabbitMQ or Flowable highly available. Do not claim automatic failover, an SLA, RPO, or RTO until the topology and recovery drills prove it.
 - Production images use immutable versions or digests. State services stay private, backups leave the two-server failure domain, and production secrets never appear in Compose files, images, logs, frontend artifacts, or repository files.
 - The first observability baseline is Pino structured logs, hosted Sentry error/sample-trace reporting, Tencent Cloud Monitor, external uptime probes, and OpenTelemetry/W3C propagation. Do not add an OpenTelemetry Collector, Prometheus, Grafana, Loki, ELK/Elastic Stack, Alertmanager, or self-hosted Sentry without a new accepted ADR.
 - Audit records, business facts, application logs, metrics, and error/trace events have separate owners, retention, and truth semantics. Technical telemetry may correlate through safe trace references but never replaces audit evidence.
@@ -63,7 +63,7 @@ For `apps/workbench-web`, use `docs/04-工程手册/PC工作台Demo参考基线.
 - Production Secret management uses root-owned restricted host files, per-service Docker Compose Secret/read-only mounts, and typed `*_FILE` references. Do not add Vault, Tencent Cloud Secrets Manager, production Secret environment values, encrypted production Secrets in Git, or a production `.env` without a new accepted ADR.
 - Every Secret is environment-, service-, and purpose-specific, fails closed when missing, and has an Owner, consumers, rotation/revocation procedure, and incident action recorded without its value. Containers receive only the Secret files they need.
 - Production Secret values must not appear in Compose YAML, Dockerfiles, image layers, command arguments, shell history, databases, business configuration, logs, Sentry, Trace data, frontend artifacts, documentation, tickets, chat, or backups. Disaster-recovery Secret bundles are encrypted before leaving the host with an offline key not stored on the production hosts or in COS.
-- Product AI calls use registered owning-module use cases through `platform-sdk`, the business-neutral `ai-gateway`, `integration-runtime`, and an application-composed Provider Adapter. Domain modules must not import model SDKs, submit arbitrary raw prompts, select unapproved models, or query AI gateway tables directly.
+- Product AI calls use registered owning-module use cases through `crm-sdk`, the business-neutral `ai-gateway`, `integration-runtime`, and an application-composed Provider Adapter. Domain modules must not import model SDKs, submit arbitrary raw prompts, select unapproved models, or query AI gateway tables directly.
 - Model output is an untrusted, non-authoritative proposal. It cannot change domain state, approval, authorization, finance, pricing, personnel, performance, or allocation until an authorized human confirms it and the owning module rechecks authorization and current invariants through a formal command.
 - Do not create a real AI provider adapter, model credential, CRM prompt, customer scoring, summary use case, RAG/vector store, knowledge base, tool/MCP execution, LiteLLM, LangChain, or LangGraph integration until its Owner, data boundary, provider region/contract, budget, acceptance set, retention, authorization, and human-review behavior are confirmed.
 - AI telemetry and call metadata must exclude full prompts, model responses, chain-of-thought, customer/employee content, credentials, and raw provider payloads. Development/provider evaluation uses synthetic data; de-identification alone never authorizes cross-border model use.

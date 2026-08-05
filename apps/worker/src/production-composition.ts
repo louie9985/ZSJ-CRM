@@ -13,9 +13,8 @@ import {
   createOutboxPublisher,
   createPrismaEventingStore,
   createRabbitConfirmTransport,
-} from "@ai-crm/platform-eventing-outbox";
-import { createPrismaTaskCenterStore } from "@ai-crm/platform-task-center";
-import { createPrismaWorkforceAccessStore, WorkforceAccessService } from "@ai-crm/platform-workforce-access";
+} from "@ai-crm/crm-eventing-outbox";
+import { createPrismaTaskCenterStore } from "@ai-crm/crm-task-center";
 import {
   createAmqplibPublisherAdapter,
   createAmqplibConsumerAdapter,
@@ -25,9 +24,6 @@ import {
 import { createTaskProjectionConsumerHandler } from "./task-projection-composition.js";
 import { taskProjectionRabbitTopology, taskProjectionRuntimePolicy } from "./task-projection-policy.js";
 import { createOutboxPublisherLoopHandler } from "./handlers.js";
-import { createWorkforceKeycloakClient } from "./workforce-keycloak-client.js";
-import { createWorkforceKeycloakSyncRabbitBinding } from "./workforce-keycloak-sync.js";
-import { workforceKeycloakSyncRabbitTopology } from "./workforce-keycloak-sync-policy.js";
 import { loadProductionWorkerConfiguration, type ProductionWorkerConfiguration } from "./production-config.js";
 import type { WorkerDependency, WorkerHandler } from "./index.js";
 
@@ -50,7 +46,7 @@ export interface ProductionWorkerResourceDependencies {
 const productionDependencies: ProductionWorkerResourceDependencies = Object.freeze({
   checkCompatibility: checkMigrationCompatibility,
   createConsumerResource: (configuration: ProductionWorkerConfiguration["rabbit"]["consumer"], signal: AbortSignal) =>
-    createAmqplibConsumerAdapter(configuration, [taskProjectionRabbitTopology, workforceKeycloakSyncRabbitTopology], taskProjectionRuntimePolicy, undefined, signal),
+    createAmqplibConsumerAdapter(configuration, [taskProjectionRabbitTopology], taskProjectionRuntimePolicy, undefined, signal),
   createDatabase: createDatabaseRuntime,
   createPublisherResource: (configuration: ProductionWorkerConfiguration["rabbit"]["publisher"], signal: AbortSignal) =>
     createAmqplibPublisherAdapter(configuration, undefined, signal),
@@ -197,12 +193,6 @@ export async function createProductionWorkerResources(
       await eventing.appendEvent({ specversion: "1.0", id: eventId, source: "urn:ai-crm:task-center", type: "task-center.projection-changed.v1", time: projection.updatedAt, datacontenttype: "application/json", dataschema: "urn:ai-crm:events:task-center.projection-changed:v1", correlationid: eventId, subject: projection.projectionId, data: { assignmentId: projection.assigneeReference, eventId, occurredAt: projection.updatedAt, stateVersion: projection.sourceVersion, taskId: projection.projectionId } });
     },
   });
-  const workforceAccounts = new WorkforceAccessService(createPrismaWorkforceAccessStore(database), {
-    authorize: (input) => input.action === "identity_sync_result_record"
-      ? Promise.resolve()
-      : Promise.reject(new Error("worker_workforce_mutation_forbidden")),
-  });
-  const workforceKeycloak = createWorkforceKeycloakClient(configuration.workforceKeycloak);
   const runtimeRoleProbe = dependencies.createRuntimeRoleProbe(database);
   let publisher: RabbitPublisherAdapter | undefined;
   let consumer: AbortableRabbitConsumerAdapter | undefined;
@@ -231,18 +221,12 @@ export async function createProductionWorkerResources(
         Object.freeze({ messageKind: "event" as const, messageType: "authentication.pc-session-revoked.v1", messageVersion: 1, routingKey: "authentication.pc-session-revoked.v1" }),
       ]),
     }));
-    const workforceJobTransport = await createRabbitConfirmTransport(publisher.channel, Object.freeze({
-      exchange: workforceKeycloakSyncRabbitTopology.exchange,
-      exchangeType: workforceKeycloakSyncRabbitTopology.exchangeType,
-      routes: Object.freeze([Object.freeze({ messageKind: "job" as const, messageType: "workforce-access.keycloak-sync.v1", messageVersion: 1, routingKey: workforceKeycloakSyncRabbitTopology.routingKey })]),
-    }));
-    const transport = Object.freeze({ publish: (message: Parameters<typeof eventTransport.publish>[0]) => message.messageKind === "job" && message.messageType === "workforce-access.keycloak-sync.v1" ? workforceJobTransport.publish(message) : eventTransport.publish(message) });
-    const outboxPublisher = createOutboxPublisher(eventingStore, transport, configuration.outbox);
+    const outboxPublisher = createOutboxPublisher(eventingStore, eventTransport, configuration.outbox);
     handlers = Object.freeze([
       createOutboxPublisherLoopHandler(outboxPublisher, configuration.outbox.intervalMs),
       createTaskProjectionConsumerHandler(eventing, consumer, {
         apply: (event, activeSignal) => taskStore.apply(event, activeSignal),
-      }, [createWorkforceKeycloakSyncRabbitBinding(workforceAccounts, workforceKeycloak)]),
+      }),
     ]);
   } catch (error) {
     const acquiredPublisher = publisher;

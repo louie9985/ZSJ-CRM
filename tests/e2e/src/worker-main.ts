@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { bootstrapWorker, createAmqplibPublisherAdapter, createDefaultProductionWorkerResources, loadRabbitConnectionConfiguration, taskProjectionRabbitTopology, type WorkerHandler } from "@ai-crm/worker";
-import { createEventingCore, createRabbitConfirmTransport, type EventEnvelope, type EventingCore, type RabbitDelivery } from "@ai-crm/platform-eventing-outbox";
-import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
-import { InMemoryTaskCenterStore } from "@ai-crm/platform-task-center";
+import { createEventingCore, createRabbitConfirmTransport, type EventEnvelope, type EventingCore, type RabbitDelivery } from "@ai-crm/crm-eventing-outbox";
+import { InMemoryEventingStore } from "@ai-crm/crm-eventing-outbox/testing";
+import { InMemoryTaskCenterStore } from "@ai-crm/crm-task-center";
 import {
   createTaskProjectionConsumerHandler,
   taskProjectionBindingId,
@@ -67,8 +67,8 @@ if (process.env["AI_CRM_E2E_PROCESS_ENTRYPOINT"] === "publish-task-projection") 
   const sourceTaskId = process.env["AI_CRM_E2E_TASK_PROJECTION_SOURCE_TASK_ID"] ?? "task.e2e-isolated-worker";
   const envelope: EventEnvelope = Object.freeze({
     correlationid: randomUUID(), data: Object.freeze({
-      assigneeReference: "assignment.e2e", deepLink: Object.freeze({ appId: "platform.synthetic", routeId: "platform.synthetic.detail" }),
-      eventId, occurredAt: new Date().toISOString(), sourceTaskId, sourceType: "platform.synthetic", sourceVersion: 1, status: "open",
+      assigneeReference: "assignment.e2e", deepLink: Object.freeze({ appId: "crm.synthetic", routeId: "crm.synthetic.detail" }),
+      eventId, occurredAt: new Date().toISOString(), sourceTaskId, sourceType: "crm.synthetic", sourceVersion: 1, status: "open",
     }), datacontenttype: "application/json", dataschema: "urn:ai-crm:events:task-projection-lifecycle:v1",
     id: eventId, source: "urn:ai-crm:tests.e2e", specversion: "1.0", time: new Date().toISOString(), type: "task-center.projection-lifecycle.v1",
   });

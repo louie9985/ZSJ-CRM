@@ -33,6 +33,7 @@ export async function bootstrapApiProcess(options: BootstrapApiProcessOptions): 
     logger: options.logger,
     shutdownTimeoutMs: options.configuration.shutdownTimeoutMs,
     startupTimeoutMs: options.configuration.startupTimeoutMs,
+    trustedProxyCidrs: options.configuration.trustedProxyCidrs,
   });
   const processPort = (options.processPort ?? process) as ApiProcessPort;
   let shutdownPromise: Promise<void> | undefined;

@@ -41,7 +41,7 @@ test("uses a unique project and always removes its Volumes and temporary Secrets
   assert.match(runner, /ai-crm-test-e2e-/u);
   assert.match(runner, /"down", "--volumes", "--remove-orphans"/u);
   assert.match(runner, /rm\(secretDirectory, \{ force: true, recursive: true \}\)/u);
-  assert.match(runner, /platform_task_center\.task_projections/u);
-  assert.match(runner, /platform_eventing\.inbox_receipts/u);
+  assert.match(runner, /crm_task_center\.task_projections/u);
+  assert.match(runner, /crm_eventing\.inbox_receipts/u);
   assert.ok(runner.includes('write: "^ai-crm\\\\.platform\\\\.(?:events|retry|dead-letter)\\\\.v1$|^ai-crm\\\\.platform\\\\.task-center'));
 });

@@ -37,7 +37,7 @@
 - `file-provider-config.ts`：typed ClamAV host/port/timeout、COS Bucket/Region/timeout，以及分离的 `AI_CRM_COS_SECRET_ID_FILE` / `AI_CRM_COS_SECRET_KEY_FILE`；缺失、格式不合法或两文件内容复用均失败关闭。
 - `file-center/provider/tencent-cos`：显式 Provider 子入口承载官方 COS SDK、强制 HTTPS/严格 TLS、最长一小时短时签名、不可猜测 handle 校验、Bucket health、HEAD/Range read/delete/quarantine copy-delete，以及稳定 `FileCenterError` 失败分类；API/Worker 各自在组合根注入，不形成 apps 间依赖。
 - `clamav-scanner.ts`：有界 clamd INSTREAM 调用；clean、malicious、unscannable 分离，连接/超时/协议异常统一为可重试 scan unavailable，超出 scan ceiling 在连接前拒绝。
-- `cos-storage-adapter.integration.test.ts`：真实测试 Bucket opt-in 契约门，直接调用 `@ai-crm/platform-file-center/testing/storage-adapter-conformance` 的同一 harness；测试使用随机业务中立 handle，并在 fixture 结束时清理源对象与隔离对象。
+- `cos-storage-adapter.integration.test.ts`：真实测试 Bucket opt-in 契约门，直接调用 `@ai-crm/crm-file-center/testing/storage-adapter-conformance` 的同一 harness；测试使用随机业务中立 handle，并在 fixture 结束时清理源对象与隔离对象。
 - `file-center` 仅新增 test-only subpath export，不把 COS SDK 或 Provider DTO 加入生产公共入口。
 
 ## Compose integration manifest（供 Worker 线接入）

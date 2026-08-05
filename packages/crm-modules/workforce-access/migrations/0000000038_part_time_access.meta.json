@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "workforce-access",
+  "purpose": "Create the independent CRM part-time account and password credential tables.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Creates a new schema and tables without locking employee account tables.",
+  "dataImpact": "No existing rows are changed; local development starts with no part-time accounts.",
+  "backfill": "Not required for the approved empty local-development reset.",
+  "destructive": false,
+  "destructiveApproval": "Not applicable.",
+  "recovery": "Drop the new part_time_access schema before it is used.",
+  "forwardFix": "Append a reviewed workforce-access-owned migration; do not rewrite this migration after application."
+}

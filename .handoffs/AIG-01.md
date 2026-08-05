@@ -36,7 +36,7 @@
 
 ## Allowed Paths
 
-- `packages/platform-modules/ai-gateway/**`
+- `packages/crm-modules/ai-gateway/**`
 - `contracts/ai/**`
 - `.handoffs/AIG-01.md`
 

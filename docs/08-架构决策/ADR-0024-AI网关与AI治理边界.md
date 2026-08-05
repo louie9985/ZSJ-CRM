@@ -3,7 +3,7 @@
 - 状态：已接受
 - 日期：2026-07-23
 - 决策人：项目负责人
-- 适用范围：`packages/platform-modules/ai-gateway`、`contracts/ai`、`platform-sdk`、AI Provider Adapter 与未来 AI 用途
+- 适用范围：`packages/crm-modules/ai-gateway`、`contracts/ai`、`crm-sdk`、AI Provider Adapter 与未来 AI 用途
 - 依赖决策：ADR-0003、ADR-0007、ADR-0010、ADR-0011、ADR-0013、ADR-0020、ADR-0022、ADR-0023
 
 ## 已知事实
@@ -37,7 +37,7 @@
 拥有模块
   AI 用途语义 / 最小输入 / 资源授权 / 人工确认后的正式命令
         ↓
-platform-sdk + contracts/ai
+crm-sdk + contracts/ai
         ↓
 ai-gateway
   用途注册 / 数据策略 / Prompt版本 / 模型路由 / 预算 / 输出校验 / 调用记录

@@ -1,0 +1,50 @@
+// CHECK constraints and monotonic projection semantics remain governed by
+// migration 0000000004 and the parameterized repository transaction.
+model TaskCenterProjection {
+  projectionId           String    @id @db.Uuid @map("projection_id")
+  sourceType             String    @db.VarChar(255) @map("source_type")
+  sourceTaskId           String    @db.VarChar(255) @map("source_task_id")
+  sourceVersion          Int       @map("source_version")
+  status                 String    @db.VarChar(16)
+  title                  String    @db.VarChar(512)
+  summary                String    @db.VarChar(2000)
+  appId                  String    @db.VarChar(255) @map("app_id")
+  routeId                String    @db.VarChar(255) @map("route_id")
+  assigneeReference      String?   @db.VarChar(255) @map("assignee_reference")
+  candidateScopeReference String?  @db.VarChar(255) @map("candidate_scope_reference")
+  dueAt                  DateTime? @db.Timestamptz(6) @map("due_at")
+  createdAt              DateTime  @db.Timestamptz(6) @map("created_at")
+  updatedAt              DateTime  @db.Timestamptz(6) @map("updated_at")
+
+  @@unique([sourceType, sourceTaskId])
+  @@index([status, sourceType, sourceTaskId], map: "task_projections_status_source_idx")
+  @@map("task_projections")
+  @@schema("crm_task_center")
+}
+
+model TaskCenterProjectionEvent {
+  eventId       String   @id @db.Uuid @map("event_id")
+  sourceType    String   @db.VarChar(255) @map("source_type")
+  sourceTaskId  String   @db.VarChar(255) @map("source_task_id")
+  sourceVersion Int      @map("source_version")
+  payloadSha256 String   @db.Char(64) @map("payload_sha256")
+  processedAt   DateTime @db.Timestamptz(6) @map("processed_at")
+
+  @@index([sourceType, sourceTaskId, sourceVersion], map: "projection_events_source_idx")
+  @@map("projection_events")
+  @@schema("crm_task_center")
+}
+
+model TaskCenterCommand {
+  idempotencyKey        String    @id @db.VarChar(255) @map("idempotency_key")
+  fingerprint           String    @db.Char(64)
+  status                String    @db.VarChar(16)
+  sourceCommandId       String?   @db.VarChar(255) @map("source_command_id")
+  commandLeaseToken     String?   @db.Uuid @map("command_lease_token")
+  commandLeaseExpiresAt DateTime? @db.Timestamptz(6) @map("command_lease_expires_at")
+  createdAt             DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt             DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
+
+  @@map("task_commands")
+  @@schema("crm_task_center")
+}

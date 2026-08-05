@@ -43,7 +43,7 @@ Node 客户端的推荐候选是 `amqplib`，原因是它能映射 AMQP 0-9-1 �
 1. 选择仍受维护且与 Node 24、RabbitMQ 4.2 固定版本兼容的稳定版本，并以精确版本进入 Lockfile。
 2. 对 TypeScript 类型包同样固定兼容版本；若运行包自带类型则不得叠加冲突类型源。
 3. 用真实 RabbitMQ 集成测试证明 Confirm/Return 关联不会串消息，连接/Channel 关闭会拒绝未决发布，写缓冲背压会等待 Drain，消费者取消和优雅停止可收敛。
-4. 只在 `apps/worker` 或应用组合的具体 Adapter 中导入客户端。`eventing-outbox`、领域模块、Handler、契约和 `platform-sdk` 继续只依赖供应商中立 Port。
+4. 只在 `apps/worker` 或应用组合的具体 Adapter 中导入客户端。`eventing-outbox`、领域模块、Handler、契约和 `crm-sdk` 继续只依赖供应商中立 Port。
 5. 把客户端或协议重大升级视为兼容性变更：先双版本测试和发布门禁，不依赖管理 UI 的人工默认值修复代码声明。
 
 若候选不能通过上述矩阵，应替换候选，而不是削弱 Confirm、Return、TLS、流控或优雅停止要求。

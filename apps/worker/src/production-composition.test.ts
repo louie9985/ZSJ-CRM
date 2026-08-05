@@ -6,7 +6,6 @@ import {
 } from "./production-composition.js";
 import type { ProductionWorkerConfiguration } from "./production-config.js";
 import { taskProjectionBindingId } from "./task-projection-policy.js";
-import { workforceKeycloakSyncBindingId } from "./workforce-keycloak-sync-policy.js";
 import type { AbortableRabbitConsumerAdapter, RabbitPublisherAdapter } from "./rabbit-adapter.js";
 
 function deferred<T>(): { readonly promise: Promise<T>; readonly reject: (error: Error) => void; readonly resolve: (value: T) => void } {
@@ -26,7 +25,6 @@ const configuration = (overrides: Partial<ProductionWorkerConfiguration> = {}): 
   databaseCompatibilityTimeoutMs: 100,
   databaseHealthProbe: Object.freeze({ intervalMs: 1_000, timeoutMs: 100 }),
   migrations: Object.freeze(["D:\\AI-CRM\\packages\\database\\migrations"]),
-  workforceKeycloak: Object.freeze({ adminBaseUrl: "https://keycloak.internal", clientId: "ai-crm-workforce-sync-worker", clientSecret: "s".repeat(43), realm: "ai-crm-test", timeoutMs: 1000 }),
   outbox: Object.freeze({ backoffSeconds: Object.freeze([5, 30]), batchSize: 10, claimLeaseSeconds: 60, intervalMs: 1_000, maxAttempts: 3 }),
   rabbit: Object.freeze({ acquisitionTimeoutMs: 100, consumer: rabbitConfiguration, publisher: rabbitConfiguration }),
   taskProjectionConsumerEnabled: true,
@@ -66,7 +64,7 @@ function fixture(options: {
     healthy: publisherHealthy,
   };
   const consumer: AbortableRabbitConsumerAdapter = {
-    bindingIds: () => [taskProjectionBindingId, workforceKeycloakSyncBindingId], concurrency: 1, drain: closeConsumer, healthy: consumerHealthy,
+    bindingIds: () => [taskProjectionBindingId], concurrency: 1, drain: closeConsumer, healthy: consumerHealthy,
     prefetch: 2, ready: () => undefined, run: () => Promise.resolve(), stop: () => undefined,
   };
   const dependencies: ProductionWorkerResourceDependencies = {
@@ -96,8 +94,8 @@ describe("production Task projection Worker resources", () => {
       { healthy: true, name: "rabbit-inbox-consumers", required: true },
     ]);
     expect(resources.handlers.map((handler) => handler.name)).toEqual(["eventing.outbox-publisher", "eventing.rabbit-inbox"]);
-    expect(value.assertDurableExchange).toHaveBeenCalledWith("ai-crm.platform.events.v1", "topic");
-    expect(value.assertDurableExchange).toHaveBeenCalledWith("ai-crm.platform.jobs.v1", "direct");
+    expect(value.assertDurableExchange).toHaveBeenCalledWith("ai-crm.crm.events.v1", "topic");
+    expect(value.assertDurableExchange).toHaveBeenCalledTimes(1);
     await resources.close();
     expect([value.closeConsumer.mock.calls.length, value.closePublisher.mock.calls.length, value.closeDatabase.mock.calls.length]).toEqual([1, 1, 1]);
   });

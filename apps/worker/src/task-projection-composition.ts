@@ -3,8 +3,8 @@ import {
   type EventingCore,
   type MessageHandler,
   type ValidatedMessage,
-} from "@ai-crm/platform-eventing-outbox";
-import type { TaskLifecycleEvent } from "@ai-crm/platform-task-center";
+} from "@ai-crm/crm-eventing-outbox";
+import type { TaskLifecycleEvent } from "@ai-crm/crm-task-center";
 import { createRabbitInboxHandler, type RabbitConsumerAdapter, type RabbitInboxBinding } from "./handlers.js";
 import type { WorkerHandler } from "./index.js";
 import {

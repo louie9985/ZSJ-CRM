@@ -1,5 +1,7 @@
 # CURRENT-WORKBENCH-KEYCLOAK-ENTRY
 
+> **历史记录，禁止继续执行。** 本任务中的 Keycloak、OIDC、外部身份与跳转式登录结论已于 2026-08-04 被 ADR-0034 取代。当前实现只允许自建账号密码与 `pc` / `internal-h5` HttpOnly 不透明 Session 契约。
+
 ## Scope
 
 Align `apps/workbench-web` with the real first-stage Keycloak + PC BFF authentication flow. The workbench no longer owns an account-password login form or submits credentials to an application endpoint.

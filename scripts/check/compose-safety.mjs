@@ -1,4 +1,5 @@
 const CREDENTIAL_NAME = /(?:PASSWORD|SECRET|TOKEN|COOKIE|CREDENTIAL|PRIVATE_KEY|SESSION_KEY)/iu;
+const NON_CREDENTIAL_ENVIRONMENT_NAMES = new Set();
 
 const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const clone = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -33,7 +34,8 @@ export const validateEffectiveComposeSafety = (model, label, { production = fals
     }
     for (const [name, rawValue] of environmentEntries(service.environment)) {
       const normalizedName = name.toUpperCase();
-      if (!CREDENTIAL_NAME.test(name) || normalizedName.endsWith("_ID") || rawValue === undefined) continue;
+      if (!CREDENTIAL_NAME.test(name) || normalizedName.endsWith("_ID") ||
+        NON_CREDENTIAL_ENVIRONMENT_NAMES.has(normalizedName) || rawValue === undefined) continue;
       const value = String(rawValue);
       if (!normalizedName.endsWith("_FILE") || !value.startsWith("/run/secrets/")) {
         errors.push(`${label}/${serviceName} environment ${name} must be a typed /run/secrets file reference.`);

@@ -12,19 +12,18 @@ test("accepts the complete synthetic recovery evidence shape repeatedly", () => 
   assert.deepEqual(validateRecoveryEvidence(copy()), []);
 });
 
-test("requires ai_crm, keycloak, and flowable evidence independently", () => {
+test("requires ai_crm and flowable evidence independently", () => {
   const manifest = copy();
   delete manifest.databases.flowable;
   assert.ok(validateRecoveryEvidence(manifest).some((error) => error.startsWith("databases must contain exactly:")));
 });
 
-test("rejects reused evidence across the three independently restored databases", () => {
+test("rejects reused evidence across the independently restored databases", () => {
   const manifest = copy();
-  manifest.databases.keycloak = copy().databases.ai_crm;
   manifest.databases.flowable = copy().databases.ai_crm;
   const errors = validateRecoveryEvidence(manifest);
   for (const evidenceName of ["backupArtifact", "backupEvidence", "restoreEvidence", "verificationEvidence"]) {
-    assert.ok(errors.includes(`databases must use distinct ${evidenceName}.evidenceRef values for ai_crm, keycloak, and flowable.`));
+    assert.ok(errors.includes(`databases must use distinct ${evidenceName}.evidenceRef values for ai_crm and flowable.`));
   }
 });
 

@@ -3,7 +3,7 @@
 - 状态：已接受
 - 日期：2026-07-28
 - 决策权限：项目负责人授权技术负责人把控当前阶段推进
-- 适用范围：`platform.task-center.projection.v1` 消费者
+- 适用范围：`crm.task-center.projection.v1` 消费者
 - 依赖决策：ADR-0010、ADR-0026
 
 ## 已知事实
@@ -27,11 +27,11 @@
 
 ## 决策
 
-`platform.task-center.projection.v1 + task-center.projection-lifecycle.v1 + v1` 使用以下密封策略：
+`crm.task-center.projection.v1 + task-center.projection-lifecycle.v1 + v1` 使用以下密封策略：
 
 | 项目 | 首版值 |
 |---|---|
-| Owner | `platform.task-center` |
+| Owner | `crm.task-center` |
 | Handler | Task Center PostgreSQL projection apply |
 | `maxAttempts` | `3`（包含首次） |
 | `backoffSeconds` | `[30, 300]` |

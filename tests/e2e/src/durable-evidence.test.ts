@@ -5,7 +5,7 @@ import type { E2ePostgresResult, E2ePostgresRuntime } from "./postgres-runtime.j
 
 const input: DurableSubmissionInput = Object.freeze({
   contentDigest: "a".repeat(64),
-  definitionId: "platform.synthetic.form",
+  definitionId: "crm.synthetic.form",
   fileReference: Object.freeze({ contentVersionId: "00000000-0000-4000-8000-000000000002", displayName: "synthetic.txt", fileId: "00000000-0000-4000-8000-000000000001", mediaType: "text/plain", sizeBytes: 9, version: 1 }),
   releaseVersion: 1,
   submissionReference: "submission.synthetic-0001",
@@ -28,8 +28,8 @@ class Runtime implements E2ePostgresRuntime {
     if (sql.includes("operation_id=$2")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
     if (sql.includes("action='task.task_complete'")) return Promise.resolve({ rowCount: 1, rows: [{ count: "1" } as Row] });
     if (sql.includes("from audit.records")) return Promise.resolve({ rowCount: 1, rows: [{ count: "12" } as Row] });
-    if (sql.includes("from platform_eventing.inbox_receipts")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
-    if (sql.includes("from platform_eventing.outbox_messages")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
+    if (sql.includes("from crm_eventing.inbox_receipts")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
+    if (sql.includes("from crm_eventing.outbox_messages")) return Promise.resolve({ rowCount: 1, rows: [{ count: "2" } as Row] });
     if (sql.includes("from e2e_walking_skeleton.form_submissions")) return Promise.resolve({ rowCount: 1, rows: [{ count: "1" } as Row] });
     throw new Error(`unexpected_sql:${sql}`);
   }

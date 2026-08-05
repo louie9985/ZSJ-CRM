@@ -16,7 +16,7 @@
 ## 允许的假设
 
 - Controller 能取得原始 request body，并把不透明 session credential 与服务端确定的 `at` 交给授权适配函数。
-- 上层授权函数仅在 session、有效人员上下文及 `platform.form-schema.form-release:{read|validate}` 静态权限全部通过后返回可信 context。
+- 上层授权函数仅在 session、有效人员上下文及 `crm.form-schema.form-release:{read|validate}` 静态权限全部通过后返回可信 context。
 - `actorId` 使用模块已接受的稳定引用格式；适配器不从客户端 body、path 或 Keycloak issuer/subject 组合反推 Actor。
 
 ## 禁止的假设

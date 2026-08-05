@@ -4,8 +4,7 @@ AI-CRM is currently building its common technical foundation before finalized CR
 
 ## Current Scope
 
-- Workbench application shell
-- Internal mobile and external-client application shells
+- One CRM Web application with PC, employee mobile, and part-time entry routes
 - Authentication and organization context
 - Authorization facade
 - Workflow integration
@@ -18,16 +17,16 @@ Business interview documents under `docs/` are reference material. Confirmed rul
 
 ## Repository Map
 
-- `apps/`: independently runnable composition roots for API, Worker, PC Web, internal mobile, and external portal; application processes do not own platform or domain rules
-- `packages/platform-modules/`: business-neutral platform capabilities
+- `apps/`: independently runnable API, Worker, and single CRM Web composition roots; application processes do not own CRM domain rules
+- `packages/crm-modules/`: CRM-internal core capabilities
 - `packages/domain-modules/`: confirmed business domains, currently intentionally empty
-- `packages/platform-sdk/`: stable, vendor-neutral access to platform capabilities
+- `packages/crm-sdk/`: stable, vendor-neutral access to CRM capabilities
 - `contracts/`: reviewed HTTP, event, job, permission, form, business-configuration, notification, provider-neutral integration, AI governance, error, and shared model contracts
 - `tests/`: cross-application tests
 - `deploy/`: local, test, and production deployment definitions
 - `docs/`: architecture, rules, module descriptions, and operating manuals
 
-The API and worker are separate processes because synchronous HTTP and background execution have different scaling and failure behavior. Platform and domain packages may still be composed as a modular monolith; package boundaries do not imply microservices. See [ADR-0003](docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md).
+The API and worker are separate processes because synchronous HTTP and background execution have different scaling and failure behavior. CRM core and domain packages may still be composed as a modular monolith; package boundaries do not imply microservices. See [ADR-0003](docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md).
 
 Third-party capabilities use owning-module ports, a small business-neutral integration runtime, and provider adapters composed at application boundaries. The repository does not contain a giant integration gateway or any unapproved payment, messaging, WeCom, WeChat, course-platform, question-bank, or AI adapter. See [ADR-0020](docs/08-架构决策/ADR-0020-第三方集成运行时与供应商适配器.md).
 

@@ -8,221 +8,54 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/application-registry": {
-      "get": {
-        "description": "Returns only enabled internal applications, routes, and ancestor-closed navigation currently authorized for the internal principal. Registrations for other audiences and unauthorized targets are filtered server-side.",
-        "operationId": "getInternalApplicationRegistry",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "applications": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "applicationId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          },
-                          "audience": {
-                            "const": "internal"
-                          },
-                          "enabled": {
-                            "const": true
-                          },
-                          "permissionCode": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,63}:[a-z][a-z0-9_.-]{0,63}$",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "applicationId",
-                          "audience",
-                          "enabled",
-                          "permissionCode"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "navigation": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "applicationId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          },
-                          "enabled": {
-                            "const": true
-                          },
-                          "navigationId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          },
-                          "order": {
-                            "maximum": 100000,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
-                          "parentNavigationId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          },
-                          "routeId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "applicationId",
-                          "enabled",
-                          "navigationId",
-                          "order",
-                          "routeId"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "routes": {
-                      "items": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "applicationId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          },
-                          "deepLinkSources": {
-                            "items": {
-                              "enum": [
-                                "task",
-                                "notification"
-                              ],
-                              "type": "string"
-                            },
-                            "maxItems": 2,
-                            "type": "array",
-                            "uniqueItems": true
-                          },
-                          "enabled": {
-                            "const": true
-                          },
-                          "path": {
-                            "pattern": "^/[a-z0-9_./:-]{0,255}$",
-                            "type": "string"
-                          },
-                          "permissionCode": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,63}:[a-z][a-z0-9_.-]{0,63}$",
-                            "type": "string"
-                          },
-                          "routeId": {
-                            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "applicationId",
-                          "deepLinkSources",
-                          "enabled",
-                          "path",
-                          "permissionCode",
-                          "routeId"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "version": {
-                      "const": 1
-                    }
-                  },
-                  "required": [
-                    "applications",
-                    "navigation",
-                    "routes",
-                    "version"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Current authorized internal registry snapshot."
-          },
-          "401": {
-            "description": "No valid internal BFF session."
-          },
-          "403": {
-            "description": "Current server-side or target authorization denied."
-          },
-          "503": {
-            "description": "Authorization or registry persistence is unavailable; fails closed."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ],
-        "x-ai-crm-csrf": {
-          "mode": "not-required",
-          "reason": "read-only"
-        },
-        "x-ai-crm-idempotency": {
-          "mode": "none",
-          "reason": "read-only"
-        },
-        "x-ai-crm-permission": {
-          "action": "read",
-          "code": "platform.app-registry.registry:read",
-          "owner": "platform.app-registry",
-          "resource": "platform.app-registry.registry",
-          "version": 1
-        }
-      }
-    },
-    "/application-registry/deep-links/resolve": {
+    "/auth/internal-h5/assignment": {
       "post": {
-        "description": "Resolves a Task or Notification deep-link descriptor only after rechecking the current internal audience, application and route enablement, source allowlist, and target authorization. The relative route template and resource reference remain separate; the result is not durable authorization.",
-        "operationId": "resolveInternalApplicationDeepLink",
+        "operationId": "selectInternalH5Assignment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "additionalProperties": false,
                 "properties": {
-                  "applicationId": {
-                    "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                  "assignmentId": {
+                    "format": "uuid",
                     "type": "string"
-                  },
-                  "resourceReference": {
-                    "maxLength": 255,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9_.:-]+$",
-                    "type": "string"
-                  },
-                  "routeId": {
-                    "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                    "type": "string"
-                  },
-                  "source": {
-                    "enum": [
-                      "task",
-                      "notification"
-                    ],
-                    "type": "string"
-                  },
-                  "version": {
-                    "const": 1
                   }
                 },
                 "required": [
-                  "applicationId",
-                  "resourceReference",
-                  "routeId",
-                  "source",
-                  "version"
+                  "assignmentId"
                 ],
                 "type": "object"
               }
@@ -237,374 +70,83 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
-                    "applicationId": {
-                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
                       "type": "string"
                     },
-                    "path": {
-                      "pattern": "^/[a-z0-9_./:-]{0,255}$",
+                    "accountId": {
+                      "format": "uuid",
                       "type": "string"
                     },
-                    "resourceReference": {
-                      "maxLength": 255,
-                      "minLength": 1,
-                      "pattern": "^[A-Za-z0-9_.:-]+$",
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
                       "type": "string"
                     },
-                    "routeId": {
-                      "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
                       "type": "string"
-                    }
-                  },
-                  "required": [
-                    "applicationId",
-                    "path",
-                    "resourceReference",
-                    "routeId"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Currently authorized relative route target."
-          },
-          "400": {
-            "description": "Request shape is invalid."
-          },
-          "401": {
-            "description": "No valid internal BFF session."
-          },
-          "403": {
-            "description": "Current server-side or target authorization denied."
-          },
-          "404": {
-            "description": "Target is missing, disabled, audience-mismatched, or not registered for this source; details are intentionally not distinguished."
-          },
-          "503": {
-            "description": "Authorization or registry persistence is unavailable; fails closed."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ],
-        "x-ai-crm-csrf": {
-          "mode": "not-required",
-          "reason": "read-only-resolution"
-        },
-        "x-ai-crm-idempotency": {
-          "mode": "none",
-          "reason": "read-only-resolution"
-        },
-        "x-ai-crm-permission": {
-          "action": "resolve",
-          "code": "platform.app-registry.deep-link:resolve",
-          "owner": "platform.app-registry",
-          "resource": "platform.app-registry.deep-link",
-          "version": 1
-        }
-      }
-    },
-    "/auth/pc/callback": {
-      "get": {
-        "operationId": "completePcLogin",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "maxLength": 4096,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "state",
-            "required": true,
-            "schema": {
-              "maxLength": 512,
-              "minLength": 32,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Establish a normal opaque BFF session, or rotate the same bound session after a successful same-subject reauthentication, then redirect to the allowlisted return path.",
-            "headers": {
-              "Location": {
-                "required": true,
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Set-Cookie": {
-                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
-                "required": true,
-                "schema": {
-                  "maxLength": 1024,
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
                       "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "pc",
+                        "internal-h5",
+                        "part-time"
                       ],
                       "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
                     }
                   },
                   "required": [
-                    "code",
-                    "message"
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
                   ],
                   "type": "object"
                 }
               }
             },
-            "description": "The one-time callback transaction is invalid, expired, or already consumed."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "A required authentication dependency is unavailable; authentication fails closed. When the failure occurs before the one-time transaction is consumed, the same callback can be retried within its validity window."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ]
-      }
-    },
-    "/auth/pc/login": {
-      "get": {
-        "operationId": "beginPcLogin",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "returnTo",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Redirect to the reviewed Keycloak authorization endpoint.",
-            "headers": {
-              "Location": {
-                "required": true,
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The requested local return path is invalid."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The identity provider or session store is unavailable; login fails closed."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ]
-      }
-    },
-    "/auth/pc/logout": {
-      "post": {
-        "operationId": "logoutPcSession",
-        "parameters": [
-          {
-            "description": "Required when an existing browser session Cookie is present.",
-            "in": "header",
-            "name": "X-CSRF-Token",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "minLength": 32,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
-            "in": "header",
-            "name": "Origin",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 512,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
-            "in": "header",
-            "name": "Referer",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 2048,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "redirectUrl": {
-                      "format": "uri",
-                      "maxLength": 4096,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "redirectUrl"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Browser-safe JSON redirect to the same-origin login entry for callers that send Accept application/json. The Keycloak session and local session are already revoked and the Cookie is cleared before this response is returned.",
+            "description": "Internal H5 Session created or rotated.",
             "headers": {
               "Set-Cookie": {
-                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
-                "required": true,
-                "schema": {
-                  "maxLength": 1024,
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Clear an absent session Cookie idempotently; no provider redirect is required.",
-            "headers": {
-              "Set-Cookie": {
-                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
-                "required": true,
-                "schema": {
-                  "maxLength": 1024,
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "302": {
-            "description": "End the Keycloak session through the BFF, revoke the local session, clear its Cookie, and redirect the browser to the same-origin login entry.",
-            "headers": {
-              "Location": {
-                "required": true,
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "Set-Cookie": {
-                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "description": "Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
                 "required": true,
                 "schema": {
                   "maxLength": 1024,
@@ -621,11 +163,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -642,7 +184,7 @@
                 }
               }
             },
-            "description": "The supplied session Cookie is malformed, expired, or revoked."
+            "description": "A valid Session is required."
           },
           "403": {
             "content": {
@@ -652,221 +194,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "CSRF validation failed for an existing session."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Keycloak, session storage, or durable authentication audit is unavailable; logout fails closed and a still-current local session remains retryable."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ]
-      }
-    },
-    "/auth/pc/reauthentication": {
-      "post": {
-        "description": "Start a short-lived same-subject reauthentication transaction. The BFF requires the existing session and CSRF proof and sends prompt=login to Keycloak; ordinary login time is not accepted as fresh proof.",
-        "operationId": "beginPcReauthentication",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "returnTo",
-            "required": false,
-            "schema": {
-              "maxLength": 512,
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-CSRF-Token",
-            "required": true,
-            "schema": {
-              "maxLength": 512,
-              "minLength": 32,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
-            "in": "header",
-            "name": "Origin",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 512,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
-            "in": "header",
-            "name": "Referer",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 2048,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "redirectUrl": {
-                      "format": "uri",
-                      "maxLength": 4096,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "redirectUrl"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Browser-safe JSON authorization redirect for same-origin fetch callers that send Accept application/json."
-          },
-          "302": {
-            "description": "Redirect to Keycloak with prompt=login. The one-time transaction is bound to the current logical BFF session and Keycloak subject.",
-            "headers": {
-              "Location": {
-                "required": true,
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The requested local return path is invalid."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
-                      ],
-                      "type": "string"
-                    },
-                    "message": {
-                      "maxLength": 200,
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The existing BFF session is missing or invalid."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "code": {
-                      "enum": [
-                        "authentication_required",
-                        "authentication_callback_invalid",
-                        "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -893,11 +225,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -914,7 +246,7 @@
                 }
               }
             },
-            "description": "Keycloak, session storage, or durable authentication audit is unavailable."
+            "description": "A required authentication dependency is unavailable and access fails closed."
           }
         },
         "x-ai-crm-audiences": [
@@ -922,22 +254,11 @@
         ]
       }
     },
-    "/auth/pc/refresh": {
+    "/auth/internal-h5/login": {
       "post": {
-        "operationId": "refreshPcSession",
+        "operationId": "loginInternalH5",
         "parameters": [
           {
-            "in": "header",
-            "name": "X-CSRF-Token",
-            "required": true,
-            "schema": {
-              "maxLength": 512,
-              "minLength": 32,
-              "type": "string"
-            }
-          },
-          {
-            "description": "Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.",
             "in": "header",
             "name": "Origin",
             "required": false,
@@ -948,7 +269,6 @@
             }
           },
           {
-            "description": "Fallback source evidence when Origin is unavailable; its origin must be allowlisted.",
             "in": "header",
             "name": "Referer",
             "required": false,
@@ -959,12 +279,117 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "identifier": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identifier",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "204": {
-            "description": "Refresh the server-side Keycloak session and rotate the opaque BFF session identifier.",
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal H5 Session created or rotated.",
             "headers": {
               "Set-Cookie": {
-                "description": "Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.",
+                "description": "Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
                 "required": true,
                 "schema": {
                   "maxLength": 1024,
@@ -981,11 +406,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1002,7 +427,7 @@
                 }
               }
             },
-            "description": "The session or refresh credential is no longer valid."
+            "description": "Identifier, password or account state is invalid without distinguishing the cause."
           },
           "403": {
             "content": {
@@ -1012,11 +437,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1033,9 +458,9 @@
                 }
               }
             },
-            "description": "CSRF validation failed."
+            "description": "CSRF or same-origin validation failed."
           },
-          "409": {
+          "429": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1043,11 +468,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1064,7 +489,7 @@
                 }
               }
             },
-            "description": "Another refresh owns the short-lived session refresh lease; the request must not reuse the refresh credential."
+            "description": "Login failure limit reached for the identifier or source address."
           },
           "503": {
             "content": {
@@ -1074,11 +499,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1095,7 +520,2264 @@
                 }
               }
             },
-            "description": "The identity provider or session store is unavailable; refresh fails closed."
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/internal-h5/logout": {
+      "post": {
+        "operationId": "logoutInternalH5",
+        "parameters": [
+          {
+            "description": "Required when the request carries a valid Session; omitted only to clear an absent or invalid Session Cookie.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked and Cookie cleared idempotently.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/internal-h5/reauthentication": {
+      "post": {
+        "operationId": "reauthenticateInternalH5",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal H5 Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Identifier, password or account state is invalid without distinguishing the cause."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Login failure limit reached for the identifier or source address."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/internal-h5/session": {
+      "get": {
+        "operationId": "getInternalH5Session",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current valid internal H5 Session."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A valid Session is required."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/part-time/login": {
+      "post": {
+        "operationId": "loginPartTime",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "identifier": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identifier",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Internal H5 Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Identifier, password or account state is invalid without distinguishing the cause."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Login failure limit reached for the identifier or source address."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/part-time/logout": {
+      "post": {
+        "operationId": "logoutPartTime",
+        "parameters": [
+          {
+            "description": "Required when the request carries a valid Session; omitted only to clear an absent or invalid Session Cookie.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Part-time Session revoked and Cookie cleared idempotently.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque part-time CRM Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/part-time/reauthentication": {
+      "post": {
+        "operationId": "reauthenticatePartTime",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Part-time Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque part-time CRM Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A valid Session is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/part-time/session": {
+      "get": {
+        "operationId": "getPartTimeSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Current valid internal H5 Session."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A valid Session is required."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/assignment": {
+      "post": {
+        "operationId": "selectPcAssignment",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "assignmentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "assignmentId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "PC Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque PC Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A valid Session is required."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/login": {
+      "post": {
+        "operationId": "loginPc",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "identifier": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 8,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "identifier",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "PC Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque PC Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Identifier, password or account state is invalid without distinguishing the cause."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Login failure limit reached for the identifier or source address."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/logout": {
+      "post": {
+        "operationId": "logoutPc",
+        "parameters": [
+          {
+            "description": "Required when the request carries a valid Session; omitted only to clear an absent or invalid Session Cookie.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked and Cookie cleared idempotently.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque PC Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
+          }
+        },
+        "x-ai-crm-audiences": [
+          "internal"
+        ]
+      }
+    },
+    "/auth/pc/reauthentication": {
+      "post": {
+        "operationId": "reauthenticatePc",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Referer",
+            "required": false,
+            "schema": {
+              "format": "uri",
+              "maxLength": 2048,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "password": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "absoluteExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "csrfToken": {
+                      "maxLength": 512,
+                      "minLength": 32,
+                      "type": "string"
+                    },
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "surface",
+                    "accountId",
+                    "authenticatedAt",
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "PC Session created or rotated.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Host-only opaque PC Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.",
+                "required": true,
+                "schema": {
+                  "maxLength": 1024,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Identifier, password or account state is invalid without distinguishing the cause."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "CSRF or same-origin validation failed."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Login failure limit reached for the identifier or source address."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "enum": [
+                        "authentication_invalid_credentials",
+                        "authentication_required",
+                        "authentication_csrf_rejected",
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
+                      ],
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A required authentication dependency is unavailable and access fails closed."
           }
         },
         "x-ai-crm-audiences": [
@@ -1113,12 +2795,24 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
-                    "authenticatedAt": {
+                    "absoluteExpiresAt": {
                       "format": "date-time",
                       "type": "string"
                     },
-                    "client": {
-                      "const": "pc-web",
+                    "accountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignments": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "authenticatedAt": {
+                      "format": "date-time",
                       "type": "string"
                     },
                     "csrfToken": {
@@ -1126,22 +2820,55 @@
                       "minLength": 32,
                       "type": "string"
                     },
-                    "expiresAt": {
+                    "currentAssignmentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "idleExpiresAt": {
                       "format": "date-time",
+                      "type": "string"
+                    },
+                    "reauthenticatedUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "roles": {
+                      "items": {
+                        "enum": [
+                          "system_administrator",
+                          "application_user",
+                          "crm_administrator"
+                        ],
+                        "type": "string"
+                      },
+                      "maxItems": 3,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "surface": {
+                      "enum": [
+                        "pc",
+                        "internal-h5",
+                        "part-time"
+                      ],
                       "type": "string"
                     }
                   },
                   "required": [
-                    "client",
+                    "surface",
+                    "accountId",
                     "authenticatedAt",
-                    "expiresAt",
-                    "csrfToken"
+                    "idleExpiresAt",
+                    "absoluteExpiresAt",
+                    "csrfToken",
+                    "assignments",
+                    "roles"
                   ],
                   "type": "object"
                 }
               }
             },
-            "description": "Return the browser-safe view of the current BFF session."
+            "description": "Current valid PC Session."
           },
           "401": {
             "content": {
@@ -1151,11 +2878,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1172,7 +2899,7 @@
                 }
               }
             },
-            "description": "The session is missing, expired, revoked, or invalid."
+            "description": "A valid Session is required."
           },
           "503": {
             "content": {
@@ -1182,11 +2909,11 @@
                   "properties": {
                     "code": {
                       "enum": [
+                        "authentication_invalid_credentials",
                         "authentication_required",
-                        "authentication_callback_invalid",
                         "authentication_csrf_rejected",
-                        "authentication_dependency_unavailable",
-                        "authentication_refresh_in_progress"
+                        "authentication_rate_limited",
+                        "authentication_dependency_unavailable"
                       ],
                       "type": "string"
                     },
@@ -1203,207 +2930,12 @@
                 }
               }
             },
-            "description": "The identity provider or session store is unavailable; session validation fails closed."
+            "description": "A required authentication dependency is unavailable and access fails closed."
           }
         },
         "x-ai-crm-audiences": [
           "internal"
         ]
-      }
-    },
-    "/authentication/session-policy": {
-      "get": {
-        "operationId": "getPcSessionPolicy",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "concurrentLimit": {
-                      "default": 1,
-                      "maximum": 5,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    "revocationTargetSeconds": {
-                      "default": 5,
-                      "maximum": 60,
-                      "minimum": 5,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "concurrentLimit",
-                    "revocationTargetSeconds"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Current effective PC Web session policy."
-          },
-          "401": {
-            "description": "Authentication is required."
-          },
-          "403": {
-            "description": "The current workforce subject may not read login security policy."
-          },
-          "503": {
-            "description": "Authorization or configuration storage is unavailable."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ],
-        "x-ai-crm-permission": {
-          "action": "read",
-          "code": "platform.authentication.session-policy:read",
-          "owner": "platform.authentication",
-          "resource": "platform.authentication.session-policy",
-          "version": 1
-        }
-      },
-      "put": {
-        "operationId": "updatePcSessionPolicy",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "X-CSRF-Token",
-            "required": true,
-            "schema": {
-              "maxLength": 512,
-              "minLength": 32,
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Origin",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 512,
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Referer",
-            "required": false,
-            "schema": {
-              "format": "uri",
-              "maxLength": 2048,
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "maxLength": 36,
-              "minLength": 36,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "concurrentLimit": {
-                    "default": 1,
-                    "maximum": 5,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "revocationTargetSeconds": {
-                    "default": 5,
-                    "maximum": 60,
-                    "minimum": 5,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "concurrentLimit",
-                  "revocationTargetSeconds"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "concurrentLimit": {
-                      "default": 1,
-                      "maximum": 5,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    "revocationTargetSeconds": {
-                      "default": 5,
-                      "maximum": 60,
-                      "minimum": 5,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "concurrentLimit",
-                    "revocationTargetSeconds"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Newly effective PC Web session policy."
-          },
-          "400": {
-            "description": "The body or operation identifier is invalid."
-          },
-          "401": {
-            "description": "Authentication is required."
-          },
-          "403": {
-            "description": "CSRF validation failed or the current subject may not manage login security policy."
-          },
-          "409": {
-            "description": "The operation identifier conflicts with an earlier operation."
-          },
-          "503": {
-            "description": "Authorization, audit, or configuration storage is unavailable."
-          }
-        },
-        "x-ai-crm-audiences": [
-          "internal"
-        ],
-        "x-ai-crm-csrf": {
-          "originCheck": true,
-          "required": true
-        },
-        "x-ai-crm-idempotency": {
-          "header": "Idempotency-Key",
-          "required": true,
-          "semantics": "stable-operation"
-        },
-        "x-ai-crm-permission": {
-          "action": "manage",
-          "code": "platform.authentication.session-policy:manage",
-          "owner": "platform.authentication",
-          "resource": "platform.authentication.session-policy",
-          "version": 1
-        }
       }
     },
     "/files/download-grants": {
@@ -1608,9 +3140,9 @@
         },
         "x-ai-crm-permission": {
           "action": "download",
-          "code": "platform.file-center.file:download",
-          "owner": "platform.file-center",
-          "resource": "platform.file-center.file",
+          "code": "crm.file-center.file:download",
+          "owner": "crm.file-center",
+          "resource": "crm.file-center.file",
           "version": 1
         }
       }
@@ -1872,9 +3404,9 @@
         },
         "x-ai-crm-permission": {
           "action": "upload",
-          "code": "platform.file-center.file:upload",
-          "owner": "platform.file-center",
-          "resource": "platform.file-center.file",
+          "code": "crm.file-center.file:upload",
+          "owner": "crm.file-center",
+          "resource": "crm.file-center.file",
           "version": 1
         }
       }
@@ -2055,9 +3587,9 @@
         },
         "x-ai-crm-permission": {
           "action": "upload",
-          "code": "platform.file-center.file:upload",
-          "owner": "platform.file-center",
-          "resource": "platform.file-center.file",
+          "code": "crm.file-center.file:upload",
+          "owner": "crm.file-center",
+          "resource": "crm.file-center.file",
           "version": 1
         }
       }
@@ -2227,9 +3759,9 @@
         },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.form-schema.form-release:read",
-          "owner": "platform.form-schema",
-          "resource": "platform.form-schema.form-release",
+          "code": "crm.form-schema.form-release:read",
+          "owner": "crm.form-schema",
+          "resource": "crm.form-schema.form-release",
           "version": 1
         }
       }
@@ -2382,9 +3914,9 @@
         },
         "x-ai-crm-permission": {
           "action": "validate",
-          "code": "platform.form-schema.form-release:validate",
-          "owner": "platform.form-schema",
-          "resource": "platform.form-schema.form-release",
+          "code": "crm.form-schema.form-release:validate",
+          "owner": "crm.form-schema",
+          "resource": "crm.form-schema.form-release",
           "version": 1
         },
         "x-ai-crm-request-limits": {
@@ -2737,11 +4269,19 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.notifications.template:read",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:read",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3007,11 +4547,19 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.notifications.template:read",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:read",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3068,11 +4616,22 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
         "x-ai-crm-permission": {
           "action": "activate",
-          "code": "platform.notifications.template:activate",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:activate",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3194,11 +4753,22 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
         "x-ai-crm-permission": {
           "action": "manage",
-          "code": "platform.notifications.template:manage",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:manage",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3298,11 +4868,20 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "no-state-change"
+        },
         "x-ai-crm-permission": {
           "action": "manage",
-          "code": "platform.notifications.template:manage",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:manage",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3389,11 +4968,22 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
         "x-ai-crm-permission": {
           "action": "publish",
-          "code": "platform.notifications.template:publish",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.template",
+          "code": "crm.notifications.template:publish",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.template",
           "version": 1
         }
       }
@@ -3630,11 +5220,19 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
         "x-ai-crm-permission": {
           "action": "list",
-          "code": "platform.notifications.in-app-notification:list",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.in-app-notification",
+          "code": "crm.notifications.in-app-notification:list",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.in-app-notification",
           "version": 1
         }
       }
@@ -3841,11 +5439,19 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.notifications.in-app-notification:read",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.in-app-notification",
+          "code": "crm.notifications.in-app-notification:read",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.in-app-notification",
           "version": 1
         }
       }
@@ -4052,11 +5658,22 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
         "x-ai-crm-permission": {
           "action": "archive",
-          "code": "platform.notifications.in-app-notification:archive",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.in-app-notification",
+          "code": "crm.notifications.in-app-notification:archive",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.in-app-notification",
           "version": 1
         }
       }
@@ -4264,11 +5881,22 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "required",
+          "originCheck": "required",
+          "tokenHeader": "X-CSRF-Token"
+        },
+        "x-ai-crm-idempotency": {
+          "conflictStatus": 409,
+          "durableReplay": "original-result",
+          "keyHeader": "Idempotency-Key",
+          "mode": "required"
+        },
         "x-ai-crm-permission": {
           "action": "mark-read",
-          "code": "platform.notifications.in-app-notification:mark-read",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.in-app-notification",
+          "code": "crm.notifications.in-app-notification:mark-read",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.in-app-notification",
           "version": 1
         }
       }
@@ -4310,11 +5938,19 @@
         "x-ai-crm-audiences": [
           "internal"
         ],
+        "x-ai-crm-csrf": {
+          "mode": "not-required",
+          "reason": "read-only"
+        },
+        "x-ai-crm-idempotency": {
+          "mode": "none",
+          "reason": "read-only"
+        },
         "x-ai-crm-permission": {
           "action": "list",
-          "code": "platform.notifications.in-app-notification:list",
-          "owner": "platform.notifications",
-          "resource": "platform.notifications.in-app-notification",
+          "code": "crm.notifications.in-app-notification:list",
+          "owner": "crm.notifications",
+          "resource": "crm.notifications.in-app-notification",
           "version": 1
         }
       }
@@ -4474,9 +6110,9 @@
         ],
         "x-ai-crm-permission": {
           "action": "list",
-          "code": "platform.task-center.task-projection:list",
-          "owner": "platform.task-center",
-          "resource": "platform.task-center.task-projection",
+          "code": "crm.task-center.task-projection:list",
+          "owner": "crm.task-center",
+          "resource": "crm.task-center.task-projection",
           "version": 1
         }
       }
@@ -4608,9 +6244,9 @@
         ],
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.task-center.task-projection:read",
-          "owner": "platform.task-center",
-          "resource": "platform.task-center.task-projection",
+          "code": "crm.task-center.task-projection:read",
+          "owner": "crm.task-center",
+          "resource": "crm.task-center.task-projection",
           "version": 1
         }
       }
@@ -4715,9 +6351,9 @@
         ],
         "x-ai-crm-permission": {
           "action": "complete",
-          "code": "platform.task-center.task-projection:complete",
-          "owner": "platform.task-center",
-          "resource": "platform.task-center.task-projection",
+          "code": "crm.task-center.task-projection:complete",
+          "owner": "crm.task-center",
+          "resource": "crm.task-center.task-projection",
           "version": 1
         }
       }
@@ -4865,16 +6501,16 @@
         ],
         "x-ai-crm-permission": {
           "action": "reconcile",
-          "code": "platform.task-center.task-projection:reconcile",
-          "owner": "platform.task-center",
-          "resource": "platform.task-center.task-projection",
+          "code": "crm.task-center.task-projection:reconcile",
+          "owner": "crm.task-center",
+          "resource": "crm.task-center.task-projection",
           "version": 1
         }
       }
     },
     "/workbench/bootstrap": {
       "get": {
-        "description": "Resolves the current opaque BFF session, unique workforce context, authorized applications and navigation without exposing provider tokens. Concurrent active Assignments fail closed.",
+        "description": "Resolves the current opaque CRM session, workforce context and authorized CRM navigation without exposing provider tokens. Concurrent active Assignments fail closed.",
         "operationId": "getWorkbenchBootstrap",
         "responses": {
           "200": {
@@ -4883,15 +6519,6 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
-                    "applicationIds": {
-                      "items": {
-                        "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                        "type": "string"
-                      },
-                      "maxItems": 32,
-                      "type": "array",
-                      "uniqueItems": true
-                    },
                     "collections": {
                       "additionalProperties": true,
                       "description": "Initial browser collection summaries; entries may be empty when no feature is authorized.",
@@ -4998,7 +6625,7 @@
             "description": "The authenticated subject is not an active internal account."
           },
           "503": {
-            "description": "A required identity, organization, authorization or registry dependency is unavailable."
+            "description": "A required identity, organization, authorization or CRM dependency is unavailable."
           }
         },
         "x-ai-crm-audiences": [
@@ -5014,9 +6641,9 @@
         },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.workbench.shell:read",
-          "owner": "platform.workbench",
-          "resource": "platform.workbench.shell",
+          "code": "crm.workbench.shell:read",
+          "owner": "crm.workbench",
+          "resource": "crm.workbench.shell",
           "version": 1
         }
       }
@@ -5049,7 +6676,6 @@
                                 "reactivate",
                                 "release_phone",
                                 "reset_password",
-                                "retry_identity_sync",
                                 "revoke_crm_administrator",
                                 "transfer"
                               ]
@@ -5068,58 +6694,6 @@
                             "maxLength": 64,
                             "minLength": 1,
                             "type": "string"
-                          },
-                          "latestIdentitySync": {
-                            "additionalProperties": false,
-                            "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
-                            "properties": {
-                              "action": {
-                                "enum": [
-                                  "disable",
-                                  "revoke_sessions",
-                                  "synchronize_login_identifiers"
-                                ]
-                              },
-                              "completedAt": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "errorCode": {
-                                "enum": [
-                                  "eventing_handler_timeout",
-                                  "identity_sync_failed",
-                                  "keycloak_administration_unavailable",
-                                  "keycloak_entity_conflict"
-                                ]
-                              },
-                              "operationId": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "requestedAt": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "retryOfOperationId": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "status": {
-                                "enum": [
-                                  "pending",
-                                  "succeeded",
-                                  "failed",
-                                  "superseded"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "action",
-                              "operationId",
-                              "requestedAt",
-                              "status"
-                            ],
-                            "type": "object"
                           },
                           "legalName": {
                             "maxLength": 64,
@@ -5155,11 +6729,8 @@
                           },
                           "status": {
                             "enum": [
-                              "provisioning",
-                              "credential_pending",
                               "active",
-                              "disabled",
-                              "failed"
+                              "disabled"
                             ]
                           },
                           "username": {
@@ -5308,7 +6879,6 @@
                               "reactivate",
                               "release_phone",
                               "reset_password",
-                              "retry_identity_sync",
                               "revoke_crm_administrator",
                               "transfer"
                             ]
@@ -5327,58 +6897,6 @@
                           "maxLength": 64,
                           "minLength": 1,
                           "type": "string"
-                        },
-                        "latestIdentitySync": {
-                          "additionalProperties": false,
-                          "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
-                          "properties": {
-                            "action": {
-                              "enum": [
-                                "disable",
-                                "revoke_sessions",
-                                "synchronize_login_identifiers"
-                              ]
-                            },
-                            "completedAt": {
-                              "format": "date-time",
-                              "type": "string"
-                            },
-                            "errorCode": {
-                              "enum": [
-                                "eventing_handler_timeout",
-                                "identity_sync_failed",
-                                "keycloak_administration_unavailable",
-                                "keycloak_entity_conflict"
-                              ]
-                            },
-                            "operationId": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "requestedAt": {
-                              "format": "date-time",
-                              "type": "string"
-                            },
-                            "retryOfOperationId": {
-                              "format": "uuid",
-                              "type": "string"
-                            },
-                            "status": {
-                              "enum": [
-                                "pending",
-                                "succeeded",
-                                "failed",
-                                "superseded"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "action",
-                            "operationId",
-                            "requestedAt",
-                            "status"
-                          ],
-                          "type": "object"
                         },
                         "legalName": {
                           "maxLength": 64,
@@ -5414,11 +6932,8 @@
                         },
                         "status": {
                           "enum": [
-                            "provisioning",
-                            "credential_pending",
                             "active",
-                            "disabled",
-                            "failed"
+                            "disabled"
                           ]
                         },
                         "username": {
@@ -5459,7 +6974,7 @@
             "description": "The current principal is not permitted to perform this operation."
           },
           "503": {
-            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+            "description": "A required local dependency is unavailable; access remains fail-closed."
           }
         },
         "x-ai-crm-audiences": [
@@ -5475,9 +6990,9 @@
         },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.workforce-access.console:read",
-          "owner": "platform.workforce-access",
-          "resource": "platform.workforce-access.console",
+          "code": "crm.workforce-access.console:read",
+          "owner": "crm.workforce-access",
+          "resource": "crm.workforce-access.console",
           "version": 1
         }
       }
@@ -5565,11 +7080,8 @@
             "required": false,
             "schema": {
               "enum": [
-                "provisioning",
-                "credential_pending",
                 "active",
-                "disabled",
-                "failed"
+                "disabled"
               ]
             }
           }
@@ -5598,7 +7110,6 @@
                                 "reactivate",
                                 "release_phone",
                                 "reset_password",
-                                "retry_identity_sync",
                                 "revoke_crm_administrator",
                                 "transfer"
                               ]
@@ -5617,58 +7128,6 @@
                             "maxLength": 64,
                             "minLength": 1,
                             "type": "string"
-                          },
-                          "latestIdentitySync": {
-                            "additionalProperties": false,
-                            "description": "Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.",
-                            "properties": {
-                              "action": {
-                                "enum": [
-                                  "disable",
-                                  "revoke_sessions",
-                                  "synchronize_login_identifiers"
-                                ]
-                              },
-                              "completedAt": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "errorCode": {
-                                "enum": [
-                                  "eventing_handler_timeout",
-                                  "identity_sync_failed",
-                                  "keycloak_administration_unavailable",
-                                  "keycloak_entity_conflict"
-                                ]
-                              },
-                              "operationId": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "requestedAt": {
-                                "format": "date-time",
-                                "type": "string"
-                              },
-                              "retryOfOperationId": {
-                                "format": "uuid",
-                                "type": "string"
-                              },
-                              "status": {
-                                "enum": [
-                                  "pending",
-                                  "succeeded",
-                                  "failed",
-                                  "superseded"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "action",
-                              "operationId",
-                              "requestedAt",
-                              "status"
-                            ],
-                            "type": "object"
                           },
                           "legalName": {
                             "maxLength": 64,
@@ -5704,11 +7163,8 @@
                           },
                           "status": {
                             "enum": [
-                              "provisioning",
-                              "credential_pending",
                               "active",
-                              "disabled",
-                              "failed"
+                              "disabled"
                             ]
                           },
                           "username": {
@@ -5769,7 +7225,7 @@
             "description": "The current principal is not permitted to perform this operation."
           },
           "503": {
-            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+            "description": "A required local dependency is unavailable; access remains fail-closed."
           }
         },
         "x-ai-crm-audiences": [
@@ -5785,16 +7241,16 @@
         },
         "x-ai-crm-permission": {
           "action": "read",
-          "code": "platform.workforce-access.console:read",
-          "owner": "platform.workforce-access",
-          "resource": "platform.workforce-access.console",
+          "code": "crm.workforce-access.console:read",
+          "owner": "crm.workforce-access",
+          "resource": "crm.workforce-access.console",
           "version": 1
         }
       }
     },
     "/workforce-administration/commands": {
       "post": {
-        "description": "Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password that is forwarded to Keycloak and never persisted by CRM; recovery operations may still return a Keycloak-hosted ceremony URL.",
+        "description": "Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password whose Argon2id hash is stored locally; plaintext and derived values never enter fingerprints, logs, audit records, traces or responses.",
         "operationId": "executeWorkforceAdministrationCommand",
         "parameters": [
           {
@@ -5834,7 +7290,7 @@
                         "type": "string"
                       },
                       "initialPassword": {
-                        "description": "Forwarded to Keycloak over the server-side administration boundary and never stored by CRM. Only printable half-width ASCII characters are accepted.",
+                        "description": "Hashed with the fixed Argon2id profile before persistence. Only printable half-width ASCII characters are accepted.",
                         "format": "password",
                         "maxLength": 64,
                         "minLength": 8,
@@ -6033,7 +7489,7 @@
                         "const": "reset_password"
                       },
                       "password": {
-                        "description": "Replaces the Keycloak password; CRM never persists or returns the value. Only printable half-width ASCII characters are accepted.",
+                        "description": "Replaces the local Argon2id hash and increments securityRevision. The plaintext is never persisted or returned.",
                         "format": "password",
                         "maxLength": 64,
                         "minLength": 8,
@@ -6047,33 +7503,6 @@
                       "accountId",
                       "expectedRevision",
                       "password"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "accountId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "ceremonyOperationId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "expectedRevision": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "kind": {
-                        "const": "complete_credential_ceremony"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "accountId",
-                      "ceremonyOperationId",
-                      "expectedRevision"
                     ],
                     "type": "object"
                   },
@@ -6102,34 +7531,6 @@
                       "accountId",
                       "expectedRevision",
                       "phone"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "description": "Creates a new synchronization Operation linked to one currently failed operation. The server resolves the action and current identifiers; clients cannot replay an old payload.",
-                    "properties": {
-                      "accountId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "expectedRevision": {
-                        "minimum": 0,
-                        "type": "integer"
-                      },
-                      "failedOperationId": {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      "kind": {
-                        "const": "retry_identity_sync"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "accountId",
-                      "expectedRevision",
-                      "failedOperationId"
                     ],
                     "type": "object"
                   },
@@ -6382,11 +7783,6 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
-                    "credentialRedirectUrl": {
-                      "maxLength": 1024,
-                      "pattern": "^/(?!/)[A-Za-z0-9_./?=&%-]+$",
-                      "type": "string"
-                    },
                     "replayed": {
                       "type": "boolean"
                     }
@@ -6432,7 +7828,7 @@
             "description": "Revision, identifier, hierarchy, reference or idempotency conflict."
           },
           "503": {
-            "description": "A required local or Keycloak dependency is unavailable; access remains fail-closed."
+            "description": "A required local dependency is unavailable; access remains fail-closed."
           }
         },
         "x-ai-crm-audiences": [
@@ -6450,9 +7846,9 @@
         },
         "x-ai-crm-permission": {
           "action": "manage",
-          "code": "platform.workforce-access.console:manage",
-          "owner": "platform.workforce-access",
-          "resource": "platform.workforce-access.console",
+          "code": "crm.workforce-access.console:manage",
+          "owner": "crm.workforce-access",
+          "resource": "crm.workforce-access.console",
           "version": 1
         }
       }

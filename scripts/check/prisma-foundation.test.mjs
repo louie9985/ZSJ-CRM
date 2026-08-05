@@ -15,7 +15,7 @@ async function fixture(fragments) {
   mkdirSync(resolve(root, "prisma"));
   writeFileSync(resolve(root, "prisma/base.prisma"), base);
   for (const [name, contents] of Object.entries(fragments)) {
-    const dir = resolve(root, `packages/platform-modules/${name}/prisma`);
+    const dir = resolve(root, `packages/crm-modules/${name}/prisma`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(resolve(dir, `${name}.prisma`), contents);
   }
@@ -28,7 +28,7 @@ test("Prisma schema composition is deterministic and collects PostgreSQL schemas
   const first = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   execFileSync(process.execPath, [script], { env: { ...process.env, AI_CRM_PRISMA_ROOT: root } });
   assert.equal(readFileSync(resolve(root, "prisma/schema.prisma"), "utf8"), first);
-  assert.ok(first.indexOf("source: packages/platform-modules/alpha") < first.indexOf("source: packages/platform-modules/zed"));
+  assert.ok(first.indexOf("source: packages/crm-modules/alpha") < first.indexOf("source: packages/crm-modules/zed"));
   assert.match(first, /schemas = \["alpha", "public", "zed"\]/);
 });
 

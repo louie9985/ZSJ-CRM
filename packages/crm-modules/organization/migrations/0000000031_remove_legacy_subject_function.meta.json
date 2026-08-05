@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "organization",
+  "purpose": "Remove the obsolete trigger function left behind after the external subject association table was dropped.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Drops one unused organization-owned function during the approved local-development reset.",
+  "dataImpact": "No retained business data is changed; obsolete external-identity database logic is removed.",
+  "backfill": "Not required.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 local-development empty-volume reset.",
+  "recovery": "Restore the complete pre-reset database backup and prior application version.",
+  "forwardFix": "Append a reviewed organization-owned migration. Do not rewrite this migration after application."
+}

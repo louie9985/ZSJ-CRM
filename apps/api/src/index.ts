@@ -6,23 +6,15 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import type { DynamicModule, INestApplication } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 import { evaluateHealth, extractTraceContext, injectTraceContext, type ApplicationLogger, type HealthDependency, type HealthResult, type TraceContext } from "@ai-crm/observability";
-import type { PermissionRequest } from "@ai-crm/platform-authorization";
+import type { PermissionRequest } from "@ai-crm/crm-authorization";
 import type { RealtimeServer } from "./realtime/realtime-server.js";
 import { BrowserSessionFailure } from "./auth/errors.js";
-import { parsePcSessionCredential, type AuthenticationHttpResponse, type BrowserRequestContext, type PcAuthenticationHttpAdapter } from "./auth/http-adapter.js";
-import { clearPcSessionCookie } from "./auth/session-security.js";
+import { parseSurfaceSessionCookie, type LocalAuthenticationHttpAdapter, type LocalAuthenticationHttpResponse, type LocalBrowserMutationContext } from "./auth/local-http-adapter.js";
+import type { AuthenticationSurface } from "./auth/local-session-store.js";
 import type { ApiPlatformHttpComposition, AuthorizedOperationContext } from "./composition.js";
+import { createApiHttpRequestLoggingMiddleware } from "./api-http-logging.js";
 
-export {
-  createOidcClient,
-  createPcAuthenticationHttpAdapter,
-  createPcBffSessionService,
-  connectRedisSessionStore,
-  createRedisBrowserSessionStore,
-  type AuthenticationAuditPort,
-  type PcAuthenticationHttpAdapter,
-  type RedisSessionConnection,
-} from "./auth/index.js";
+export { AccountAccessApplicationService, connectRedisAccessSessionStore, createLocalAuthenticationHttpAdapter, createRedisAccessSessionStore, type AccessSessionStore, type LocalAuthenticationHttpAdapter } from "./auth/index.js";
 export { createFormSchemaHttpAdapter, type FormSchemaHttpAdapter } from "./platform-http/form-schema-http.js";
 export { createWorkbenchBootstrapFacade, type WorkbenchFacadeDependencies } from "./workbench/facade.js";
 export { createWorkbenchHttpAdapter, type WorkbenchBootstrapFacade } from "./platform-http/workbench-http.js";
@@ -36,15 +28,15 @@ const REQUEST_TRACE_CONTEXT = Symbol("api-request-trace-context");
 interface ApiRuntimeState { ready: boolean; }
 
 export interface ApiComposition {
-  readonly authentication?: PcAuthenticationHttpAdapter;
-  readonly authenticationCallbackUrl?: (requestPathAndQuery: string) => string;
+  readonly accountAccess?: LocalAuthenticationHttpAdapter;
+  readonly partTimeAccess?: LocalAuthenticationHttpAdapter;
   readonly dependencies?: () => readonly HealthDependency[];
   readonly logger: ApplicationLogger;
   readonly onStart?: (signal: AbortSignal) => void | Promise<void>;
   readonly onStop?: () => void | Promise<void>;
   readonly platformHttp?: Readonly<ApiPlatformHttpComposition>;
   readonly realtime?: RealtimeServer;
-  readonly revokeBrowserSession?: (credential: string, traceId: string) => Promise<void>;
+  readonly trustedProxyCidrs?: readonly string[];
   readonly workbenchHttp?: Readonly<{
     bootstrap(input: Readonly<{ credential: string; traceId: string }>): Promise<PlatformHttpResponse>;
   }>;
@@ -59,6 +51,7 @@ export interface ApiComposition {
 
 interface PlatformHttpResponse {
   readonly body?: unknown;
+  readonly diagnosticCode?: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly status: number;
 }
@@ -69,15 +62,49 @@ function sendPlatformResponse(response: Response, result: PlatformHttpResponse):
   else response.status(result.status).json(result.body);
 }
 
-function stableActorId(context: Readonly<AuthorizedOperationContext>): string {
-  const subject = context.principal.authenticationSubject;
-  return `subject:${createHash("sha256").update(`${subject.issuer}\0${subject.subject}`).digest("hex")}`;
+function logPlatformDiagnostic(logger: ApplicationLogger, operation: string, result: PlatformHttpResponse, traceId: string): void {
+  if (result.diagnosticCode === undefined || result.status < 400) return;
+  try {
+    logger.log(result.status >= 500 ? "error" : "warn", {
+      errorCode: result.diagnosticCode,
+      operation,
+      outcome: result.status >= 500 ? "failed" : "rejected",
+      traceId,
+    });
+  } catch {
+    // Technical telemetry must never change an HTTP response.
+  }
 }
 
-function credentialFromRequest(request: Request): string | undefined {
+function stableActorId(context: Readonly<AuthorizedOperationContext>): string {
+  return `account:${createHash("sha256").update(context.principal.accountId).digest("hex")}`;
+}
+
+interface RequestSessionCredential {
+  readonly credential: string;
+  readonly surface: AuthenticationSurface;
+}
+
+function sessionCredentialFromRequest(request: Request): Readonly<RequestSessionCredential> | undefined {
   const cookie = singleHeader(request, "cookie", 4096);
   if (!cookie.valid) return undefined;
-  try { return parsePcSessionCredential(cookie.value); } catch { return undefined; }
+  try {
+    const requestedSurface = singleHeader(request, "x-ai-crm-surface", 16);
+    if (!requestedSurface.valid || requestedSurface.value !== undefined && requestedSurface.value !== "pc" && requestedSurface.value !== "internal-h5") return undefined;
+    const surfaces: readonly AuthenticationSurface[] = requestedSurface.value === undefined ? ["pc", "internal-h5"] : [requestedSurface.value];
+    const matches = surfaces.flatMap((surface) => {
+      const credential = parseSurfaceSessionCookie(surface, cookie.value);
+      return credential === undefined ? [] : [{ credential, surface }];
+    });
+    return matches[0] === undefined ? undefined : Object.freeze(matches[0]);
+  } catch { return undefined; }
+}
+
+function pcCredentialFromRequest(request: Request): string | undefined {
+  const cookie = singleHeader(request, "cookie", 4096);
+  if (!cookie.valid) return undefined;
+  try { return parseSurfaceSessionCookie("pc", cookie.value); }
+  catch { return undefined; }
 }
 
 function platformHeader(request: Request, name: string, maximumLength: number, minimumLength = 0): string | undefined {
@@ -147,230 +174,126 @@ function requestTraceparent(request: Request): string {
   return traceparent;
 }
 
-function sendAuthenticationResponse(response: Response, result: AuthenticationHttpResponse): void {
+function sendLocalAuthenticationResponse(response: Response, result: LocalAuthenticationHttpResponse): void {
   for (const [name, value] of Object.entries(result.headers)) response.setHeader(name, value);
   if (result.body === undefined) response.status(result.status).send();
   else response.status(result.status).json(result.body);
 }
 
-const invalidCallbackResponse: AuthenticationHttpResponse = Object.freeze({
-  body: Object.freeze({ code: "authentication_callback_invalid", message: "The authentication callback is invalid or expired." }),
-  headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
-  status: 400,
-});
-const invalidCsrfResponse: AuthenticationHttpResponse = Object.freeze({
-  body: Object.freeze({ code: "authentication_csrf_rejected", message: "The browser request failed security validation." }),
-  headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
-  status: 403,
-});
-const invalidSessionResponse: AuthenticationHttpResponse = Object.freeze({
-  body: Object.freeze({ code: "authentication_required", message: "Authentication is required." }),
-  headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
-  status: 401,
-});
+function authenticationBody(request: Request): Readonly<Record<string, unknown>> {
+  if (typeof request.body !== "object" || request.body === null || Array.isArray(request.body)) return Object.freeze({});
+  return request.body as Readonly<Record<string, unknown>>;
+}
 
-@Controller("auth/pc")
-class PcAuthenticationController {
-  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
+function exactAuthenticationBody(request: Request, required: readonly string[]): Readonly<Record<string, unknown>> | undefined {
+  const body = authenticationBody(request);
+  const keys = Object.keys(body);
+  return required.every((key) => Object.hasOwn(body, key)) && keys.every((key) => required.includes(key)) ? body : undefined;
+}
 
-  private adapter(): PcAuthenticationHttpAdapter {
-    if (this.composition.authentication === undefined) throw new Error("api_authentication_binding_missing");
-    return this.composition.authentication;
+function localMutationContext(request: Request): LocalBrowserMutationContext {
+  const cookie = singleHeader(request, "cookie", 4096);
+  const csrfToken = singleHeader(request, "x-csrf-token", 512);
+  const origin = singleHeader(request, "origin", 512);
+  const referer = singleHeader(request, "referer", 2048);
+  return Object.freeze({
+    ...(cookie.valid && cookie.value !== undefined ? { cookie: cookie.value } : {}),
+    ...(csrfToken.valid && csrfToken.value !== undefined ? { csrfToken: csrfToken.value } : {}),
+    ...(origin.valid && origin.value !== undefined ? { origin: origin.value } : {}),
+    ...(referer.valid && referer.value !== undefined ? { referer: referer.value } : {}),
+    sourceAddress: request.ip ?? "unavailable",
+    traceId: requestTraceContext(request).traceId,
+  });
+}
+
+abstract class InternalAuthenticationControllerBase {
+  protected abstract readonly surface: "internal-h5" | "part-time" | "pc";
+  constructor(protected readonly composition: ApiComposition) {}
+
+  protected adapter(): LocalAuthenticationHttpAdapter {
+    const adapter = this.surface === "part-time" ? this.composition.partTimeAccess : this.composition.accountAccess;
+    if (adapter === undefined) throw new Error("api_account_access_binding_missing");
+    return adapter;
   }
 
-  @Get("login")
-  async login(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const returnTo = singleQuery(request, "returnTo", 512);
-    if (!returnTo.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
+  async login(request: Request, response: Response): Promise<void> {
+    const body = exactAuthenticationBody(request, ["identifier", "password"]);
+    const identifier = body?.["identifier"];
+    const password = body?.["password"];
+    if (typeof identifier !== "string" || identifier.length < 1 || identifier.length > 64 || typeof password !== "string" || password.length < 8 || password.length > 64 || !/^[\x20-\x7e]+$/u.test(password)) {
+      sendLocalAuthenticationResponse(response, { body: { code: "authentication_invalid_credentials", message: "The login identifier or password is invalid." }, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }, status: 401 });
       return;
     }
-    sendAuthenticationResponse(response, await this.adapter().beginLogin(returnTo.value, requestTraceContext(request).traceId));
-  }
-
-  @Get("callback")
-  async callback(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const code = singleQuery(request, "code", 4096, 1);
-    const state = singleQuery(request, "state", 512, 32);
-    if (!code.valid || !state.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
-      return;
-    }
-    const callbackUrl = this.composition.authenticationCallbackUrl?.(request.originalUrl);
-    if (callbackUrl === undefined) throw new Error("api_authentication_callback_binding_missing");
-    const cookie = singleHeader(request, "cookie", 4096);
-    if (!cookie.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
-      return;
-    }
-    sendAuthenticationResponse(response, await this.adapter().completeLogin(
-      callbackUrl,
-      requestTraceContext(request).traceId,
-      cookie.value,
-    ));
-  }
-
-  @Get("session")
-  async session(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const cookie = singleHeader(request, "cookie", 4096);
-    if (!cookie.valid) {
-      sendAuthenticationResponse(response, invalidSessionResponse);
-      return;
-    }
-    sendAuthenticationResponse(response, await this.adapter().currentSession(cookie.value));
-  }
-
-  @Post("refresh")
-  async refresh(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const context = this.mutationContext(request, true);
-    if (context.error) {
-      sendAuthenticationResponse(response, context.error);
-      return;
-    }
-    sendAuthenticationResponse(response, await this.adapter().refresh(context.value));
-  }
-
-  @Post("reauthentication")
-  async reauthentication(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const returnTo = singleQuery(request, "returnTo", 512);
-    const context = this.mutationContext(request, true);
-    if (!returnTo.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
-      return;
-    }
-    if (context.error) {
-      sendAuthenticationResponse(response, context.error);
-      return;
-    }
-    const adapter = this.adapter();
-    if (adapter.beginReauthentication === undefined) {
-      sendAuthenticationResponse(response, Object.freeze({
-        body: Object.freeze({ code: "authentication_dependency_unavailable", message: "Authentication is temporarily unavailable." }),
-        headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
-        status: 503,
-      }));
-      return;
-    }
-    const result = await adapter.beginReauthentication(context.value, returnTo.value);
-    const accept = singleHeader(request, "accept", 512);
-    if (!accept.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
-      return;
-    }
-    if (result.status === 302 && accept.value?.split(",").some((value) => value.trim().split(";")[0] === "application/json")) {
-      const redirectUrl = result.headers["Location"];
-      if (redirectUrl === undefined || redirectUrl.length === 0 || redirectUrl.length > 4096 || /[\0\r\n]/u.test(redirectUrl)) {
-        sendAuthenticationResponse(response, invalidCallbackResponse);
-        return;
-      }
-      sendAuthenticationResponse(response, Object.freeze({
-        body: Object.freeze({ redirectUrl }),
-        headers: Object.freeze({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }),
-        status: 200,
-      }));
-      return;
-    }
-    sendAuthenticationResponse(response, result);
-  }
-
-  @Post("logout")
-  async logout(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const context = this.mutationContext(request, false);
-    if (context.error) {
-      sendAuthenticationResponse(response, context.error);
-      return;
-    }
-    const result = await this.adapter().logout(context.value);
-    const accept = singleHeader(request, "accept", 512);
-    if (!accept.valid) {
-      sendAuthenticationResponse(response, invalidCallbackResponse);
-      return;
-    }
-    if (result.status === 302 && accept.value?.split(",").some((value) => value.trim().split(";")[0] === "application/json")) {
-      const redirectUrl = result.headers["Location"];
-      if (redirectUrl === undefined || redirectUrl.length === 0 || redirectUrl.length > 4096 || /[\0\r\n]/u.test(redirectUrl)) {
-        sendAuthenticationResponse(response, invalidCallbackResponse);
-        return;
-      }
-      const setCookie = result.headers["Set-Cookie"];
-      sendAuthenticationResponse(response, Object.freeze({
-        body: Object.freeze({ redirectUrl }),
-        headers: Object.freeze({
-          "Cache-Control": "no-store",
-          "Referrer-Policy": "no-referrer",
-          ...(setCookie === undefined ? {} : { "Set-Cookie": setCookie }),
-        }),
-        status: 200,
-      }));
-      return;
-    }
-    sendAuthenticationResponse(response, result);
-  }
-
-  private mutationContext(request: Request, csrfRequired: boolean):
-    | { readonly error: AuthenticationHttpResponse; readonly value?: never }
-    | { readonly error?: never; readonly value: BrowserRequestContext } {
-    const cookie = singleHeader(request, "cookie", 4096);
-    if (!cookie.valid) return { error: invalidSessionResponse };
-    const csrfToken = singleHeader(request, "x-csrf-token", 512, csrfRequired ? 32 : 0);
     const origin = singleHeader(request, "origin", 512);
     const referer = singleHeader(request, "referer", 2048);
-    if (!csrfToken.valid || !origin.valid || !referer.valid) return { error: invalidCsrfResponse };
-    return { value: { cookie: cookie.value, csrfToken: csrfToken.value, origin: origin.value, referer: referer.value, traceId: requestTraceContext(request).traceId } };
+    sendLocalAuthenticationResponse(response, await this.adapter().login(this.surface, {
+      identifier,
+      ...(origin.valid && origin.value !== undefined ? { origin: origin.value } : {}),
+      password,
+      ...(referer.valid && referer.value !== undefined ? { referer: referer.value } : {}),
+      sourceAddress: request.ip ?? "unavailable",
+      traceId: requestTraceContext(request).traceId,
+    }));
+  }
+
+  async session(request: Request, response: Response): Promise<void> {
+    const value = singleHeader(request, "cookie", 4096);
+    sendLocalAuthenticationResponse(response, await this.adapter().session(this.surface, value.valid ? value.value : undefined));
+  }
+
+  async reauthentication(request: Request, response: Response): Promise<void> {
+    const body = exactAuthenticationBody(request, ["password"]);
+    const password = body?.["password"];
+    if (typeof password !== "string" || password.length < 1 || password.length > 64) {
+      sendLocalAuthenticationResponse(response, { body: { code: "authentication_invalid_credentials", message: "The login identifier or password is invalid." }, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }, status: 401 });
+      return;
+    }
+    sendLocalAuthenticationResponse(response, await this.adapter().reauthentication(this.surface, localMutationContext(request), password));
+  }
+
+  async assignment(request: Request, response: Response): Promise<void> {
+    const assignmentId = exactAuthenticationBody(request, ["assignmentId"])?.["assignmentId"];
+    if (typeof assignmentId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(assignmentId)) {
+      sendLocalAuthenticationResponse(response, { body: { code: "authentication_required", message: "Authentication is required." }, headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }, status: 401 });
+      return;
+    }
+    sendLocalAuthenticationResponse(response, await this.adapter().assignment(this.surface, localMutationContext(request), assignmentId));
+  }
+
+  async logout(request: Request, response: Response): Promise<void> {
+    sendLocalAuthenticationResponse(response, await this.adapter().logout(this.surface, localMutationContext(request)));
   }
 }
 
-@Controller("authentication/session-policy")
-class PcSessionPolicyController {
-  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
-
-  @Get()
-  async get(@Req() request: Request, @Res() response: Response): Promise<void> {
-    try {
-      const credential = credentialFromRequest(request);
-      const http = this.composition.platformHttp;
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-      if (http?.sessionPolicy === undefined) throw new Error("session_policy_unavailable");
-      const traceId = requestTraceContext(request).traceId;
-      const context = await http.authorize({ at: new Date().toISOString(), credential, permission: { action: "read", resource: "platform.authentication.session-policy" }, traceId });
-      const assignmentId = context.workforce.assignments[0]?.assignmentId;
-      const policy = await http.sessionPolicy.get({ actor: { actorId: context.workforce.workforcePersonId, actorType: "authenticated_subject", ...(assignmentId === undefined ? {} : { assignmentId }) } });
-      sendPlatformResponse(response, { body: policy, headers: { "Cache-Control": "no-store" }, status: 200 });
-    } catch (error) { sendPlatformResponse(response, sessionPolicyError(error)); }
-  }
-
-  @Put()
-  async update(@Req() request: Request, @Res() response: Response): Promise<void> {
-    try {
-      const credential = credentialFromRequest(request);
-      const http = this.composition.platformHttp;
-      const operation = singleHeader(request, "idempotency-key", 128, 36);
-      const csrf = singleHeader(request, "x-csrf-token", 512, 32);
-      const origin = singleHeader(request, "origin", 512, 1);
-      const referer = singleHeader(request, "referer", 2048, 1);
-      const body = request.body as unknown;
-      const validBody = typeof body === "object" && body !== null && !Array.isArray(body) && Object.keys(body).length === 2 && Number.isSafeInteger(Reflect.get(body, "concurrentLimit")) && Number.isSafeInteger(Reflect.get(body, "revocationTargetSeconds"));
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-      if (!operation.valid || operation.value === undefined || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(operation.value) || !csrf.valid || !origin.valid || !referer.valid || !validBody) throw Object.assign(new Error("session_policy_invalid"), { code: "session_policy_invalid" });
-      if (http?.sessionPolicy === undefined || http.validateNotificationMutation === undefined) throw new Error("session_policy_unavailable");
-      const traceId = requestTraceContext(request).traceId;
-      await http.validateNotificationMutation({ credential, ...(csrf.value === undefined ? {} : { csrfToken: csrf.value }), ...(origin.value === undefined ? {} : { origin: origin.value }), ...(referer.value === undefined ? {} : { referer: referer.value }) });
-      const context = await http.authorize({ at: new Date().toISOString(), credential, permission: { action: "manage", resource: "platform.authentication.session-policy" }, traceId });
-      const assignmentId = context.workforce.assignments[0]?.assignmentId;
-      const policy = await http.sessionPolicy.update({ actor: { actorId: context.workforce.workforcePersonId, actorType: "authenticated_subject", ...(assignmentId === undefined ? {} : { assignmentId }) }, concurrentLimit: Reflect.get(body, "concurrentLimit") as number, operationId: operation.value, reason: "pc_session_policy_updated", revocationTargetSeconds: Reflect.get(body, "revocationTargetSeconds") as number, traceId });
-      sendPlatformResponse(response, { body: policy, headers: { "Cache-Control": "no-store" }, status: 200 });
-    } catch (error) { sendPlatformResponse(response, sessionPolicyError(error)); }
-  }
+@Controller("auth/pc")
+class PcAccountAccessController extends InternalAuthenticationControllerBase {
+  protected readonly surface = "pc" as const;
+  constructor(@Inject(API_COMPOSITION) composition: ApiComposition) { super(composition); }
+  @Post("login") override login(@Req() request: Request, @Res() response: Response): Promise<void> { return super.login(request, response); }
+  @Get("session") override session(@Req() request: Request, @Res() response: Response): Promise<void> { return super.session(request, response); }
+  @Post("reauthentication") override reauthentication(@Req() request: Request, @Res() response: Response): Promise<void> { return super.reauthentication(request, response); }
+  @Post("assignment") override assignment(@Req() request: Request, @Res() response: Response): Promise<void> { return super.assignment(request, response); }
+  @Post("logout") override logout(@Req() request: Request, @Res() response: Response): Promise<void> { return super.logout(request, response); }
 }
 
-function sessionPolicyError(error: unknown): PlatformHttpResponse {
-  const code = typeof error === "object" && error !== null ? String(Reflect.get(error, "code") ?? Reflect.get(error, "message") ?? "") : "";
-  const name: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "name") as unknown : undefined;
-  const status = error instanceof BrowserSessionFailure ? 401
-    : code === "authentication_csrf_rejected" || code === "configuration_denied" || code === "AUTHORIZATION_DENIED" || name === "AuthorizationDeniedError" ? 403
-      : code === "session_policy_invalid" || code === "configuration_invalid_input" ? 400
-        : code === "configuration_operation_conflict" || code === "configuration_overlap" ? 409 : 503;
-  return Object.freeze({ body: Object.freeze({ code: code || "session_policy_unavailable" }), headers: Object.freeze({ "Cache-Control": "no-store" }), status });
+@Controller("auth/internal-h5")
+class InternalH5AccountAccessController extends InternalAuthenticationControllerBase {
+  protected readonly surface = "internal-h5" as const;
+  constructor(@Inject(API_COMPOSITION) composition: ApiComposition) { super(composition); }
+  @Post("login") override login(@Req() request: Request, @Res() response: Response): Promise<void> { return super.login(request, response); }
+  @Get("session") override session(@Req() request: Request, @Res() response: Response): Promise<void> { return super.session(request, response); }
+  @Post("reauthentication") override reauthentication(@Req() request: Request, @Res() response: Response): Promise<void> { return super.reauthentication(request, response); }
+  @Post("logout") override logout(@Req() request: Request, @Res() response: Response): Promise<void> { return super.logout(request, response); }
+}
+
+@Controller("auth/part-time")
+class PartTimeAccountAccessController extends InternalAuthenticationControllerBase {
+  protected readonly surface = "part-time" as const;
+  constructor(@Inject(API_COMPOSITION) composition: ApiComposition) { super(composition); }
+  @Post("login") override login(@Req() request: Request, @Res() response: Response): Promise<void> { return super.login(request, response); }
+  @Get("session") override session(@Req() request: Request, @Res() response: Response): Promise<void> { return super.session(request, response); }
+  @Post("reauthentication") override reauthentication(@Req() request: Request, @Res() response: Response): Promise<void> { return super.reauthentication(request, response); }
+  @Post("logout") override logout(@Req() request: Request, @Res() response: Response): Promise<void> { return super.logout(request, response); }
 }
 
 function unavailablePlatformResponse(code: string): PlatformHttpResponse {
@@ -383,15 +306,18 @@ class WorkbenchController {
 
   @Get("bootstrap")
   async bootstrap(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     if (credential === undefined) {
       sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
       return;
     }
     const binding = this.composition.workbenchHttp;
-    sendPlatformResponse(response, binding === undefined
+    const traceId = requestTraceContext(request).traceId;
+    const result = binding === undefined
       ? unavailablePlatformResponse("workbench_unavailable")
-      : await binding.bootstrap({ credential, traceId: requestTraceContext(request).traceId }));
+      : await binding.bootstrap({ credential, traceId });
+    logPlatformDiagnostic(this.composition.logger, "workbench.bootstrap", result, traceId);
+    sendPlatformResponse(response, result);
   }
 }
 
@@ -401,7 +327,7 @@ class WorkforceAdministrationController {
 
   @Get()
   async load(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     if (credential === undefined) {
       sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
       return;
@@ -414,7 +340,7 @@ class WorkforceAdministrationController {
 
   @Get("accounts")
   async listAccounts(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     if (credential === undefined) {
       sendPlatformResponse(response, { body: { code: "authentication_required" }, headers: { "Cache-Control": "no-store" }, status: 401 });
       return;
@@ -427,7 +353,7 @@ class WorkforceAdministrationController {
 
   @Post("commands")
   async execute(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     const csrfToken = singleHeader(request, "x-csrf-token", 512, 32);
     const idempotencyKey = singleHeader(request, "idempotency-key", 64, 36);
     const origin = singleHeader(request, "origin", 512);
@@ -442,18 +368,10 @@ class WorkforceAdministrationController {
         ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }),
         ...(origin.value === undefined ? {} : { origin: origin.value }),
         ...(referer.value === undefined ? {} : { referer: referer.value }),
+        surface: "pc",
       });
     } catch {
       sendPlatformResponse(response, { body: { code: "workforce_administration_csrf_rejected" }, headers: { "Cache-Control": "no-store" }, status: 403 });
-      return;
-    }
-    const requestBody: unknown = request.body;
-    const commandKind: unknown = typeof requestBody === "object" && requestBody !== null && !Array.isArray(requestBody)
-      ? Object.getOwnPropertyDescriptor(requestBody, "kind")?.value as unknown
-      : undefined;
-    const revokeCurrentSession = commandKind === "update_system_account";
-    if (revokeCurrentSession && this.composition.revokeBrowserSession === undefined) {
-      sendPlatformResponse(response, unavailablePlatformResponse("workforce_administration_unavailable"));
       return;
     }
     const binding = this.composition.workforceAdministrationHttp;
@@ -461,15 +379,6 @@ class WorkforceAdministrationController {
     const result = binding === undefined
       ? unavailablePlatformResponse("workforce_administration_unavailable")
       : await binding.execute({ body: request.body, credential, idempotencyKey: idempotencyKey.value, traceId });
-    if (revokeCurrentSession && result.status === 200) {
-      try {
-        await this.composition.revokeBrowserSession?.(credential, traceId);
-        sendPlatformResponse(response, Object.freeze({ ...result, headers: Object.freeze({ ...result.headers, "Set-Cookie": clearPcSessionCookie() }) }));
-      } catch {
-        sendPlatformResponse(response, unavailablePlatformResponse("workforce_administration_session_revocation_failed"));
-      }
-      return;
-    }
     sendPlatformResponse(response, result);
   }
 }
@@ -479,65 +388,6 @@ function platform(composition: ApiComposition): Readonly<ApiPlatformHttpComposit
   return composition.platformHttp;
 }
 
-function registryAuthorizationFailure(error: unknown): PlatformHttpResponse {
-  const unavailable = error instanceof BrowserSessionFailure && error.code === "authentication_dependency_unavailable";
-  const unauthorized = error instanceof BrowserSessionFailure && !unavailable;
-  const forbidden = !unauthorized && !unavailable && typeof error === "object" && error !== null &&
-    (Reflect.get(error, "name") === "AuthorizationDeniedError" ||
-      ["subject_not_associated", "employment_not_active", "assignment_not_active"].includes(String(Reflect.get(error, "code"))));
-  const status = unauthorized ? 401 : forbidden ? 403 : 503;
-  const code = unauthorized ? "app_registry_unauthorized" : forbidden ? "app_registry_denied" : "app_registry_unavailable";
-  return Object.freeze({
-    body: Object.freeze({ code }),
-    headers: Object.freeze({ "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'" }),
-    status,
-  });
-}
-
-@Controller("application-registry")
-class ApplicationRegistryController {
-  constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
-
-  private async context(request: Request, permission: PermissionRequest): Promise<Readonly<{
-    readonly activeAssignmentIds: readonly string[];
-    readonly actorId: string;
-    readonly traceId: string;
-    readonly workforcePersonId: string;
-  }>> {
-    const credential = credentialFromRequest(request);
-    if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-    const traceId = requestTraceContext(request).traceId;
-    const authorized = await platform(this.composition).authorize({
-      at: new Date().toISOString(),
-      credential,
-      permission,
-      traceId,
-    });
-    return Object.freeze({
-      activeAssignmentIds: Object.freeze(authorized.workforce.assignments.map((assignment) => assignment.assignmentId)),
-      actorId: stableActorId(authorized),
-      traceId,
-      workforcePersonId: authorized.workforce.workforcePersonId,
-    });
-  }
-
-  @Get()
-  async load(@Req() request: Request, @Res() response: Response): Promise<void> {
-    try {
-      const context = await this.context(request, { action: "read", resource: "platform.app-registry.registry" });
-      sendPlatformResponse(response, await platform(this.composition).applicationRegistry.loadRegistry(context));
-    } catch (error) { sendPlatformResponse(response, registryAuthorizationFailure(error)); }
-  }
-
-  @Post("deep-links/resolve")
-  async resolve(@Req() request: Request, @Res() response: Response): Promise<void> {
-    try {
-      const context = await this.context(request, { action: "resolve", resource: "platform.app-registry.deep-link" });
-      sendPlatformResponse(response, await platform(this.composition).applicationRegistry.resolveDeepLink(context, request.body));
-    } catch (error) { sendPlatformResponse(response, registryAuthorizationFailure(error)); }
-  }
-}
-
 @Controller("form-definitions")
 class FormSchemaController {
   constructor(@Inject(API_COMPOSITION) private readonly composition: ApiComposition) {}
@@ -545,7 +395,7 @@ class FormSchemaController {
   private request(request: Request, operation: "read" | "validate"): Parameters<ApiPlatformHttpComposition["forms"]["handle"]>[0] {
     const rawBody = Reflect.get(request, "rawBody") as unknown;
     const contentType = platformHeader(request, "content-type", 128);
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     const traceparent = requestTraceparent(request);
     const canonicalPath = `/form-definitions/${String(request.params["definitionId"])}/releases/${String(request.params["releaseVersion"])}${operation === "validate" ? "/validate" : ""}`;
     const queryOffset = request.originalUrl.indexOf("?");
@@ -596,7 +446,7 @@ class WalkingSkeletonFormSubmissionController {
       sendPlatformResponse(response, { body: { code: "submission_request_invalid" }, headers: { "Cache-Control": "no-store" }, status: 400 });
       return;
     }
-    const credential = credentialFromRequest(request);
+    const credential = pcCredentialFromRequest(request);
     sendPlatformResponse(response, await adapter.handle({
       ...(rawBody instanceof Uint8Array ? { body: rawBody } : {}),
       ...(contentType.value === undefined ? {} : { contentType: contentType.value }),
@@ -678,8 +528,8 @@ class TaskController {
   @Get()
   async list(@Req() request: Request, @Res() response: Response): Promise<void> {
     try {
-      const credential = credentialFromRequest(request);
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const access = sessionCredentialFromRequest(request);
+      if (access === undefined) throw new BrowserSessionFailure("authentication_required");
       const limitValue = singleQuery(request, "limit", 3);
       const statusValue = singleQuery(request, "status", 9);
       const cursorValue = singleQuery(request, "cursor", 511);
@@ -694,13 +544,13 @@ class TaskController {
       const traceContext = requestTraceContext(request);
       const traceId = traceContext.traceId;
       const authorized = await platform(this.composition).authorize({
-        at: new Date().toISOString(), credential, traceId,
-        permission: { action: "list", resource: "platform.task-center.task-projection" },
+        at: new Date().toISOString(), credential: access.credential, surface: access.surface, traceId,
+        permission: { action: "list", resource: "crm.task-center.task-projection" },
       });
       const list = platform(this.composition).tasks?.list;
       if (typeof list !== "function") throw new Error("task_list_binding_missing");
       const body = await list({
-        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) },
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId), ...(authorized.assignmentId === undefined ? {} : { selectedAssignmentId: authorized.assignmentId }) },
         limit,
         ...(status === undefined ? {} : { status: status as "cancelled" | "completed" | "open" }),
         ...(cursorValue.value === undefined ? {} : { cursor: cursorValue.value }),
@@ -718,30 +568,31 @@ class TaskController {
       const csrfToken = singleHeader(request, "x-csrf-token", 512);
       const origin = singleHeader(request, "origin", 512);
       const referer = singleHeader(request, "referer", 2048);
-      const credential = credentialFromRequest(request);
+      const access = sessionCredentialFromRequest(request);
       const body = request.body as unknown;
       const bodyRecord = typeof body === "object" && body !== null && !Array.isArray(body) ? body as Readonly<Record<string, unknown>> : undefined;
       const bodyKeys = bodyRecord === undefined ? [] : Object.keys(bodyRecord);
       const sourceCommandReference = bodyRecord?.["sourceCommandReference"];
       const bodyValid = body === undefined || (bodyRecord !== undefined && bodyKeys.length === 1 && bodyKeys[0] === "sourceCommandReference" && typeof sourceCommandReference === "string" && TASK_REF.test(sourceCommandReference));
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      if (access === undefined) throw new BrowserSessionFailure("authentication_required");
       if (!bodyValid || sourceType === undefined || sourceTaskId === undefined || !TASK_REF.test(sourceType) || !TASK_REF.test(sourceTaskId) || !idempotencyKey.valid || idempotencyKey.value === undefined || !TASK_IDEMPOTENCY.test(idempotencyKey.value) || !csrfToken.valid || !origin.valid || !referer.valid) {
         sendPlatformResponse(response, { body: { code: "task_invalid_input" }, headers: { "Cache-Control": "no-store" }, status: 400 });
         return;
       }
       await platform(this.composition).validateTaskMutation({
-        credential,
+        credential: access.credential,
         ...(csrfToken.value === undefined ? {} : { csrfToken: csrfToken.value }),
         ...(origin.value === undefined ? {} : { origin: origin.value }),
         ...(referer.value === undefined ? {} : { referer: referer.value }),
+        surface: access.surface,
       });
       const traceId = requestTraceContext(request).traceId;
       const authorized = await platform(this.composition).authorize({
-        at: new Date().toISOString(), credential, traceId,
-        permission: { action: "complete", resource: "platform.task-center.task-projection" },
+        at: new Date().toISOString(), credential: access.credential, surface: access.surface, traceId,
+        permission: { action: "complete", resource: "crm.task-center.task-projection" },
       });
       const command = {
-        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map((assignment) => assignment.assignmentId) },
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map((assignment) => assignment.assignmentId), ...(authorized.assignmentId === undefined ? {} : { selectedAssignmentId: authorized.assignmentId }) },
         sourceType, sourceTaskId, idempotencyKey: idempotencyKey.value,
         ...(typeof sourceCommandReference === "string" ? { sourceCommandReference } : {}),
       };
@@ -764,8 +615,8 @@ class NotificationController {
   @Get()
   async list(@Req() request: Request, @Res() response: Response): Promise<void> {
     try {
-      const credential = credentialFromRequest(request);
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const access = sessionCredentialFromRequest(request);
+      if (access === undefined) throw new BrowserSessionFailure("authentication_required");
       const limitValue = singleQuery(request, "limit", 3);
       const cursorValue = singleQuery(request, "cursor", 128);
       const includeArchivedValue = singleQuery(request, "includeArchived", 5);
@@ -779,13 +630,13 @@ class NotificationController {
       }
       const traceId = requestTraceContext(request).traceId;
       const authorized = await platform(this.composition).authorize({
-        at: new Date().toISOString(), credential, traceId,
-        permission: { action: "list", resource: "platform.notifications.in-app-notification" },
+        at: new Date().toISOString(), credential: access.credential, surface: access.surface, traceId,
+        permission: { action: "list", resource: "crm.notifications.in-app-notification" },
       });
       const list = platform(this.composition).notifications?.list;
       if (typeof list !== "function") throw new Error("notification_list_binding_missing");
       const body = await list({
-        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) },
+        actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId), ...(authorized.assignmentId === undefined ? {} : { selectedAssignmentId: authorized.assignmentId }) },
         limit,
         includeArchived,
         ...(cursorValue.value === undefined ? {} : { cursor: cursorValue.value }),
@@ -797,7 +648,7 @@ class NotificationController {
   @Get("unread-count")
   async unreadCount(@Req() request: Request, @Res() response: Response): Promise<void> {
     try {
-      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "list", resource: "platform.notifications.in-app-notification" });
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "list", resource: "crm.notifications.in-app-notification" });
       const unreadCount = platform(this.composition).notifications?.unreadCount;
       if (typeof unreadCount !== "function") throw new Error("notification_unread_count_binding_missing");
       sendPlatformResponse(response, { body: { count: await unreadCount(notificationActor) }, headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
@@ -809,7 +660,7 @@ class NotificationController {
     try {
       const notificationId = request.params["notificationId"];
       if (typeof notificationId !== "string" || !UUID_VALUE.test(notificationId)) throw new Error("NOTIFICATION_INPUT_INVALID");
-      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "read", resource: "platform.notifications.in-app-notification" });
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action: "read", resource: "crm.notifications.in-app-notification" });
       const get = platform(this.composition).notifications?.get;
       if (typeof get !== "function") throw new Error("notification_get_binding_missing");
       sendPlatformResponse(response, { body: await get(notificationActor, notificationId), headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
@@ -826,10 +677,10 @@ class NotificationController {
     try {
       const notificationId = request.params["notificationId"];
       if (typeof notificationId !== "string" || !UUID_VALUE.test(notificationId)) throw new Error("NOTIFICATION_INPUT_INVALID");
-      const credential = credentialFromRequest(request);
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
-      await platform(this.composition).validateNotificationMutation?.({ credential, ...this.mutationHeaders(request) });
-      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action, resource: "platform.notifications.in-app-notification" });
+      const access = sessionCredentialFromRequest(request);
+      if (access === undefined) throw new BrowserSessionFailure("authentication_required");
+      await platform(this.composition).validateNotificationMutation?.({ credential: access.credential, surface: access.surface, ...this.mutationHeaders(request) });
+      const { actor: notificationActor, traceId } = await this.authorizedActor(request, { action, resource: "crm.notifications.in-app-notification" });
       const operation = action === "archive" ? platform(this.composition).notifications?.archive : platform(this.composition).notifications?.markRead;
       if (typeof operation !== "function") throw new Error("notification_mutation_binding_missing");
       sendPlatformResponse(response, { body: await operation({ actor: notificationActor, notificationId }), headers: { "Cache-Control": "no-store", "X-Trace-Id": traceId }, status: 200 });
@@ -845,11 +696,11 @@ class NotificationController {
   }
 
   private async authorizedActor(request: Request, permission: PermissionRequest): Promise<{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string; readonly activeAssignmentIds: readonly string[] }; readonly traceId: string }> {
-    const credential = credentialFromRequest(request);
-    if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+    const access = sessionCredentialFromRequest(request);
+    if (access === undefined) throw new BrowserSessionFailure("authentication_required");
     const traceId = requestTraceContext(request).traceId;
-    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential, traceId, permission });
-    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) }, traceId };
+    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential: access.credential, surface: access.surface, traceId, permission });
+    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId), ...(authorized.assignmentId === undefined ? {} : { selectedAssignmentId: authorized.assignmentId }) }, traceId };
   }
 }
 
@@ -902,10 +753,10 @@ class NotificationTemplateController {
     try {
       const templateKey = request.params["templateKey"];
       if (typeof templateKey !== "string" || !TASK_REF.test(templateKey)) throw new Error("NOTIFICATION_INPUT_INVALID");
-      const credential = credentialFromRequest(request);
-      if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+      const access = sessionCredentialFromRequest(request);
+      if (access === undefined) throw new BrowserSessionFailure("authentication_required");
       const security = this.mutationHeaders(request);
-      await platform(this.composition).validateNotificationMutation?.({ credential, ...security });
+      await platform(this.composition).validateNotificationMutation?.({ credential: access.credential, surface: access.surface, ...security });
       const requiredAction = operation === "preview" ? "manage" : operation;
       const { actor: notificationActor, traceId } = await this.authorizedActor(request, requiredAction);
       const body = typeof request.body === "object" && request.body !== null && !Array.isArray(request.body) ? request.body as Record<string, unknown> : {};
@@ -940,10 +791,10 @@ class NotificationTemplateController {
   }
 
   private async authorizedActor(request: Request, action: "activate" | "manage" | "publish" | "read"): Promise<{ readonly actor: { readonly principalId: string; readonly workforcePersonId: string; readonly activeAssignmentIds: readonly string[] }; readonly traceId: string }> {
-    const credential = credentialFromRequest(request); if (credential === undefined) throw new BrowserSessionFailure("authentication_session_invalid");
+    const credential = pcCredentialFromRequest(request); if (credential === undefined) throw new BrowserSessionFailure("authentication_required");
     const traceId = requestTraceContext(request).traceId;
-    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential, traceId, permission: { action, resource: "platform.notifications.template" } });
-    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId) }, traceId };
+    const authorized = await platform(this.composition).authorize({ at: new Date().toISOString(), credential, surface: "pc", traceId, permission: { action, resource: "crm.notifications.template" } });
+    return { actor: { principalId: stableActorId(authorized), workforcePersonId: authorized.workforce.workforcePersonId, activeAssignmentIds: authorized.workforce.assignments.map(({ assignmentId }) => assignmentId), ...(authorized.assignmentId === undefined ? {} : { selectedAssignmentId: authorized.assignmentId }) }, traceId };
   }
 }
 
@@ -997,7 +848,7 @@ class ApiLifecycle implements OnApplicationShutdown {
 class ApiModule {}
 
 const createApiModule = (composition: ApiComposition, state: ApiRuntimeState): DynamicModule => ({
-  controllers: [HealthController, PcAuthenticationController, PcSessionPolicyController, WorkbenchController, WorkforceAdministrationController, ApplicationRegistryController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController, NotificationTemplateController],
+  controllers: [HealthController, PcAccountAccessController, InternalH5AccountAccessController, PartTimeAccountAccessController, WorkbenchController, WorkforceAdministrationController, FormSchemaController, WalkingSkeletonFormSubmissionController, FileCenterController, TaskController, NotificationController, NotificationTemplateController],
   module: ApiModule,
   providers: [
     { provide: API_COMPOSITION, useValue: composition },
@@ -1077,8 +928,13 @@ export const createApiApplication = (composition: ApiComposition): ApiApplicatio
             rawBody: true,
           });
           created.useBodyParser("json", { limit: 262_144 });
+          const trustedProxyCidrs = composition.trustedProxyCidrs ?? [];
+          created.set("trust proxy", trustedProxyCidrs.length === 0 ? false : [...trustedProxyCidrs]);
           const useMiddleware = Reflect.get(created, "use");
-          if (typeof useMiddleware === "function") useMiddleware.call(created, traceBoundary);
+          if (typeof useMiddleware === "function") {
+            useMiddleware.call(created, traceBoundary);
+            useMiddleware.call(created, createApiHttpRequestLoggingMiddleware(composition.logger));
+          }
           candidate = created;
           composition.realtime?.attach(created.getHttpServer());
           if (cancelled()) {

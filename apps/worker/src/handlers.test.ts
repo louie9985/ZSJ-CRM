@@ -1,5 +1,5 @@
-import type { EventingCore, JobDeliveryIsolation, MessageHandler, RabbitDelivery } from "@ai-crm/platform-eventing-outbox";
-import type { TaskCenter } from "@ai-crm/platform-task-center";
+import type { EventingCore, JobDeliveryIsolation, MessageHandler, RabbitDelivery } from "@ai-crm/crm-eventing-outbox";
+import type { TaskCenter } from "@ai-crm/crm-task-center";
 import { describe, expect, it, vi } from "vitest";
 import { createOutboxPublisherLoopHandler, createRabbitInboxHandler, createTaskReconciliationHandler } from "./handlers.js";
 import { createWorkerHandlerRegistry } from "./handler-registry.js";
@@ -27,7 +27,7 @@ describe("Worker handler composition", () => {
   it("connects a Rabbit delivery to durable Inbox consumption before ACK", async () => {
     const order: string[] = [];
     const core = { consume: vi.fn(() => { order.push("consume"); return Promise.resolve({ status: "completed" as const }); }) } as unknown as EventingCore;
-    const messageHandler = { kind: "event", messageType: "platform.synthetic.changed.v1", messageVersion: 1, handle: vi.fn() } satisfies MessageHandler;
+    const messageHandler = { kind: "event", messageType: "crm.synthetic.changed.v1", messageVersion: 1, handle: vi.fn() } satisfies MessageHandler;
     const delivery: RabbitDelivery = {
       ack: () => { order.push("ack"); },
       attempt: 1,
@@ -37,10 +37,10 @@ describe("Worker handler composition", () => {
         datacontenttype: "application/json",
         dataschema: "urn:ai-crm:events:synthetic:v1",
         id: "018f3f7a-9ec6-7c65-8e6e-6c9e43043111",
-        source: "urn:ai-crm:platform.synthetic",
+        source: "urn:ai-crm:crm.synthetic",
         specversion: "1.0",
         time: "2026-07-27T00:00:00.000Z",
-        type: "platform.synthetic.changed.v1",
+        type: "crm.synthetic.changed.v1",
       })),
       deadLetter: vi.fn(),
       retry: vi.fn(() => Promise.resolve()),
@@ -83,7 +83,7 @@ describe("Worker handler composition", () => {
     const order: string[] = [];
     const input = {
       jobId: "018f3f7a-9ec6-7c65-8e6e-6c9e43043111",
-      jobType: "platform.synthetic-check",
+      jobType: "crm.synthetic-check",
       jobVersion: 1,
       source: "urn:ai-crm:walking-skeleton",
       idempotencyKey: "synthetic:terminal-handler",
@@ -123,12 +123,12 @@ describe("Worker handler composition", () => {
     const core = { consume: vi.fn(() => Promise.resolve({ status: "skipped" as const, reason: "authoritative_state_rejected" as const })) } as unknown as EventingCore;
     const body = Buffer.from(JSON.stringify({
       specversion: "1.0", id: "018f3f7a-9ec6-7c65-8e6e-6c9e43043111", source: "urn:ai-crm:walking-skeleton",
-      type: "platform.synthetic.changed.v1", time: "2026-07-27T00:00:00.000Z", datacontenttype: "application/json",
+      type: "crm.synthetic.changed.v1", time: "2026-07-27T00:00:00.000Z", datacontenttype: "application/json",
       dataschema: "urn:ai-crm:events:synthetic:v1", correlationid: "018f3f7a-9ec6-7c65-8e6e-6c9e43043112", data: {},
     }));
     const delivery: RabbitDelivery = { ack: () => { order.push("ack"); }, attempt: 1, body, deadLetter: () => { order.push("dead-letter"); }, retry: () => Promise.resolve() };
     const adapter = { bindingIds: () => ["synthetic.binding"], concurrency: 1, drain: () => Promise.resolve(), healthy: () => true, prefetch: 1, ready: () => undefined, run: async (accept: (bindingId: string, value: RabbitDelivery) => Promise<void>) => { await accept("synthetic.binding", delivery); }, stop: () => undefined };
-    const handler = createRabbitInboxHandler(core, adapter, [{ bindingId: "synthetic.binding", classify: () => "terminal", consumer: "synthetic.consumer", eventPolicy: { backoffSeconds: [], maxAttempts: 1, timeoutMs: 1000 }, handler: { kind: "event", messageType: "platform.synthetic.changed.v1", messageVersion: 1, handle: () => Promise.resolve() }, onConsumed: ({ result }) => { order.push(result.status); return Promise.resolve(); } }]);
+    const handler = createRabbitInboxHandler(core, adapter, [{ bindingId: "synthetic.binding", classify: () => "terminal", consumer: "synthetic.consumer", eventPolicy: { backoffSeconds: [], maxAttempts: 1, timeoutMs: 1000 }, handler: { kind: "event", messageType: "crm.synthetic.changed.v1", messageVersion: 1, handle: () => Promise.resolve() }, onConsumed: ({ result }) => { order.push(result.status); return Promise.resolve(); } }]);
     await handler.run(new AbortController().signal);
     expect(order).toEqual(["skipped", "ack"]);
   });

@@ -1,0 +1,33 @@
+model AuthorizationDecisionRecord {
+  decisionId           String   @id @db.Uuid @map("decision_id")
+  recordDigest         String   @db.Char(64) @map("record_digest")
+  evaluatedAt          DateTime @db.Timestamptz(6) @map("evaluated_at")
+  operation            String   @db.VarChar(32)
+  resource             String   @db.VarChar(128)
+  action               String   @db.VarChar(64)
+  permissionCode       String   @db.VarChar(193) @map("permission_code")
+  allowed              Boolean
+  reason               String   @db.VarChar(32)
+  policyVersion        String   @db.VarChar(128) @map("policy_version")
+  workforcePersonId    String?  @db.Uuid @map("workforce_person_id")
+  selectedAssignmentId String?  @db.Uuid @map("selected_assignment_id")
+  traceId              String   @db.Char(32) @map("trace_id")
+
+  @@map("decision_records")
+  @@schema("authorization_core")
+}
+
+model AuthorizationFixedRoleGrant {
+  grantId           String    @id @db.Uuid @map("grant_id")
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  assignmentId      String?   @db.Uuid @map("assignment_id")
+  roleKey           String    @db.VarChar(64) @map("role_key")
+  grantedAt         DateTime  @db.Timestamptz(6) @map("granted_at")
+  revokedAt         DateTime? @db.Timestamptz(6) @map("revoked_at")
+  operationId       String    @unique @db.Uuid @map("operation_id")
+
+  @@index([workforcePersonId, assignmentId, revokedAt], map: "fixed_role_grants_subject_idx")
+  @@index([workforcePersonId, revokedAt], map: "fixed_role_grants_person_revocation_idx")
+  @@map("fixed_role_grants")
+  @@schema("authorization_core")
+}

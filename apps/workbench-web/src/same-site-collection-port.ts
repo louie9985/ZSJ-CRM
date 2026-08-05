@@ -80,7 +80,6 @@ function notificationItem(value: unknown): PlatformItem {
     ...(notification["bodyFormat"] === "plain-text" || notification["bodyFormat"] === "restricted-markdown" ? { bodyFormat: notification["bodyFormat"] } : {}),
     ...(typeof notification["createdAt"] === "string" ? { createdAt: notification["createdAt"] } : {}),
     ...(deepLink === undefined ? {} : { deepLink: {
-      applicationId: reference(deepLink["applicationId"], "workbench_notification_deep_link_invalid"),
       routeId: reference(deepLink["routeId"], "workbench_notification_deep_link_invalid"),
       resourceType: reference(deepLink["resourceType"], "workbench_notification_deep_link_invalid"),
       resourceId: reference(deepLink["resourceId"], "workbench_notification_deep_link_invalid"),

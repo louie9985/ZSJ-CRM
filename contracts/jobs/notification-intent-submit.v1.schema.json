@@ -9,7 +9,7 @@
       "type": "object",
       "required": ["jobType", "jobVersion", "policy", "payload"],
       "properties": {
-        "jobType": { "const": "platform.notifications.intent-submit" },
+        "jobType": { "const": "crm.notifications.intent-submit" },
         "jobVersion": { "const": 1 },
         "policy": {
           "type": "object",

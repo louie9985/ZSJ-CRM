@@ -53,27 +53,6 @@ function run(command, args) {
   if (result.status !== 0) throw new Error(`${command} ${args[0] ?? ""} failed.`);
 }
 
-function runCapture(command, args, extraEnvironment = {}) {
-  const childEnvironment = { ...environment, ...extraEnvironment };
-  for (const [key, value] of Object.entries(childEnvironment)) if (value === undefined) delete childEnvironment[key];
-  const result = spawnSync(command, args, { env: childEnvironment, encoding: "utf8", shell: false, timeout: 300_000 });
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} ${args[0] ?? ""} failed.`);
-  return result.stdout ?? "";
-}
-
-function finalEvidence(output, status) {
-  for (const line of output.trim().split(/\r?\n/u).reverse()) {
-    try {
-      const value = JSON.parse(line);
-      if (value?.status === status) return value;
-    } catch { /* build output is not evidence */ }
-  }
-  throw new Error("e2e_main_chain_output_evidence_missing");
-}
-
 let primaryFailure;
 try {
   run(process.execPath, ["scripts/bootstrap/compose-secrets.mjs", "test"]);
@@ -89,25 +68,7 @@ try {
   run(process.execPath, [pnpmCli, "--filter", "@ai-crm/e2e...", "build"]);
   run(process.execPath, ["scripts/migration/run.mjs"]);
   run(process.execPath, ["tests/e2e/dist/apply-e2e-migration.js"]);
-  const mainOutput = runCapture(process.execPath, ["tests/e2e/dist/durable-main-chain.js"]);
-  if (process.env.AI_CRM_E2E_BROWSER_OBSERVATION === "true") {
-    const mainEvidence = finalEvidence(mainOutput, "e2e-main-chain-durable-evidence-passed");
-    const subjectId = process.env.AI_CRM_E2E_SYNTHETIC_USER_ID;
-    const originalIssuer = process.env.AI_CRM_E2E_SYNTHETIC_ISSUER;
-    const issuer = originalIssuer === undefined ? undefined : new URL(originalIssuer);
-    if (subjectId === undefined || issuer === undefined || issuer.hostname !== "localhost" || issuer.pathname !== "/realms/ai-crm-dev") throw new Error("e2e_main_chain_browser_identity_missing");
-    runCapture(process.execPath, ["scripts/check/run-e2e-browser-authentication.mjs"], {
-      AI_CRM_E2E_DURABLE_DATABASE_URL_FILE: environment.TEST_E2E_DATABASE_URL_FILE,
-      AI_CRM_E2E_DURABLE_OBSERVATION_JSON: JSON.stringify(mainEvidence),
-      AI_CRM_E2E_KEYCLOAK_PORT: issuer.port,
-      AI_CRM_E2E_IDENTITY_FIXTURE_FILE: process.env.AI_CRM_E2E_IDENTITY_FIXTURE_FILE,
-      AI_CRM_E2E_KEYCLOAK_DUMP_FILE: process.env.AI_CRM_E2E_KEYCLOAK_DUMP_FILE,
-      AI_CRM_E2E_IDENTITY_FIXTURE_OUTPUT: undefined,
-      AI_CRM_E2E_KEYCLOAK_DUMP_OUTPUT: undefined,
-      AI_CRM_E2E_FILE_REFERENCE_JSON: undefined,
-      AI_CRM_E2E_TASK_COMMAND_FILE: undefined,
-    });
-  }
+  run(process.execPath, ["tests/e2e/dist/durable-main-chain.js"]);
 } catch (error) {
   spawnSync("docker", [...flowableCompose, "logs", "--no-color", "--tail", "100", "postgres", "flowable"], { env: environment, shell: false, stdio: "inherit" });
   spawnSync("docker", [...rabbitCompose, "logs", "--no-color", "--tail", "100"], { env: environment, shell: false, stdio: "inherit" });

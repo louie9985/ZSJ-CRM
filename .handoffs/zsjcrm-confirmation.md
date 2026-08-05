@@ -11,7 +11,7 @@
 - CRM 领域实体、字段、状态、权限、SLA 和审批路线尚未确认。
 - PC Web 已确认采用 Vite、React 19、Ant Design 6 与 ProComponents 的显式架构，不采用 Umi Max，见 `docs/08-架构决策/ADR-0001-PC-Web采用Vite与Ant-Design技术栈.md`。
 - 项目运行时已确认统一采用 Node 24，见 `docs/08-架构决策/ADR-0002-Node-24运行时基线.md`。
-- Monorepo 已确认保留当前 `apps + platform-modules + domain-modules + platform-sdk + contracts` 结构，并废弃历史 `apps/server + shared-core` 方案，见 `docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md`。
+- Monorepo 已确认保留当前 `apps + crm-modules + domain-modules + crm-sdk + contracts` 结构，并废弃历史 `apps/server + shared-core` 方案，见 `docs/08-架构决策/ADR-0003-Monorepo应用与模块边界.md`。
 - 身份认证已确认采用 Keycloak，不在业务系统内自建密码、JWT 签发和 Refresh Token 系统；业务授权保持独立，见 `docs/08-架构决策/ADR-0004-Keycloak统一身份认证中心.md`。
 - PC Web 登录已确认采用 BFF 服务端会话，浏览器不接触 Keycloak Token，见 `docs/08-架构决策/ADR-0005-PC-Web采用BFF登录会话.md`。
 - 第三方身份已确认统一通过 Keycloak 联合接入，不在 CRM 内建立平行认证体系，见 `docs/08-架构决策/ADR-0006-第三方身份通过Keycloak联合接入.md`。

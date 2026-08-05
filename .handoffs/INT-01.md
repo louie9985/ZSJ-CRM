@@ -43,7 +43,7 @@
 
 ## Allowed Paths
 
-- `packages/platform-modules/integration-runtime`。
+- `packages/crm-modules/integration-runtime`。
 - `contracts/integrations`。
 - `.handoffs/INT-01.md`。
 

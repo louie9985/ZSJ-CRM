@@ -7,18 +7,18 @@ function value(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>;
 }
 
-export async function resolveNotificationPath(item: PlatformItem, fetchPort: FetchPort = globalThis.fetch): Promise<string> {
+const crmRoutePaths: Readonly<Record<string, string>> = Object.freeze({
+  "crm.tasks": "/crm/tasks/:resourceReference",
+  "crm.notifications": "/crm/notifications/:resourceReference",
+  "crm.forms": "/crm/forms/:resourceReference",
+  "crm.files": "/crm/files/:resourceReference",
+});
+
+export function resolveNotificationPath(item: PlatformItem): Promise<string> {
   if (item.deepLink === undefined) throw new Error("notification_navigation_missing");
-  const response = await fetchPort("/application-registry/deep-links/resolve", {
-    credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    method: "POST",
-    body: JSON.stringify({ version: 1, source: "notification", applicationId: item.deepLink.applicationId, routeId: item.deepLink.routeId, resourceReference: item.deepLink.resourceId }),
-  });
-  if (!response.ok) throw new Error(response.status === 403 ? "notification_navigation_denied" : response.status === 404 ? "notification_navigation_missing" : "notification_navigation_unavailable");
-  const result = value(await response.json());
-  if (typeof result["path"] !== "string" || !result["path"].startsWith("/") || typeof result["resourceReference"] !== "string") throw new Error("notification_navigation_invalid");
-  return result["path"].replace(":resourceReference", encodeURIComponent(result["resourceReference"]));
+  const path = crmRoutePaths[item.deepLink.routeId];
+  if (path === undefined) throw new Error("notification_navigation_missing");
+  return Promise.resolve(path.replace(":resourceReference", encodeURIComponent(item.deepLink.resourceId)));
 }
 
 export async function markNotificationRead(notificationId: string, fetchPort: FetchPort = globalThis.fetch): Promise<void> {

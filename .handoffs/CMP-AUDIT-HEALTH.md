@@ -3,7 +3,7 @@
 - Status: COMPLETE; awaiting Integration Owner merge and application composition
 - Date: 2026-07-28
 - Owner: CMP-01 audit capability subtask
-- Allowed paths: `packages/platform-modules/audit/**` and this handoff
+- Allowed paths: `packages/crm-modules/audit/**` and this handoff
 - Forbidden paths: `apps/**`, `deploy/**`, existing migrations, contracts, generated artifacts, and the root lockfile
 
 ## Objective
@@ -13,7 +13,7 @@ Add a public, audit-owned PostgreSQL capability probe that lets an application d
 ## Known Facts
 
 - Audit records are explicit append-only security evidence, not health telemetry or inferred application logs.
-- `@ai-crm/platform-audit` currently exposes its Service and PostgreSQL Store but no independent capability or health port.
+- `@ai-crm/crm-audit` currently exposes its Service and PostgreSQL Store but no independent capability or health port.
 - A generic database `SELECT 1` and migration compatibility do not establish the Audit repository's schema, relation, session-mode, privilege, or PostgreSQL function prerequisites.
 - The PostgreSQL Store uses the module-owned `audit.records` and `audit.operation_receipts` relations, a transaction, an advisory transaction lock, and `SELECT ... FOR UPDATE` on an operation receipt before appending.
 - API composition, production role grants, and database-role permission governance are outside this task.
@@ -89,10 +89,10 @@ Add a public, audit-owned PostgreSQL capability probe that lets an application d
 
 ## Verification Evidence
 
-- `pnpm --filter @ai-crm/platform-audit lint`: passed with zero warnings.
-- `pnpm --filter @ai-crm/platform-audit typecheck`: passed.
-- `pnpm --filter @ai-crm/platform-audit test`: 18 passed; 3 existing PostgreSQL integration cases skipped because `TEST_AUDIT_DATABASE_URL_FILE` was not supplied. The new capability probe has 100% statement, function, and line coverage.
-- `pnpm --filter @ai-crm/platform-audit build`: passed.
+- `pnpm --filter @ai-crm/crm-audit lint`: passed with zero warnings.
+- `pnpm --filter @ai-crm/crm-audit typecheck`: passed.
+- `pnpm --filter @ai-crm/crm-audit test`: 18 passed; 3 existing PostgreSQL integration cases skipped because `TEST_AUDIT_DATABASE_URL_FILE` was not supplied. The new capability probe has 100% statement, function, and line coverage.
+- `pnpm --filter @ai-crm/crm-audit build`: passed.
 - `git diff --check`: passed before final commit.
 
 ## Remaining Integration Work

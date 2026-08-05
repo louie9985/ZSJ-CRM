@@ -12,7 +12,7 @@
 | P2 | 初版 Notification 描述忽略了通用 Handler factory 已存在。 | 改为精确边界：缺少经评审 AsyncAPI 拓扑、生产组合和激活；不再声称完全没有 Handler。 |
 | P1 | 七个使用 `docker run postgres:17.5-alpine` 的集成 Runner 删除容器时未带 `--volumes`，会留下匿名数据卷。 | 统一改为 `docker rm --force --volumes`，静态门自动覆盖所有直接 Docker PostgreSQL Runner；七个 Runner 29/29 通过，dangling Volume 集合运行前后保持 `139 -> 139`。 |
 | P2 | 初版 Notification preference reason 含空格，不满足稳定标识格式，联合测试返回 `NOTIFICATION_INPUT_INVALID`。 | 改为 `synthetic-default`，包级测试 2/2 通过。 |
-| P2 | 初版 Task 来源写作 `workflow`，且 Task/Notification 深链未经过 Registry，可能误示 Workflow 已组合并削弱联合证据。 | 来源改为 `platform.synthetic`；两类深链均显式转换并通过 Registry 公共 API 解析。 |
+| P2 | 初版 Task 来源写作 `workflow`，且 Task/Notification 深链未经过 Registry，可能误示 Workflow 已组合并削弱联合证据。 | 来源改为 `crm.synthetic`；两类深链均显式转换并通过 Registry 公共 API 解析。 |
 | P2 | 首次远端冷 CI 中 Workbench URL 归一化测试约 5.09 秒完成，外层仍使用 Vitest 默认 5 秒，而内部查询本已允许 10 秒，导致超时。 | 将该测试外层超时显式设为 15 秒，不改变产品行为或断言；随后重新执行 Workbench 专项和全仓门。 |
 
 ## 八维复审

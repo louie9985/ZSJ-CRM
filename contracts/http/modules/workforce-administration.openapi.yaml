@@ -6,7 +6,7 @@ paths:
       operationId: getWorkforceAdministrationSnapshot
       description: Returns only accounts, organization directory facts and server-computed actions visible to the current administrator.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:read, resource: platform.workforce-access.console, action: read }
+      x-ai-crm-permission: { version: 1, owner: crm.workforce-access, code: crm.workforce-access.console:read, resource: crm.workforce-access.console, action: read }
       x-ai-crm-csrf: { mode: not-required, reason: read-only }
       x-ai-crm-idempotency: { mode: none, reason: read-only }
       responses:
@@ -17,9 +17,9 @@ paths:
   /workforce-administration/commands:
     post:
       operationId: executeWorkforceAdministrationCommand
-      description: Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password that is forwarded to Keycloak and never persisted by CRM; recovery operations may still return a Keycloak-hosted ceremony URL.
+      description: Executes one reviewed account, department, position or fixed CRM administrator command. Create and reset commands accept a write-only password whose Argon2id hash is stored locally; plaintext and derived values never enter fingerprints, logs, audit records, traces or responses.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:manage, resource: platform.workforce-access.console, action: manage }
+      x-ai-crm-permission: { version: 1, owner: crm.workforce-access, code: crm.workforce-access.console:manage, resource: crm.workforce-access.console, action: manage }
       x-ai-crm-csrf: { mode: required, header: X-CSRF-Token }
       x-ai-crm-idempotency: { mode: required, keyHeader: Idempotency-Key, durableReplay: original-result, conflictStatus: 409 }
       parameters:
@@ -49,7 +49,7 @@ paths:
       operationId: listWorkforceAccounts
       description: Returns one stable page of accounts visible to the current administrator. Filters are combined with AND; phone input is normalized server-side. ZSJ system accounts never appear in this collection.
       x-ai-crm-audiences: [internal]
-      x-ai-crm-permission: { version: 1, owner: platform.workforce-access, code: platform.workforce-access.console:read, resource: platform.workforce-access.console, action: read }
+      x-ai-crm-permission: { version: 1, owner: crm.workforce-access, code: crm.workforce-access.console:read, resource: crm.workforce-access.console, action: read }
       x-ai-crm-csrf: { mode: not-required, reason: read-only }
       x-ai-crm-idempotency: { mode: none, reason: read-only }
       parameters:
@@ -71,24 +71,11 @@ components:
   responses:
     Unauthorized: { description: No valid BFF session. }
     Forbidden: { description: The current principal is not permitted to perform this operation. }
-    Unavailable: { description: "A required local or Keycloak dependency is unavailable; access remains fail-closed." }
+    Unavailable: { description: "A required local dependency is unavailable; access remains fail-closed." }
   schemas:
     StableId: { type: string, format: uuid }
-    WorkforceAccountStatus: { enum: [provisioning,credential_pending,active,disabled,failed] }
-    AllowedAction: { enum: [deactivate,edit,grant_crm_administrator,reactivate,release_phone,reset_password,retry_identity_sync,revoke_crm_administrator,transfer] }
-    IdentitySyncOperation:
-      description: Latest PII-free Keycloak synchronization projection. Technical error codes are stable categories and never contain provider messages or payload values.
-      type: object
-      additionalProperties: false
-      required: [action,operationId,requestedAt,status]
-      properties:
-        action: { enum: [disable,revoke_sessions,synchronize_login_identifiers] }
-        completedAt: { type: string, format: date-time }
-        errorCode: { enum: [eventing_handler_timeout,identity_sync_failed,keycloak_administration_unavailable,keycloak_entity_conflict] }
-        operationId: { $ref: "#/components/schemas/StableId" }
-        requestedAt: { type: string, format: date-time }
-        retryOfOperationId: { $ref: "#/components/schemas/StableId" }
-        status: { enum: [pending,succeeded,failed,superseded] }
+    WorkforceAccountStatus: { enum: [active,disabled] }
+    AllowedAction: { enum: [deactivate,edit,grant_crm_administrator,reactivate,release_phone,reset_password,revoke_crm_administrator,transfer] }
     WorkforceAccount:
       type: object
       additionalProperties: false
@@ -100,7 +87,6 @@ components:
         departmentId: { $ref: "#/components/schemas/StableId" }
         departmentName: { type: string, minLength: 1, maxLength: 64 }
         legalName: { type: string, minLength: 1, maxLength: 64 }
-        latestIdentitySync: { $ref: "#/components/schemas/IdentitySyncOperation" }
         phone: { type: string, pattern: "^\\+?[0-9]{6,20}$" }
         positionId: { $ref: "#/components/schemas/StableId" }
         positionName: { type: string, minLength: 1, maxLength: 64 }
@@ -152,9 +138,7 @@ components:
         - { $ref: "#/components/schemas/DeactivateAccountCommand" }
         - { $ref: "#/components/schemas/ReactivateAccountCommand" }
         - { $ref: "#/components/schemas/ResetPasswordCommand" }
-        - { $ref: "#/components/schemas/CompleteCredentialCeremonyCommand" }
         - { $ref: "#/components/schemas/ReleasePhoneCommand" }
-        - { $ref: "#/components/schemas/RetryIdentitySyncCommand" }
         - { $ref: "#/components/schemas/SetCrmAdministratorCommand" }
         - { $ref: "#/components/schemas/CreateDepartmentCommand" }
         - { $ref: "#/components/schemas/UpdateDepartmentCommand" }
@@ -169,7 +153,7 @@ components:
       type: object
       additionalProperties: false
       required: [kind,departmentId,initialPassword,legalName,positionId,username]
-      properties: { kind: { const: create_account }, departmentId: { $ref: "#/components/schemas/StableId" }, initialPassword: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Forwarded to Keycloak over the server-side administration boundary and never stored by CRM. Only printable half-width ASCII characters are accepted. }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
+      properties: { kind: { const: create_account }, departmentId: { $ref: "#/components/schemas/StableId" }, initialPassword: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Hashed with the fixed Argon2id profile before persistence. Only printable half-width ASCII characters are accepted. }, legalName: { type: string, minLength: 1, maxLength: 64 }, phone: { type: string, pattern: "^\\+?[0-9 -]{6,24}$" }, positionId: { $ref: "#/components/schemas/StableId" }, username: { type: string, minLength: 4, maxLength: 32, pattern: "^[A-Za-z0-9._-]+$" } }
     UpdateAccountCommand:
       type: object
       additionalProperties: false
@@ -195,23 +179,12 @@ components:
       type: object
       additionalProperties: false
       required: [kind,accountId,expectedRevision,password]
-      properties: { kind: { const: reset_password }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, password: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Replaces the Keycloak password; CRM never persists or returns the value. Only printable half-width ASCII characters are accepted. } }
-    CompleteCredentialCeremonyCommand:
-      type: object
-      additionalProperties: false
-      required: [kind,accountId,ceremonyOperationId,expectedRevision]
-      properties: { kind: { const: complete_credential_ceremony }, accountId: { $ref: "#/components/schemas/StableId" }, ceremonyOperationId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 } }
+      properties: { kind: { const: reset_password }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, password: { type: string, format: password, writeOnly: true, minLength: 8, maxLength: 64, pattern: "^[\\x20-\\x7E]{8,64}$", description: Replaces the local Argon2id hash and increments securityRevision. The plaintext is never persisted or returned. } }
     ReleasePhoneCommand:
       type: object
       additionalProperties: false
       required: [kind,accountId,expectedRevision,phone]
       properties: { kind: { const: release_phone }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, phone: { type: string, pattern: "^\\+?[0-9]{6,20}$", description: Must exactly match a value currently returned in releasablePhones; the current phone is forbidden. } }
-    RetryIdentitySyncCommand:
-      description: Creates a new synchronization Operation linked to one currently failed operation. The server resolves the action and current identifiers; clients cannot replay an old payload.
-      type: object
-      additionalProperties: false
-      required: [kind,accountId,expectedRevision,failedOperationId]
-      properties: { kind: { const: retry_identity_sync }, accountId: { $ref: "#/components/schemas/StableId" }, expectedRevision: { type: integer, minimum: 0 }, failedOperationId: { $ref: "#/components/schemas/StableId" } }
     SetCrmAdministratorCommand:
       type: object
       additionalProperties: false
@@ -267,5 +240,4 @@ components:
       additionalProperties: false
       required: [replayed]
       properties:
-        credentialRedirectUrl: { type: string, pattern: "^/(?!/)[A-Za-z0-9_./?=&%-]+$", maxLength: 1024 }
         replayed: { type: boolean }

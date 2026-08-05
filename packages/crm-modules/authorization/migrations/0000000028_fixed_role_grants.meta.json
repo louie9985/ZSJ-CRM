@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "authorization",
+  "purpose": "Add fixed multi-role grants with explicit global and Assignment-bound scopes.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Creates one authorization-owned table and supporting indexes; no existing table is rewritten.",
+  "dataImpact": "Additive schema only. The local bootstrap command creates the sole initial system-administrator grant after reset.",
+  "backfill": "Not required because the approved rollout resets the development database and does not preserve old grants.",
+  "destructive": false,
+  "recovery": "Stop fixed-role writers and roll back the application while retaining grants for audit and forward recovery.",
+  "forwardFix": "Append a reviewed authorization-owned migration for later changes. Do not rewrite this migration after application."
+}

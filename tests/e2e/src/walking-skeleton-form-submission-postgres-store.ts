@@ -1,4 +1,4 @@
-import type { FormPersistenceRuntime } from "@ai-crm/platform-form-schema";
+import type { FormPersistenceRuntime } from "@ai-crm/crm-form-schema";
 
 import {
   WalkingSkeletonFormSubmissionError,
@@ -23,7 +23,7 @@ function receipt(row: ReceiptRow, replayed: boolean): WalkingSkeletonFormSubmiss
   return Object.freeze({
     fileReference: Object.freeze({ contentVersionId: row.content_version_id, displayName: row.display_name, fileId: row.file_id, ...(row.media_type === null ? {} : { mediaType: row.media_type }), ...(row.size_bytes === null ? {} : { sizeBytes: Number(row.size_bytes) }), version: 1 }),
     operationId: row.operation_id,
-    reference: Object.freeze({ contentDigest: row.content_digest, definitionId: "platform.synthetic.task-completion", releaseVersion: 1, version: 1 }),
+    reference: Object.freeze({ contentDigest: row.content_digest, definitionId: "crm.synthetic.task-completion", releaseVersion: 1, version: 1 }),
     replayed, submissionReference: row.submission_reference, submittedAt: new Date(row.submitted_at).toISOString(), traceId: row.trace_id, version: 1,
   });
 }

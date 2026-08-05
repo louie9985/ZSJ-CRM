@@ -16,16 +16,15 @@ ENV NODE_ENV=test
 WORKDIR /app
 COPY --from=build --chown=node:node /opt/application/ ./
 COPY --from=build --chown=node:node /workspace/packages/database/migrations ./packages/database/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/app-registry/migrations ./packages/platform-modules/app-registry/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/audit/migrations ./packages/platform-modules/audit/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/authorization/migrations ./packages/platform-modules/authorization/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/business-configuration/migrations ./packages/platform-modules/business-configuration/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/eventing-outbox/migrations ./packages/platform-modules/eventing-outbox/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/file-center/migrations ./packages/platform-modules/file-center/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/form-schema/migrations ./packages/platform-modules/form-schema/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/notifications/migrations ./packages/platform-modules/notifications/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/organization/migrations ./packages/platform-modules/organization/migrations
-COPY --from=build --chown=node:node /workspace/packages/platform-modules/task-center/migrations ./packages/platform-modules/task-center/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/audit/migrations ./packages/crm-modules/audit/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/authorization/migrations ./packages/crm-modules/authorization/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/business-configuration/migrations ./packages/crm-modules/business-configuration/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/eventing-outbox/migrations ./packages/crm-modules/eventing-outbox/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/file-center/migrations ./packages/crm-modules/file-center/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/form-schema/migrations ./packages/crm-modules/form-schema/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/notifications/migrations ./packages/crm-modules/notifications/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/organization/migrations ./packages/crm-modules/organization/migrations
+COPY --from=build --chown=node:node /workspace/packages/crm-modules/task-center/migrations ./packages/crm-modules/task-center/migrations
 COPY --from=build --chown=node:node /workspace/tests/e2e/worker-entrypoint.sh ./worker-entrypoint.sh
 RUN chmod 0500 ./worker-entrypoint.sh
 USER node

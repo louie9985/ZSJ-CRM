@@ -1,9 +1,9 @@
-import { EventingError } from "@ai-crm/platform-eventing-outbox";
-import { TaskCenterError } from "@ai-crm/platform-task-center";
+import { EventingError } from "@ai-crm/crm-eventing-outbox";
+import { TaskCenterError } from "@ai-crm/crm-task-center";
 import type { RabbitConsumerTopology } from "./rabbit-adapter.js";
 
-export const taskProjectionBindingId = "platform.task-center.projection.v1" as const;
-export const taskProjectionConsumerId = "platform.task-center.projection.v1" as const;
+export const taskProjectionBindingId = "crm.task-center.projection.v1" as const;
+export const taskProjectionConsumerId = "crm.task-center.projection.v1" as const;
 
 export const taskProjectionRuntimePolicy = Object.freeze({
   backoffSeconds: Object.freeze([30, 300] as const),
@@ -11,7 +11,7 @@ export const taskProjectionRuntimePolicy = Object.freeze({
   handler: "task-center.postgres-projection-apply.v1",
   id: "taskProjectionLifecyclePolicyV1",
   maxAttempts: 3,
-  owner: "platform.task-center",
+  owner: "crm.task-center",
   policyVersion: 1,
   prefetch: 2,
   timeoutMs: 10_000,
@@ -19,23 +19,23 @@ export const taskProjectionRuntimePolicy = Object.freeze({
 
 export const taskProjectionRabbitTopology: Readonly<RabbitConsumerTopology> = Object.freeze({
   bindingId: taskProjectionBindingId,
-  deadLetterExchange: "ai-crm.platform.dead-letter.v1",
-  deadLetterQueue: "ai-crm.platform.task-center.projection.dead.v1",
+  deadLetterExchange: "ai-crm.crm.dead-letter.v1",
+  deadLetterQueue: "ai-crm.crm.task-center.projection.dead.v1",
   deadLetterRoutingKey: "task-center.projection-lifecycle.v1.dead",
-  exchange: "ai-crm.platform.events.v1",
+  exchange: "ai-crm.crm.events.v1",
   exchangeType: "topic",
-  queue: "ai-crm.platform.task-center.projection.v1",
+  queue: "ai-crm.crm.task-center.projection.v1",
   retryLayers: Object.freeze([
     Object.freeze({
       delaySeconds: 30,
-      exchange: "ai-crm.platform.retry.v1",
-      queue: "ai-crm.platform.task-center.projection.retry.30s.v1",
+      exchange: "ai-crm.crm.retry.v1",
+      queue: "ai-crm.crm.task-center.projection.retry.30s.v1",
       routingKey: "task-center.projection-lifecycle.v1.retry.30s",
     }),
     Object.freeze({
       delaySeconds: 300,
-      exchange: "ai-crm.platform.retry.v1",
-      queue: "ai-crm.platform.task-center.projection.retry.300s.v1",
+      exchange: "ai-crm.crm.retry.v1",
+      queue: "ai-crm.crm.task-center.projection.retry.300s.v1",
       routingKey: "task-center.projection-lifecycle.v1.retry.300s",
     }),
   ]),

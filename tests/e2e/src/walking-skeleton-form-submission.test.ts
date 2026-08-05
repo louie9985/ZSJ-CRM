@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { FormSchemaError, type FormSchemaQueryService } from "@ai-crm/platform-form-schema";
+import { FormSchemaError, type FormSchemaQueryService } from "@ai-crm/crm-form-schema";
 
 import { createWalkingSkeletonFormSubmissionHttpAdapter } from "./walking-skeleton-form-submission-http.js";
 import {
@@ -50,7 +50,7 @@ function memoryStore(): WalkingSkeletonFormSubmissionStore & { readonly committe
 function fixture(overrides: Readonly<{ allowed?: boolean; onDependencyFailure?: (stage: "authorize" | "store" | "validate") => void; store?: WalkingSkeletonFormSubmissionStore; validate?: FormSchemaQueryService["validateSubmission"] }> = {}) {
   let sequence = 0;
   const store = overrides.store ?? memoryStore();
-  const validateSubmission = overrides.validate ?? vi.fn().mockResolvedValue({ errors: [], reference: { contentDigest: "a".repeat(64), definitionId: "platform.synthetic.task-completion", releaseVersion: 1, version: 1 }, valid: true });
+  const validateSubmission = overrides.validate ?? vi.fn().mockResolvedValue({ errors: [], reference: { contentDigest: "a".repeat(64), definitionId: "crm.synthetic.task-completion", releaseVersion: 1, version: 1 }, valid: true });
   const service = createWalkingSkeletonFormSubmissionService({
     authorizer: { authorize: () => Promise.resolve({ allowed: overrides.allowed ?? true, decisionId: "82000000-0000-4000-8000-000000000001" }) },
     clock: () => new Date("2026-08-02T00:00:00.000Z"),
@@ -95,7 +95,7 @@ describe("Walking Skeleton Form submission command", () => {
     expect((denied.store as ReturnType<typeof memoryStore>).committed).toHaveLength(0);
     const recoveringValidation = vi.fn()
       .mockRejectedValueOnce(new Error("synthetic dependency"))
-      .mockResolvedValue({ errors: [], reference: { contentDigest: "a".repeat(64), definitionId: "platform.synthetic.task-completion", releaseVersion: 1, version: 1 }, valid: true });
+      .mockResolvedValue({ errors: [], reference: { contentDigest: "a".repeat(64), definitionId: "crm.synthetic.task-completion", releaseVersion: 1, version: 1 }, valid: true });
     const unavailable = fixture({ validate: recoveringValidation });
     await expect(unavailable.service.submit({ context, data, fileReference, operationId, traceparent })).rejects.toMatchObject({ code: "submission_dependency_unavailable", retryable: true });
     await expect(unavailable.service.submit({ context, data, fileReference, operationId, traceparent })).resolves.toMatchObject({ replayed: false });

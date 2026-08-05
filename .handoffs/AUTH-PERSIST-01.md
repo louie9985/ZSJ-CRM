@@ -5,7 +5,7 @@
 - Owner: authorization persistence implementation line
 - Date: 2026-07-28
 - Decision basis: accepted ADR-0025
-- Allowed paths: `packages/platform-modules/authorization/**`, new global migration lease `0000000012` owned exclusively by this task, and this handoff
+- Allowed paths: `packages/crm-modules/authorization/**`, new global migration lease `0000000012` owned exclusively by this task, and this handoff
 - Forbidden paths: `apps/**`, other packages, `contracts/**`, root package/lockfile, and global migration registries
 
 ### Known facts
@@ -66,13 +66,13 @@
 
 ### Verification
 
-- `pnpm --filter @ai-crm/platform-authorization test`: 29/29 passed; the four PostgreSQL cases are intentionally skipped in the ordinary unit command unless its ephemeral Secret file is supplied.
-- `pnpm --filter @ai-crm/platform-authorization test:integration`: 4/4 passed against isolated `postgres:17.5-alpine`, including empty migration/no seed, atomic publication/readback, concurrent serialization, replay, immutable triggers, corrupted empty-policy failure, decision idempotency/conflict, and container/Secret cleanup.
-- `pnpm --filter @ai-crm/platform-authorization lint`: passed.
-- `pnpm --filter @ai-crm/platform-authorization typecheck`: passed.
-- `pnpm --filter @ai-crm/platform-authorization build`: passed.
-- `pnpm --filter @ai-crm/platform-authorization contracts:check`: passed.
-- `git diff --check -- packages/platform-modules/authorization .handoffs/AUTH-PERSIST-01.md`: passed.
+- `pnpm --filter @ai-crm/crm-authorization test`: 29/29 passed; the four PostgreSQL cases are intentionally skipped in the ordinary unit command unless its ephemeral Secret file is supplied.
+- `pnpm --filter @ai-crm/crm-authorization test:integration`: 4/4 passed against isolated `postgres:17.5-alpine`, including empty migration/no seed, atomic publication/readback, concurrent serialization, replay, immutable triggers, corrupted empty-policy failure, decision idempotency/conflict, and container/Secret cleanup.
+- `pnpm --filter @ai-crm/crm-authorization lint`: passed.
+- `pnpm --filter @ai-crm/crm-authorization typecheck`: passed.
+- `pnpm --filter @ai-crm/crm-authorization build`: passed.
+- `pnpm --filter @ai-crm/crm-authorization contracts:check`: passed.
+- `git diff --check -- packages/crm-modules/authorization .handoffs/AUTH-PERSIST-01.md`: passed.
 - Full `pnpm check`: the implementation reached repository checks and identified the now-removed relative test import as a package-boundary violation. The harness now imports the public `@ai-crm/database` entry and authorization declares the workspace dev dependency. Per path ownership, the root `pnpm-lock.yaml` importer update and final rerun are assigned to the Integration Owner; this task did not modify the root lockfile.
 
 ## Eight-area review
@@ -88,8 +88,8 @@
 
 ## Integration Owner follow-up
 
-- Synchronize the `packages/platform-modules/authorization` importer in root `pnpm-lock.yaml` for the declared `@ai-crm/database: workspace:*` development dependency during the shared lockfile window.
-- Run `pnpm install --frozen-lockfile`, `pnpm --filter @ai-crm/platform-authorization test:integration`, and full `pnpm check` after that synchronization. No application composition or production writer is authorized by this follow-up.
+- Synchronize the `packages/crm-modules/authorization` importer in root `pnpm-lock.yaml` for the declared `@ai-crm/database: workspace:*` development dependency during the shared lockfile window.
+- Run `pnpm install --frozen-lockfile`, `pnpm --filter @ai-crm/crm-authorization test:integration`, and full `pnpm check` after that synchronization. No application composition or production writer is authorized by this follow-up.
 
 ## Independent review loop
 

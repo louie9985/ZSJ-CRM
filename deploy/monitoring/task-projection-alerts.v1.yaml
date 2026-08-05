@@ -2,11 +2,11 @@ apiVersion: ai-crm.platform/v1
 kind: WorkerAlertPolicy
 metadata:
   name: task-projection-consumer-v1
-  owner: platform.task-center
+  owner: crm.task-center
 spec:
   dimensions:
     service: ai-crm.worker
-    consumer: platform.task-center.projection.v1
+    consumer: crm.task-center.projection.v1
   rules:
     - id: task-projection-dlq-new-message
       signal: rabbitmq_dead_letter_messages_added

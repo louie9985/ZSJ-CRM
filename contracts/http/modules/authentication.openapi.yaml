@@ -1,329 +1,258 @@
 openapi: 3.1.0
 info:
-  title: AI-CRM Authentication API
-  version: 0.1.0
+  title: AI-CRM Internal Authentication API
+  version: 1.0.0
 paths:
   /auth/pc/login:
-    get:
-      operationId: beginPcLogin
-      x-ai-crm-audiences: [internal]
-      parameters:
-        - name: returnTo
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 512
-      responses:
-        "302":
-          description: Redirect to the reviewed Keycloak authorization endpoint.
-          headers:
-            Location:
-              required: true
-              schema:
-                type: string
-        "400":
-          description: The requested local return path is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: The identity provider or session store is unavailable; login fails closed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-  /auth/pc/callback:
-    get:
-      operationId: completePcLogin
-      x-ai-crm-audiences: [internal]
-      parameters:
-        - name: code
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 4096
-        - name: state
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 32
-            maxLength: 512
-      responses:
-        "302":
-          description: Establish a normal opaque BFF session, or rotate the same bound session after a successful same-subject reauthentication, then redirect to the allowlisted return path.
-          headers:
-            Location:
-              required: true
-              schema:
-                type: string
-            Set-Cookie:
-              $ref: "#/components/headers/SessionCookie"
-        "400":
-          description: The one-time callback transaction is invalid, expired, or already consumed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: A required authentication dependency is unavailable; authentication fails closed. When the failure occurs before the one-time transaction is consumed, the same callback can be retried within its validity window.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-  /auth/pc/reauthentication:
     post:
-      operationId: beginPcReauthentication
+      operationId: loginPc
       x-ai-crm-audiences: [internal]
-      description: Start a short-lived same-subject reauthentication transaction. The BFF requires the existing session and CSRF proof and sends prompt=login to Keycloak; ordinary login time is not accepted as fresh proof.
-      parameters:
-        - name: returnTo
-          in: query
-          required: false
-          schema:
-            type: string
-            maxLength: 512
-        - $ref: "#/components/parameters/CsrfToken"
-        - $ref: "#/components/parameters/Origin"
-        - $ref: "#/components/parameters/Referer"
+      parameters: [{ $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
-        "200":
-          description: Browser-safe JSON authorization redirect for same-origin fetch callers that send Accept application/json.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [redirectUrl]
-                properties:
-                  redirectUrl: { type: string, format: uri, maxLength: 4096 }
-        "302":
-          description: Redirect to Keycloak with prompt=login. The one-time transaction is bound to the current logical BFF session and Keycloak subject.
-          headers:
-            Location:
-              required: true
-              schema:
-                type: string
-        "400":
-          description: The requested local return path is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "401":
-          description: The existing BFF session is missing or invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "403":
-          description: CSRF or same-origin validation failed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: Keycloak, session storage, or durable authentication audit is unavailable.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
+        "200": { $ref: "#/components/responses/AuthenticatedPcSession" }
+        "401": { $ref: "#/components/responses/AuthenticationInvalidCredentials" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "429": { $ref: "#/components/responses/AuthenticationRateLimited" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
   /auth/pc/session:
     get:
       operationId: getPcSession
       x-ai-crm-audiences: [internal]
       responses:
-        "200":
-          description: Return the browser-safe view of the current BFF session.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrowserSession"
-        "401":
-          description: The session is missing, expired, revoked, or invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: The identity provider or session store is unavailable; session validation fails closed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-  /auth/pc/refresh:
+        "200": { $ref: "#/components/responses/PcSession" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/pc/reauthentication:
     post:
-      operationId: refreshPcSession
+      operationId: reauthenticatePc
       x-ai-crm-audiences: [internal]
-      parameters:
-        - $ref: "#/components/parameters/CsrfToken"
-        - $ref: "#/components/parameters/Origin"
-        - $ref: "#/components/parameters/Referer"
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReauthenticationRequest" }
       responses:
-        "204":
-          description: Refresh the server-side Keycloak session and rotate the opaque BFF session identifier.
-          headers:
-            Set-Cookie:
-              $ref: "#/components/headers/SessionCookie"
-        "401":
-          description: The session or refresh credential is no longer valid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "403":
-          description: CSRF validation failed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "409":
-          description: Another refresh owns the short-lived session refresh lease; the request must not reuse the refresh credential.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: The identity provider or session store is unavailable; refresh fails closed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
+        "200": { $ref: "#/components/responses/AuthenticatedPcSession" }
+        "401": { $ref: "#/components/responses/AuthenticationInvalidCredentials" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "429": { $ref: "#/components/responses/AuthenticationRateLimited" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/pc/assignment:
+    post:
+      operationId: selectPcAssignment
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignmentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedPcSession" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
   /auth/pc/logout:
     post:
-      operationId: logoutPcSession
+      operationId: logoutPc
       x-ai-crm-audiences: [internal]
-      parameters:
-        - name: X-CSRF-Token
-          in: header
-          required: false
-          description: Required when an existing browser session Cookie is present.
-          schema:
-            type: string
-            minLength: 32
-            maxLength: 512
-        - $ref: "#/components/parameters/Origin"
-        - $ref: "#/components/parameters/Referer"
+      parameters: [{ $ref: "#/components/parameters/ConditionalCsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
       responses:
-        "200":
-          description: Browser-safe JSON redirect to the same-origin login entry for callers that send Accept application/json. The Keycloak session and local session are already revoked and the Cookie is cleared before this response is returned.
-          headers:
-            Set-Cookie:
-              $ref: "#/components/headers/SessionCookie"
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [redirectUrl]
-                properties:
-                  redirectUrl: { type: string, format: uri, maxLength: 4096 }
-        "302":
-          description: End the Keycloak session through the BFF, revoke the local session, clear its Cookie, and redirect the browser to the same-origin login entry.
-          headers:
-            Location:
-              required: true
-              schema:
-                type: string
-            Set-Cookie:
-              $ref: "#/components/headers/SessionCookie"
         "204":
-          description: Clear an absent session Cookie idempotently; no provider redirect is required.
-          headers:
-            Set-Cookie:
-              $ref: "#/components/headers/SessionCookie"
-        "401":
-          description: The supplied session Cookie is malformed, expired, or revoked.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "403":
-          description: CSRF validation failed for an existing session.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
-        "503":
-          description: Keycloak, session storage, or durable authentication audit is unavailable; logout fails closed and a still-current local session remains retryable.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthenticationError"
+          description: Session revoked and Cookie cleared idempotently.
+          headers: { Set-Cookie: { $ref: "#/components/headers/PcSessionCookie" } }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/internal-h5/login:
+    post:
+      operationId: loginInternalH5
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedInternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationInvalidCredentials" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "429": { $ref: "#/components/responses/AuthenticationRateLimited" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/internal-h5/session:
+    get:
+      operationId: getInternalH5Session
+      x-ai-crm-audiences: [internal]
+      responses:
+        "200": { $ref: "#/components/responses/InternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/internal-h5/reauthentication:
+    post:
+      operationId: reauthenticateInternalH5
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReauthenticationRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedInternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationInvalidCredentials" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "429": { $ref: "#/components/responses/AuthenticationRateLimited" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/internal-h5/assignment:
+    post:
+      operationId: selectInternalH5Assignment
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignmentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedInternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/internal-h5/logout:
+    post:
+      operationId: logoutInternalH5
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/ConditionalCsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      responses:
+        "204":
+          description: Session revoked and Cookie cleared idempotently.
+          headers: { Set-Cookie: { $ref: "#/components/headers/InternalH5SessionCookie" } }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/part-time/login:
+    post:
+      operationId: loginPartTime
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/LoginRequest" } } } }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedInternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationInvalidCredentials" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "429": { $ref: "#/components/responses/AuthenticationRateLimited" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/part-time/session:
+    get:
+      operationId: getPartTimeSession
+      x-ai-crm-audiences: [internal]
+      responses:
+        "200": { $ref: "#/components/responses/InternalH5Session" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/part-time/reauthentication:
+    post:
+      operationId: reauthenticatePartTime
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/CsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReauthenticationRequest" } } } }
+      responses:
+        "200": { $ref: "#/components/responses/AuthenticatedPartTimeSession" }
+        "401": { $ref: "#/components/responses/AuthenticationRequired" }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
+  /auth/part-time/logout:
+    post:
+      operationId: logoutPartTime
+      x-ai-crm-audiences: [internal]
+      parameters: [{ $ref: "#/components/parameters/ConditionalCsrfToken" }, { $ref: "#/components/parameters/Origin" }, { $ref: "#/components/parameters/Referer" }]
+      responses:
+        "204": { description: Part-time Session revoked and Cookie cleared idempotently., headers: { Set-Cookie: { $ref: "#/components/headers/PartTimeSessionCookie" } } }
+        "403": { $ref: "#/components/responses/AuthenticationCsrfRejected" }
+        "503": { $ref: "#/components/responses/AuthenticationUnavailable" }
 components:
-  headers:
-    SessionCookie:
-      description: Opaque secure BFF session Cookie rotation or deletion; never contains a Keycloak Token.
-      required: true
-      schema:
-        type: string
-        maxLength: 1024
   parameters:
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: true
-      schema:
-        type: string
-        format: uuid
-        minLength: 36
-        maxLength: 36
     CsrfToken:
       name: X-CSRF-Token
       in: header
       required: true
-      schema:
-        type: string
-        minLength: 32
-        maxLength: 512
+      schema: { type: string, minLength: 32, maxLength: 512 }
+    ConditionalCsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Required when the request carries a valid Session; omitted only to clear an absent or invalid Session Cookie.
+      schema: { type: string, minLength: 32, maxLength: 512 }
     Origin:
       name: Origin
       in: header
       required: false
-      description: Supply Origin or Referer. An existing-session mutation is rejected when neither identifies an allowlisted origin.
-      schema:
-        type: string
-        format: uri
-        maxLength: 512
+      schema: { type: string, format: uri, maxLength: 512 }
     Referer:
       name: Referer
       in: header
       required: false
-      description: Fallback source evidence when Origin is unavailable; its origin must be allowlisted.
-      schema:
-        type: string
-        format: uri
-        maxLength: 2048
+      schema: { type: string, format: uri, maxLength: 2048 }
+  headers:
+    PcSessionCookie:
+      required: true
+      description: Host-only opaque PC Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.
+      schema: { type: string, maxLength: 1024 }
+    InternalH5SessionCookie:
+      required: true
+      description: Host-only opaque internal H5 Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.
+      schema: { type: string, maxLength: 1024 }
+    PartTimeSessionCookie:
+      required: true
+      description: Host-only opaque part-time CRM Session Cookie with HttpOnly, Secure, SameSite=Lax and Path=/.
+      schema: { type: string, maxLength: 1024 }
   schemas:
-    PcSessionPolicy:
+    LoginRequest:
       type: object
       additionalProperties: false
-      required: [concurrentLimit, revocationTargetSeconds]
+      required: [identifier, password]
       properties:
-        concurrentLimit: { type: integer, minimum: 1, maximum: 5, default: 1 }
-        revocationTargetSeconds: { type: integer, minimum: 5, maximum: 60, default: 5 }
+        identifier: { type: string, minLength: 1, maxLength: 64 }
+        password: { type: string, minLength: 8, maxLength: 64 }
+    ReauthenticationRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 64 }
+    AssignmentRequest:
+      type: object
+      additionalProperties: false
+      required: [assignmentId]
+      properties:
+        assignmentId: { type: string, format: uuid }
     BrowserSession:
       type: object
       additionalProperties: false
-      required: [client, authenticatedAt, expiresAt, csrfToken]
+      required: [surface, accountId, authenticatedAt, idleExpiresAt, absoluteExpiresAt, csrfToken, assignments, roles]
       properties:
-        client:
-          type: string
-          const: pc-web
-        authenticatedAt:
-          type: string
-          format: date-time
-        expiresAt:
-          type: string
-          format: date-time
-        csrfToken:
-          type: string
-          minLength: 32
-          maxLength: 512
+        surface: { type: string, enum: [pc, internal-h5, part-time] }
+        accountId: { type: string, format: uuid }
+        authenticatedAt: { type: string, format: date-time }
+        idleExpiresAt: { type: string, format: date-time }
+        absoluteExpiresAt: { type: string, format: date-time }
+        reauthenticatedUntil: { type: string, format: date-time }
+        csrfToken: { type: string, minLength: 32, maxLength: 512 }
+        currentAssignmentId: { type: string, format: uuid }
+        assignments:
+          type: array
+          maxItems: 64
+          items: { type: string, format: uuid }
+        roles:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items: { type: string, enum: [system_administrator, application_user, crm_administrator] }
     AuthenticationError:
       type: object
       additionalProperties: false
@@ -331,12 +260,42 @@ components:
       properties:
         code:
           type: string
-          enum:
-            - authentication_required
-            - authentication_callback_invalid
-            - authentication_csrf_rejected
-            - authentication_dependency_unavailable
-            - authentication_refresh_in_progress
-        message:
-          type: string
-          maxLength: 200
+          enum: [authentication_invalid_credentials, authentication_required, authentication_csrf_rejected, authentication_rate_limited, authentication_dependency_unavailable]
+        message: { type: string, maxLength: 200 }
+  responses:
+    PcSession:
+      description: Current valid PC Session.
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    InternalH5Session:
+      description: Current valid internal H5 Session.
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    PartTimeSession:
+      description: Current valid part-time Session.
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    AuthenticatedPcSession:
+      description: PC Session created or rotated.
+      headers: { Set-Cookie: { $ref: "#/components/headers/PcSessionCookie" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    AuthenticatedInternalH5Session:
+      description: Internal H5 Session created or rotated.
+      headers: { Set-Cookie: { $ref: "#/components/headers/InternalH5SessionCookie" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    AuthenticatedPartTimeSession:
+      description: Part-time Session created or rotated.
+      headers: { Set-Cookie: { $ref: "#/components/headers/PartTimeSessionCookie" } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/BrowserSession" } } }
+    AuthenticationInvalidCredentials:
+      description: Identifier, password or account state is invalid without distinguishing the cause.
+      content: { application/json: { schema: { $ref: "#/components/schemas/AuthenticationError" } } }
+    AuthenticationRequired:
+      description: A valid Session is required.
+      content: { application/json: { schema: { $ref: "#/components/schemas/AuthenticationError" } } }
+    AuthenticationCsrfRejected:
+      description: CSRF or same-origin validation failed.
+      content: { application/json: { schema: { $ref: "#/components/schemas/AuthenticationError" } } }
+    AuthenticationRateLimited:
+      description: Login failure limit reached for the identifier or source address.
+      content: { application/json: { schema: { $ref: "#/components/schemas/AuthenticationError" } } }
+    AuthenticationUnavailable:
+      description: A required authentication dependency is unavailable and access fails closed.
+      content: { application/json: { schema: { $ref: "#/components/schemas/AuthenticationError" } } }

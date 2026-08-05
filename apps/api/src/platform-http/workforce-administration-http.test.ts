@@ -27,7 +27,6 @@ const snapshot = Object.freeze({
     departmentId: ids.department,
     departmentName: "AI应用部",
     legalName: "测试员工",
-    latestIdentitySync: Object.freeze({ action: "synchronize_login_identifiers" as const, completedAt: "2026-08-02T00:00:02.000Z", errorCode: "keycloak_administration_unavailable" as const, operationId, requestedAt: "2026-08-02T00:00:00.000Z", status: "failed" as const }),
     phone: "+8613800000000",
     positionId: ids.position,
     positionName: "系统管理岗",
@@ -42,7 +41,7 @@ const snapshot = Object.freeze({
 
 function fixture() {
   const facade = {
-    execute: vi.fn<WorkforceAdministrationFacade["execute"]>(() => Promise.resolve({})),
+    execute: vi.fn<WorkforceAdministrationFacade["execute"]>(() => Promise.resolve({ replayed: false })),
     listAccounts: vi.fn<WorkforceAdministrationFacade["listAccounts"]>((input) => Promise.resolve({ items: snapshot.accounts, page: input.query.page, pageSize: input.query.pageSize, total: 1 })),
     load: vi.fn<WorkforceAdministrationFacade["load"]>(() => Promise.resolve(snapshot)),
   };
@@ -59,7 +58,6 @@ const commands: readonly WorkforceAdministrationCommand[] = [
   { accountId: ids.account, departmentId: ids.department, expectedRevision: 2, kind: "reactivate_account", positionId: ids.position },
   { accountId: ids.account, expectedRevision: 2, kind: "reset_password", password: "Replacement-password-2!" },
   { accountId: ids.account, expectedRevision: 2, kind: "release_phone", phone: "+86 137-0000-0000" },
-  { accountId: ids.account, ceremonyOperationId: operationId, expectedRevision: 2, kind: "complete_credential_ceremony" },
   { accountId: ids.account, enabled: true, expectedRevision: 2, kind: "set_crm_administrator" },
   { departmentId: ids.department, kind: "create_department", name: "AI应用部", parentDepartmentId: ids.parent },
   { departmentId: ids.department, expectedRevision: 1, kind: "update_department", name: "AI应用部", parentDepartmentId: ids.parent },
@@ -69,7 +67,6 @@ const commands: readonly WorkforceAdministrationCommand[] = [
   { expectedRevision: 1, kind: "update_position", name: "系统管理岗", positionId: ids.position },
   { expectedRevision: 1, kind: "deactivate_position", positionId: ids.position },
   { expectedRevision: 1, kind: "reactivate_position", positionId: ids.position },
-  { accountId: ids.account, expectedRevision: 2, failedOperationId: operationId, kind: "retry_identity_sync" },
 ];
 
 describe("workforce administration HTTP adapter", () => {
@@ -172,19 +169,6 @@ describe("workforce administration HTTP adapter", () => {
     expect(JSON.stringify(response)).not.toMatch(/database password|SQL|occupied/iu);
   });
 
-  it("rejects secret-bearing or widened facade results as unavailable", async () => {
-    const resultCases = [
-      { credentialRedirectUrl: "/credential/setup", token: "secret" },
-      { credentialRedirectUrl: "https://outside.invalid/setup" },
-      { credentialRedirectUrl: "/credential/setup?token=secret" },
-    ];
-    for (const result of resultCases) {
-      const { adapter, facade } = fixture();
-      facade.execute.mockResolvedValueOnce(result);
-      await expect(adapter.execute(executeInput(commands[0]))).resolves.toMatchObject({ body: { code: "workforce_administration_unavailable" }, status: 503 });
-    }
-  });
-
   it("rejects extra or secret-bearing snapshot fields instead of reflecting them", async () => {
     const { adapter, facade } = fixture();
     facade.load.mockResolvedValueOnce({ ...snapshot, token: "secret" } as never);
@@ -201,14 +185,6 @@ describe("workforce administration HTTP adapter", () => {
     facade.load.mockResolvedValueOnce({ ...snapshot, accounts });
     await expect(adapter.load({ credential, traceId })).resolves.toMatchObject({ body: { code: "workforce_administration_unavailable" }, status: 503 });
     expect(reads).toBe(0);
-  });
-
-  it("accepts a local credential ceremony redirect without returning credential material", async () => {
-    const { adapter, facade } = fixture();
-    facade.execute.mockResolvedValueOnce({ credentialRedirectUrl: "/auth/pc/credential-ceremony" });
-    await expect(adapter.execute(executeInput(commands[4]))).resolves.toMatchObject({
-      body: { credentialRedirectUrl: "/auth/pc/credential-ceremony" }, status: 200,
-    });
   });
 
   it("does not expose malformed facade error accessors", async () => {

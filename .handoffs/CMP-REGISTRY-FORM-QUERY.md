@@ -2,7 +2,7 @@
 
 - Status: IMPLEMENTED; awaiting independent review and CMP-01 composition
 - Owner: `codex/cmp-registry-form`
-- Allowed paths: `packages/platform-modules/app-registry`, `packages/platform-modules/form-schema`, and this handoff
+- Allowed paths: `packages/crm-modules/app-registry`, `packages/crm-modules/form-schema`, and this handoff
 
 ## Known Facts
 

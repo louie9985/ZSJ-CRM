@@ -8,20 +8,23 @@ import YAML from "yaml";
 const root = resolve(import.meta.dirname, "../..");
 const read = (path) => readFile(resolve(root, path), "utf8");
 
-test("CRM base access remains a reviewed Assignment-bound policy capability", async () => {
-  const [schema, catalog, bootstrap, facade] = await Promise.all([
+test("CRM base access remains a reviewed Assignment-bound fixed-role capability", async () => {
+  const [schema, catalog, fixedRoles, facade] = await Promise.all([
     read("contracts/permissions/platform-permission-catalog.v1.schema.json").then(JSON.parse),
     read("contracts/permissions/crm-permission-catalog.v1.json").then(JSON.parse),
-    read("scripts/bootstrap/zsj-crm-local-adapter.mjs"),
+    read("packages/crm-modules/authorization/src/fixed-roles.ts"),
     read("apps/api/src/workforce-administration/facade.ts"),
   ]);
   const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
   assert.equal(validate(catalog), true, JSON.stringify(validate.errors));
   assert.deepEqual(catalog.permissions, [{ action: "access", code: "crm.application:access", owner: "crm.application", resource: "crm.application", scopeDimensions: [] }]);
-  assert.match(bootstrap, /roleKey: "crm\.application-user"/u);
-  assert.match(bootstrap, /\["crm\.application:access", "platform\.workbench\.shell:read"\]/u);
-  assert.match(bootstrap, /subject: \{ assignmentId: ZSJ_CRM_LOCAL_IDS\.crmAdministratorAssignmentId, kind: "assignment" \}/u);
-  assert.ok(facade.indexOf("setApplicationGrant") < facade.indexOf("setPasswordAndEnable"), "base Grant must precede Keycloak enablement");
+  assert.match(fixedRoles, /"application_user"/u);
+  assert.match(fixedRoles, /grant\.assignmentId === subject\.selectedAssignmentId/u);
+  const fingerprint = facade.slice(facade.indexOf("function commandFingerprint"), facade.indexOf("\nfunction target"));
+  assert.match(fingerprint, /departmentId: command\.departmentId/u);
+  assert.match(fingerprint, /accountId: command\.accountId, expectedRevision: command\.expectedRevision/u);
+  assert.doesNotMatch(fingerprint, /initialPassword|command\.password/u);
+  assert.ok(facade.indexOf("dependencies.credentials.create") < facade.indexOf("grants.grantApplicationUser"), "credential and Assignment role must share the account creation transaction");
 });
 
 test("workbench bootstrap additions stay optional and the client has one shell", async () => {
@@ -32,9 +35,7 @@ test("workbench bootstrap additions stay optional and the client has one shell",
     read("apps/workbench-web/src/workspace-profiles.tsx"),
   ]);
   const schema = contract.components.schemas.WorkbenchBootstrap;
-  assert.ok(schema.properties.applicationIds);
   assert.ok(schema.properties.workspaceProfileId);
-  assert.equal(schema.required.includes("applicationIds"), false);
   assert.equal(schema.required.includes("workspaceProfileId"), false);
   assert.equal((app.match(/<WorkbenchShell/u) ?? []).length, 1);
   assert.match(registry, /crm\.workspace\.unconfigured/u);

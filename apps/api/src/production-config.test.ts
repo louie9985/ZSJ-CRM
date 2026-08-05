@@ -7,23 +7,17 @@ import { loadProductionApiConfiguration } from "./production-config.js";
 
 const secretPath = (name: string) => resolve(import.meta.dirname, "__synthetic-secrets__", name);
 const secretPaths = {
-  client: secretPath("client"),
-  adminClient: secretPath("admin-client"),
   cosId: secretPath("cos-id"),
   cosKey: secretPath("cos-key"),
   database: secretPath("database"),
-  encryption: secretPath("encryption"),
   index: secretPath("index"),
   redis: secretPath("redis"),
   realtimeRabbit: secretPath("realtime-rabbit"),
 } as const;
 const secrets: Readonly<Record<string, string>> = {
-  [secretPaths.adminClient]: "a".repeat(43),
-  [secretPaths.client]: "c".repeat(43),
   [secretPaths.cosId]: "synthetic-cos-id",
   [secretPaths.cosKey]: "synthetic-cos-key",
   [secretPaths.database]: "postgresql://api:secret@database:5432/ai_crm",
-  [secretPaths.encryption]: Buffer.alloc(32, 7).toString("base64url"),
   [secretPaths.index]: Buffer.alloc(32, 9).toString("base64url"),
   [secretPaths.redis]: "synthetic-redis-secret",
   [secretPaths.realtimeRabbit]: "amqps://realtime-consumer:secret@rabbit.example.test/ai-crm",
@@ -50,30 +44,10 @@ const env: NodeJS.ProcessEnv = {
   AI_CRM_FILE_MAXIMUM_SCAN_BYTES: "1048576",
   AI_CRM_FILE_MAXIMUM_UPLOAD_BYTES: "1048576",
   AI_CRM_FILE_UPLOAD_SESSION_TTL_MS: "300000",
-  AI_CRM_KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/ai-crm-dev",
-  AI_CRM_KEYCLOAK_ADMIN_BASE_URL: "http://127.0.0.1:8080",
-  AI_CRM_KEYCLOAK_ADMIN_CLIENT_ID: "ai-crm-workforce-provisioner",
-  AI_CRM_KEYCLOAK_ADMIN_CLIENT_SECRET_FILE: secretPaths.adminClient,
-  AI_CRM_KEYCLOAK_ADMIN_TIMEOUT_MS: "5000",
-  AI_CRM_KEYCLOAK_CREDENTIAL_RETURN_URI: "http://127.0.0.1:8088/workforce-administration/credential-callback",
-  AI_CRM_KEYCLOAK_PUBLIC_REALM_BASE_PATH: "/realms/ai-crm-dev",
-  AI_CRM_KEYCLOAK_REALM: "ai-crm-dev",
-  AI_CRM_KEYCLOAK_JWKS_URI: "http://127.0.0.1:8080/realms/ai-crm-dev/protocol/openid-connect/certs",
+  AI_CRM_INTERNAL_H5_ALLOWED_ORIGIN: "http://127.0.0.1:10086",
   AI_CRM_MIGRATIONS_ROOT: resolve(import.meta.dirname, "../../.."),
-  AI_CRM_OIDC_API_AUDIENCE: "ai-crm-api",
   AI_CRM_PC_ALLOWED_ORIGIN: "http://127.0.0.1:8088",
-  AI_CRM_PC_LOGIN_TRANSACTION_TTL_SECONDS: "180",
-  AI_CRM_PC_OIDC_CLIENT_ID: "ai-crm-pc-bff",
-  AI_CRM_PC_OIDC_CLIENT_SECRET_FILE: secretPaths.client,
-  AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/login",
-  AI_CRM_PC_OIDC_REDIRECT_URI: "http://127.0.0.1:8088/auth/pc/callback",
-  AI_CRM_PC_OIDC_TIMEOUT_SECONDS: "5",
-  AI_CRM_PC_REFRESH_LEASE_TTL_MS: "10000",
-  AI_CRM_PC_SESSION_ABSOLUTE_TTL_SECONDS: "28800",
-  AI_CRM_PC_SESSION_ENCRYPTION_KEY_FILE: secretPaths.encryption,
-  AI_CRM_PC_SESSION_ENCRYPTION_KEY_ID: "current",
-  AI_CRM_PC_SESSION_IDLE_TTL_SECONDS: "1800",
-  AI_CRM_PC_SESSION_INDEX_KEY_FILE: secretPaths.index,
+  AI_CRM_SESSION_INDEX_KEY_FILE: secretPaths.index,
   AI_CRM_POSTGRES_URL_FILE: secretPaths.database,
   AI_CRM_REDIS_CONNECT_TIMEOUT_MS: "1000",
   AI_CRM_REDIS_PASSWORD_FILE: secretPaths.redis,
@@ -82,16 +56,17 @@ const env: NodeJS.ProcessEnv = {
 };
 
 describe("production API configuration", () => {
-  it("loads bounded database, IAM, Redis and migration settings from typed references", async () => {
+  it("loads bounded database, browser Session, Redis and migration settings from typed references", async () => {
     const result = await loadProductionApiConfiguration({ env, secretFilePolicy });
     expect(result.database).toMatchObject({ applicationName: "ai_crm_api", maxConnections: 10 });
     expect(result.databaseHealthProbe).toEqual({ intervalMs: 10_000, timeoutMs: 2_000 });
     expect(result.database.connectionString).toBe(secrets[secretPaths.database]);
     expect(result.fileCenter).toMatchObject({ maximumUploadBytes: 1_048_576, storage: { bucket: "synthetic-test-1250000000", kind: "cos", secretId: "synthetic-cos-id" } });
-    expect(result.migrations).toHaveLength(12);
-    expect(result.migrations.some((path) => path.endsWith(join("packages", "platform-modules", "authorization", "migrations"))))
+    expect(result.migrations).toHaveLength(11);
+    expect(result.migrations.some((path) => path.endsWith(join("packages", "crm-modules", "authorization", "migrations"))))
       .toBe(true);
-    expect(result.oidcVerifier.jwksTimeoutMs).toBe(5_000);
+    expect(result.sessions).toMatchObject({ internalH5AllowedOrigin: "http://127.0.0.1:10086", pcAllowedOrigin: "http://127.0.0.1:8088" });
+    expect(result.sessions.sessionIndexingKey).toHaveLength(32);
   });
 
   it("loads explicit local file storage without requiring COS credentials", async () => {
@@ -109,8 +84,6 @@ describe("production API configuration", () => {
         AI_CRM_FILE_STORAGE_PROVIDER: "local",
         AI_CRM_LOCAL_FILE_STORAGE_ROOT: root,
         AI_CRM_PC_ALLOWED_ORIGIN: "http://127.0.0.1:3000",
-        AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "http://127.0.0.1:3000/auth/pc/login",
-        AI_CRM_PC_OIDC_REDIRECT_URI: "http://127.0.0.1:3000/auth/pc/callback",
       },
       secretFilePolicy,
     });
@@ -133,8 +106,6 @@ describe("production API configuration", () => {
         AI_CRM_FILE_STORAGE_PROVIDER: "local",
         AI_CRM_LOCAL_FILE_STORAGE_ROOT: resolve(import.meta.dirname, "__local-file-storage__"),
         AI_CRM_PC_ALLOWED_ORIGIN: "https://workbench.example.test",
-        AI_CRM_PC_OIDC_POST_LOGOUT_REDIRECT_URI: "https://workbench.example.test/auth/pc/login",
-        AI_CRM_PC_OIDC_REDIRECT_URI: "https://workbench.example.test/auth/pc/callback",
       },
       secretFilePolicy,
     })).rejects.toThrow("api_local_file_storage_dev_only");

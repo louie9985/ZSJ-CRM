@@ -1,6 +1,6 @@
 packages:
   - apps/*
   - packages/*
-  - packages/platform-modules/*
+  - packages/crm-modules/*
   - packages/domain-modules/*
   - tests/e2e

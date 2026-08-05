@@ -19,3 +19,10 @@ test("detects credential literals in mapping and list environment forms", () => 
     environment: ["API_TOKEN_FILE=/run/secrets/api_token"],
   } } }, "fixture"), []);
 });
+
+test("does not exempt credential-looking return URI variables", () => {
+  const errors = validateEffectiveComposeSafety({ services: { api: { environment: {
+    API_TOKEN_RETURN_URI: "literal",
+  } } } }, "fixture");
+  assert.ok(errors.some((error) => error.includes("API_TOKEN_RETURN_URI")));
+});

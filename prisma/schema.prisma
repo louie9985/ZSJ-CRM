@@ -8,60 +8,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas = ["app_registry", "audit", "authorization_core", "business_configuration", "file_center", "form_schema", "organization", "platform_eventing", "platform_notifications", "platform_task_center", "public", "workforce_access"]
+  schemas = ["audit", "authorization_core", "business_configuration", "crm_eventing", "crm_notifications", "crm_task_center", "file_center", "form_schema", "organization", "part_time_access", "public", "workforce_access"]
 }
 
-// source: packages/platform-modules/app-registry/prisma/app-registry.prisma
-// Module-owned Prisma source fragment. Database CHECK constraints and the
-// composite self/route foreign keys remain governed by migration 0000000006.
-model AppRegistryApplication {
-  applicationId String  @id @map("application_id") @db.VarChar(128)
-  audience      String  @db.VarChar(16)
-  enabled       Boolean
-  permissionCode String @map("permission_code") @db.VarChar(129)
-
-  @@map("applications")
-  @@schema("app_registry")
-}
-
-model AppRegistryRoute {
-  routeId         String   @id @map("route_id") @db.VarChar(128)
-  applicationId   String   @map("application_id") @db.VarChar(128)
-  path            String   @db.VarChar(256)
-  enabled         Boolean
-  permissionCode  String   @map("permission_code") @db.VarChar(129)
-  deepLinkSources String[] @map("deep_link_sources")
-
-  @@unique([applicationId, routeId], map: "routes_application_route_unique")
-  @@index([applicationId], map: "routes_application_idx")
-  @@map("routes")
-  @@schema("app_registry")
-}
-
-model AppRegistryNavigation {
-  navigationId       String  @id @map("navigation_id") @db.VarChar(128)
-  applicationId      String  @map("application_id") @db.VarChar(128)
-  routeId            String  @map("route_id") @db.VarChar(128)
-  parentNavigationId String? @map("parent_navigation_id") @db.VarChar(128)
-  enabled            Boolean
-  displayOrder       Int     @map("display_order")
-
-  @@unique([applicationId, navigationId], map: "navigation_application_id_unique")
-  @@index([applicationId, displayOrder], map: "navigation_application_order_idx")
-  @@map("navigation")
-  @@schema("app_registry")
-}
-
-model AppRegistryOperationReceipt {
-  operationId String   @id @map("operation_id") @db.Uuid
-  fingerprint String   @db.VarChar(64)
-  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
-
-  @@map("operation_receipts")
-  @@schema("app_registry")
-}
-
-// source: packages/platform-modules/audit/prisma/audit.prisma
+// source: packages/crm-modules/audit/prisma/audit.prisma
 // Append-only triggers and CHECK constraints remain governed by migration
 // 0000000005 and are intentionally not approximated in Prisma Schema.
 model AuditRecordRow {
@@ -98,46 +48,7 @@ model AuditOperationReceipt {
   @@schema("audit")
 }
 
-// source: packages/platform-modules/authorization/prisma/authorization.prisma
-// CHECK/FK constraints and immutable-fact triggers remain governed by
-// migration 0000000012. Atomic publication stays in the repository.
-model AuthorizationPolicyVersion {
-  version         String   @id @db.VarChar(128)
-  contractVersion String   @db.VarChar(64) @map("contract_version")
-  contentDigest   String   @db.Char(64) @map("content_digest")
-  snapshot        Json
-  createdAt       DateTime @db.Timestamptz(6) @map("created_at")
-
-  @@unique([version, contentDigest])
-  @@map("policy_versions")
-  @@schema("authorization_core")
-}
-
-model AuthorizationPolicyPublication {
-  publicationId        String   @id @db.Uuid @map("publication_id")
-  fingerprint          String   @db.Char(64)
-  policyVersion        String   @db.VarChar(128) @map("policy_version")
-  contentDigest        String   @db.Char(64) @map("content_digest")
-  publishedAt          DateTime @db.Timestamptz(6) @map("published_at")
-  previousPolicyVersion String? @db.VarChar(128) @map("previous_policy_version")
-  result               Json
-
-  @@unique([publicationId, policyVersion, contentDigest])
-  @@map("policy_publications")
-  @@schema("authorization_core")
-}
-
-model AuthorizationCurrentPolicy {
-  singleton     Boolean  @id @default(true)
-  version       String   @db.VarChar(128)
-  contentDigest String   @db.Char(64) @map("content_digest")
-  publicationId String   @db.Uuid @map("publication_id")
-  updatedAt     DateTime @db.Timestamptz(6) @map("updated_at")
-
-  @@map("current_policy")
-  @@schema("authorization_core")
-}
-
+// source: packages/crm-modules/authorization/prisma/authorization.prisma
 model AuthorizationDecisionRecord {
   decisionId           String   @id @db.Uuid @map("decision_id")
   recordDigest         String   @db.Char(64) @map("record_digest")
@@ -157,7 +68,22 @@ model AuthorizationDecisionRecord {
   @@schema("authorization_core")
 }
 
-// source: packages/platform-modules/business-configuration/prisma/business-configuration.prisma
+model AuthorizationFixedRoleGrant {
+  grantId           String    @id @db.Uuid @map("grant_id")
+  workforcePersonId String    @db.Uuid @map("workforce_person_id")
+  assignmentId      String?   @db.Uuid @map("assignment_id")
+  roleKey           String    @db.VarChar(64) @map("role_key")
+  grantedAt         DateTime  @db.Timestamptz(6) @map("granted_at")
+  revokedAt         DateTime? @db.Timestamptz(6) @map("revoked_at")
+  operationId       String    @unique @db.Uuid @map("operation_id")
+
+  @@index([workforcePersonId, assignmentId, revokedAt], map: "fixed_role_grants_subject_idx")
+  @@index([workforcePersonId, revokedAt], map: "fixed_role_grants_person_revocation_idx")
+  @@map("fixed_role_grants")
+  @@schema("authorization_core")
+}
+
+// source: packages/crm-modules/business-configuration/prisma/business-configuration.prisma
 // Immutability triggers, CHECK constraints and database foreign keys remain
 // governed by migration 0000000008.
 model BusinessConfigurationDictionaryDraft {
@@ -244,7 +170,7 @@ model BusinessConfigurationOutboxEvent {
   @@schema("business_configuration")
 }
 
-// source: packages/platform-modules/eventing-outbox/prisma/eventing-outbox.prisma
+// source: packages/crm-modules/eventing-outbox/prisma/eventing-outbox.prisma
 // CHECK constraints and the partial isolations index remain governed by
 // migration 0000000003. SKIP LOCKED claims stay in the repository raw query.
 model EventingOutboxMessage {
@@ -272,7 +198,7 @@ model EventingOutboxMessage {
 
   @@index([status, availableAt, createdAt], map: "outbox_dispatch_idx")
   @@map("outbox_messages")
-  @@schema("platform_eventing")
+  @@schema("crm_eventing")
 }
 
 model EventingInboxReceipt {
@@ -283,7 +209,7 @@ model EventingInboxReceipt {
 
   @@id([messageId, consumer])
   @@map("inbox_receipts")
-  @@schema("platform_eventing")
+  @@schema("crm_eventing")
 }
 
 model EventingJobRequest {
@@ -297,7 +223,7 @@ model EventingJobRequest {
   updatedAt      DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
 
   @@map("job_requests")
-  @@schema("platform_eventing")
+  @@schema("crm_eventing")
 }
 
 model EventingIsolation {
@@ -313,10 +239,10 @@ model EventingIsolation {
 
   @@unique([messageId, consumer, payloadSha256, reasonCode])
   @@map("isolations")
-  @@schema("platform_eventing")
+  @@schema("crm_eventing")
 }
 
-// source: packages/platform-modules/file-center/prisma/file-center.prisma
+// source: packages/crm-modules/file-center/prisma/file-center.prisma
 // CHECK constraints, composite foreign keys and immutability triggers remain
 // governed by migration 0000000010.
 model FileCenterFile {
@@ -399,7 +325,7 @@ model FileCenterOutboxEvent {
   @@schema("file_center")
 }
 
-// source: packages/platform-modules/form-schema/prisma/form-schema.prisma
+// source: packages/crm-modules/form-schema/prisma/form-schema.prisma
 // CHECK/FK constraints and immutable-release trigger remain governed by
 // migration 0000000007. Publication serialization stays in the repository.
 model FormSchemaDraft {
@@ -459,7 +385,7 @@ model FormSchemaOutboxEvent {
   @@schema("form_schema")
 }
 
-// source: packages/platform-modules/notifications/prisma/notifications.prisma
+// source: packages/crm-modules/notifications/prisma/notifications.prisma
 // CHECK constraints and the two partial feed indexes remain governed by
 // migration 0000000009; Prisma must not recreate or drop them.
 model NotificationTemplateRelease {
@@ -477,7 +403,7 @@ model NotificationTemplateRelease {
   publishedAt      DateTime @map("published_at") @db.Timestamptz(6)
   @@id([templateKey, version])
   @@map("template_releases")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model NotificationTemplateDefinitionRow {
@@ -490,7 +416,7 @@ model NotificationTemplateDefinitionRow {
   systemSenderName       String  @map("system_sender_name") @db.VarChar(100)
   enabled                Boolean
   @@map("template_definitions")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model NotificationTemplateDraftRow {
@@ -501,7 +427,7 @@ model NotificationTemplateDraftRow {
   bodyTemplate    String   @map("body_template") @db.VarChar(8000)
   updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
   @@map("template_drafts")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model NotificationTemplateDraftOperationRow {
@@ -514,7 +440,7 @@ model NotificationTemplateDraftOperationRow {
   bodyTemplate     String   @map("body_template") @db.VarChar(8000)
   updatedAt        DateTime @map("updated_at") @db.Timestamptz(6)
   @@map("template_draft_operations")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model NotificationTemplateActivationRow {
@@ -523,7 +449,7 @@ model NotificationTemplateActivationRow {
   version      Int
   activatedAt  DateTime @map("activated_at") @db.Timestamptz(6)
   @@map("template_activation_history")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model CurrentNotificationTemplateReleaseRow {
@@ -532,7 +458,7 @@ model CurrentNotificationTemplateReleaseRow {
   activationId String   @unique @map("activation_id") @db.Uuid
   activatedAt  DateTime @map("activated_at") @db.Timestamptz(6)
   @@map("current_template_release")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model NotificationIntentRow {
@@ -544,7 +470,7 @@ model NotificationIntentRow {
   createdAt      DateTime @map("created_at") @db.Timestamptz(6)
   @@unique([producer, idempotencyKey], map: "notification_intents_producer_idempotency_key_key")
   @@map("notification_intents")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
 model InAppNotificationRow {
@@ -575,10 +501,10 @@ model InAppNotificationRow {
   // PostgreSQL truncates the migration's generated constraint identifier to 63 bytes.
   @@unique([intentId, principalId, recipientReference], map: "in_app_notifications_intent_id_principal_id_recipient_reference")
   @@map("in_app_notifications")
-  @@schema("platform_notifications")
+  @@schema("crm_notifications")
 }
 
-// source: packages/platform-modules/organization/prisma/organization.prisma
+// source: packages/crm-modules/organization/prisma/organization.prisma
 // CHECK constraints, composite foreign keys, overlap/cycle triggers and their
 // advisory-lock behavior remain governed by migrations 0000000002/0000000015.
 model OrganizationWorkforcePerson {
@@ -643,21 +569,8 @@ model OrganizationAssignment {
   effectiveTo        DateTime? @db.Timestamptz(6) @map("effective_to")
 
   @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "assignments_person_time_idx")
+  @@unique([assignmentId, workforcePersonId], map: "assignments_id_person_unique")
   @@map("assignments")
-  @@schema("organization")
-}
-
-model OrganizationSubjectAssociation {
-  associationId     String    @id @db.Uuid @map("association_id")
-  issuer            String    @db.Text
-  subject           String    @db.Text
-  workforcePersonId String    @db.Uuid @map("workforce_person_id")
-  effectiveFrom     DateTime  @db.Timestamptz(6) @map("effective_from")
-  effectiveTo       DateTime? @db.Timestamptz(6) @map("effective_to")
-
-  @@index([issuer, subject, effectiveFrom, effectiveTo], map: "subject_associations_subject_time_idx")
-  @@index([workforcePersonId, effectiveFrom, effectiveTo], map: "subject_associations_person_time_idx")
-  @@map("subject_associations")
   @@schema("organization")
 }
 
@@ -746,7 +659,7 @@ model OrganizationDirectoryOperationReceipt {
   @@schema("organization")
 }
 
-// source: packages/platform-modules/task-center/prisma/task-center.prisma
+// source: packages/crm-modules/task-center/prisma/task-center.prisma
 // CHECK constraints and monotonic projection semantics remain governed by
 // migration 0000000004 and the parameterized repository transaction.
 model TaskCenterProjection {
@@ -768,7 +681,7 @@ model TaskCenterProjection {
   @@unique([sourceType, sourceTaskId])
   @@index([status, sourceType, sourceTaskId], map: "task_projections_status_source_idx")
   @@map("task_projections")
-  @@schema("platform_task_center")
+  @@schema("crm_task_center")
 }
 
 model TaskCenterProjectionEvent {
@@ -781,7 +694,7 @@ model TaskCenterProjectionEvent {
 
   @@index([sourceType, sourceTaskId, sourceVersion], map: "projection_events_source_idx")
   @@map("projection_events")
-  @@schema("platform_task_center")
+  @@schema("crm_task_center")
 }
 
 model TaskCenterCommand {
@@ -795,23 +708,33 @@ model TaskCenterCommand {
   updatedAt             DateTime  @default(now()) @db.Timestamptz(6) @map("updated_at")
 
   @@map("task_commands")
-  @@schema("platform_task_center")
+  @@schema("crm_task_center")
 }
 
-// source: packages/platform-modules/workforce-access/prisma/workforce-access.prisma
+// source: packages/crm-modules/workforce-access/prisma/workforce-access.prisma
 model WorkforceAccessAccount {
   accountId          String   @id @db.Uuid @map("account_id")
-  workforcePersonId  String?  @db.Uuid @map("workforce_person_id")
-  keycloakUserId     String?  @unique @db.Uuid @map("keycloak_user_id")
+  workforcePersonId  String   @unique @db.Uuid @map("workforce_person_id")
   username           String   @db.VarChar(32)
   usernameNormalized String   @db.VarChar(32) @map("username_normalized")
   phone              String?  @db.VarChar(21)
   status             String   @db.VarChar(24)
   revision           Int
+  securityRevision   Int      @default(0) @map("security_revision")
   createdAt          DateTime @db.Timestamptz(6) @map("created_at")
   updatedAt          DateTime @db.Timestamptz(6) @map("updated_at")
 
   @@map("accounts")
+  @@schema("workforce_access")
+}
+
+model WorkforceAccessPasswordCredential {
+  accountId    String   @id @db.Uuid @map("account_id")
+  passwordHash String   @db.Text @map("password_hash")
+  revision     Int
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("password_credentials")
   @@schema("workforce_access")
 }
 
@@ -844,19 +767,42 @@ model WorkforceAccessOperation {
   @@schema("workforce_access")
 }
 
-model WorkforceAccessIdentitySyncOperation {
-  operationId       String    @id @db.Uuid @map("operation_id")
-  accountId         String    @db.Uuid @map("account_id")
-  action            String    @db.VarChar(40)
-  status            String    @db.VarChar(16)
-  retryOfOperationId String?  @unique @db.Uuid @map("retry_of_operation_id")
-  errorCode         String?   @db.VarChar(64) @map("error_code")
-  traceId           String    @db.VarChar(128) @map("trace_id")
-  requestedAt       DateTime  @db.Timestamptz(6) @map("requested_at")
-  completedAt       DateTime? @db.Timestamptz(6) @map("completed_at")
+model PartTimeAccessAccount {
+  accountId       String   @id @db.Uuid @map("account_id")
+  partTimePersonId String  @unique @db.Uuid @map("part_time_person_id")
+  username        String   @db.VarChar(32)
+  usernameNormalized String @unique @db.VarChar(32) @map("username_normalized")
+  phone           String?  @db.VarChar(21)
+  status          String   @db.VarChar(24)
+  revision        Int
+  securityRevision Int     @default(0) @map("security_revision")
+  createdAt       DateTime @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime @db.Timestamptz(6) @map("updated_at")
 
-  @@index([accountId, requestedAt], map: "identity_sync_operations_account_time_idx")
-  @@map("identity_sync_operations")
-  @@schema("workforce_access")
+  @@map("accounts")
+  @@schema("part_time_access")
+}
+
+model PartTimeAccessPasswordCredential {
+  accountId    String   @id @db.Uuid @map("account_id")
+  passwordHash String   @db.Text @map("password_hash")
+  revision     Int
+  updatedAt    DateTime @db.Timestamptz(6) @map("updated_at")
+
+  @@map("password_credentials")
+  @@schema("part_time_access")
+}
+
+model PartTimeAccessLoginIdentifierHistory {
+  identifierId   String    @id @db.Uuid @map("identifier_id")
+  accountId      String    @db.Uuid @map("account_id")
+  kind           String    @db.VarChar(16)
+  value          String    @db.VarChar(64)
+  normalizedValue String   @db.VarChar(64) @map("normalized_value")
+  releasedAt     DateTime? @db.Timestamptz(6) @map("released_at")
+
+  @@index([accountId], map: "part_time_login_identifier_account_idx")
+  @@map("login_identifier_history")
+  @@schema("part_time_access")
 }
 

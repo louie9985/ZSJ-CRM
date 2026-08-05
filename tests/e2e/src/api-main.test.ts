@@ -69,7 +69,7 @@ describe("E2E API Task composition", () => {
 
       const missingSession = await fetch(url, { headers: { "Idempotency-Key": "task-complete.e2e-api-0002" }, method: "POST" });
       expect(missingSession.status).toBe(401);
-      expect(await missingSession.json()).toEqual({ code: "authentication_session_invalid" });
+      expect(await missingSession.json()).toEqual({ code: "authentication_required" });
 
       const wrongCsrf = await fetch(url, { headers: {
         Cookie: `__Host-ai_crm_pc_session=${e2eTaskFixture.credential}`,

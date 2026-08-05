@@ -30,7 +30,6 @@ export interface NavigationItem {
 
 export const workforceAdministrationNavigation: NavigationItem = { icon: <TeamOutlined />, key: "/crm/workforce-administration", label: "员工账号管理", navigationId: "crm.workforce-administration" };
 export const notificationTemplateNavigation: NavigationItem = { icon: <FormOutlined />, key: "/crm/notifications/templates", label: "通知模板", navigationId: "crm.notification-templates" };
-export const sessionPolicyNavigation: NavigationItem = { icon: <SettingOutlined />, key: "/crm/settings/session-policy", label: "登录安全策略", navigationId: "crm.session-policy" };
 
 const workspaceItems: readonly NavigationItem[] = [
   { key: "/crm/workspace", label: "工作概览", icon: <HomeOutlined />, navigationId: "crm.workspace.unconfigured" },
@@ -73,7 +72,6 @@ const publicNavigation: readonly NavigationItem[] = [
     key: "/crm/settings", label: "设置", icon: <SettingOutlined />, children: [
       { key: "/crm/settings/system", label: "系统设置", icon: <SettingOutlined />, navigationId: "crm.settings.system" },
       { key: "/crm/settings/profile", label: "个人信息", icon: <UserOutlined />, navigationId: "crm.settings.profile" },
-      sessionPolicyNavigation,
     ],
   },
 ];

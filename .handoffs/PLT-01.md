@@ -4,7 +4,7 @@
 - Branch: `task/PLT-01-audit-app-registry`
 - Owner: Agent B
 - Independent Reviewer: Agent D
-- Allowed paths: `packages/platform-modules/audit`, `packages/platform-modules/app-registry`, corresponding source contracts and module migrations, this handoff
+- Allowed paths: `packages/crm-modules/audit`, `packages/crm-modules/app-registry`, corresponding source contracts and module migrations, this handoff
 
 ## Known Facts
 

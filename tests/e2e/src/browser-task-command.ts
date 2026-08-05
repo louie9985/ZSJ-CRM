@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
-import type { CompleteTaskCommand, TaskCommandResult } from "@ai-crm/platform-task-center";
+import type { CompleteTaskCommand, TaskCommandResult } from "@ai-crm/crm-task-center";
 
 export const browserTaskIdempotencyKey = "task-complete.browser-causal-0001";
 export const browserTaskSourceTaskId = "source-task.main-chain-synthetic";

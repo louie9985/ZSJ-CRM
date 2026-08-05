@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createWorkbenchBootstrapFacade, type WorkbenchFacadeDependencies } from "./facade.js";
-import type { WorkforceContext } from "@ai-crm/platform-organization";
+import type { WorkforcePersonContext } from "@ai-crm/crm-organization";
 
 const personId = "11111111-1111-4111-8111-111111111111";
 const assignmentId = "22222222-2222-4222-8222-222222222222";
 
 function dependencies(
   superAdministrator: boolean,
-  assignments: WorkforceContext["assignments"] = [],
+  assignments: WorkforcePersonContext["assignments"] = [],
   loadRegistry = vi.fn<WorkbenchFacadeDependencies["registry"]["loadRegistry"]>().mockResolvedValue({
     applications: [{ applicationId: "crm", audience: "internal", enabled: true, permissionCode: "crm.application:access" }],
     navigation: [{ applicationId: "crm", enabled: true, navigationId: "crm.workforce-administration", order: 10, routeId: "crm.workforce-administration" }],
@@ -16,11 +16,11 @@ function dependencies(
   }),
 ): WorkbenchFacadeDependencies {
   return {
-    accountKinds: { isSuperAdministrator: vi.fn().mockResolvedValue(superAdministrator) },
+    accountKinds: { isSystemAdministrator: vi.fn().mockResolvedValue(superAdministrator) },
     directory: { getPersonProfile: vi.fn().mockResolvedValue({ realName: superAdministrator ? "ZSJ系统管理员" : "普通员工" }) },
     principals: { resolve: vi.fn().mockResolvedValue({
       actorId: "subject:opaque",
-      workforce: { assignments, employmentIds: ["33333333-3333-4333-8333-333333333333"], resolvedAt: "2026-08-02T00:00:00.000Z", subject: { issuer: "https://issuer", subject: "subject" }, workforcePersonId: personId },
+      workforce: { assignments, employmentIds: ["33333333-3333-4333-8333-333333333333"], resolvedAt: "2026-08-02T00:00:00.000Z", workforcePersonId: personId },
     }) },
     registry: { loadRegistry, resolveDeepLink: vi.fn() },
   };
@@ -32,12 +32,20 @@ describe("workbench bootstrap facade", () => {
     const result = await facade.load({ credential: "a".repeat(43), traceId: "1".repeat(32) });
     expect(result).toMatchObject({
       accountKind: "system_administrator",
-      applicationIds: ["crm"],
       displayName: "ZSJ系统管理员",
       navigationIds: ["crm.workforce-administration"],
       workspaceProfileId: "crm.workspace.unconfigured",
     });
     expect(result.sessionScope).toMatch(/^session:[0-9a-f]{32}$/u);
+  });
+
+  it("keeps a system administrator Assignment out of the global account response", async () => {
+    const loadRegistry = vi.fn<WorkbenchFacadeDependencies["registry"]["loadRegistry"]>().mockResolvedValue({ applications: [], navigation: [], routes: [], version: 1 });
+    const configured = dependencies(true, [{ assignmentId, employmentId: "33333333-3333-4333-8333-333333333333", organizationUnitId: "44444444-4444-4444-8444-444444444444", positionId: "55555555-5555-4555-8555-555555555555" }], loadRegistry);
+    const result = await createWorkbenchBootstrapFacade(configured).load({ credential: "d".repeat(43), traceId: "4".repeat(32) });
+    expect(result).toMatchObject({ accountKind: "system_administrator" });
+    expect(result).not.toHaveProperty("assignmentReference");
+    expect(loadRegistry.mock.calls[0]?.[0].context.subject).toMatchObject({ activeAssignmentIds: [assignmentId], selectedAssignmentId: assignmentId });
   });
 
   it("fails closed instead of selecting the first concurrent Assignment", async () => {

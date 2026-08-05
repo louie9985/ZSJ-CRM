@@ -4,7 +4,7 @@
 
 - Branch: `task/PRC-03-notifications`
 - Worktree: `D:\AI-CRM-worktrees\PRC-03`
-- Allowed paths: `packages/platform-modules/notifications/**`, `contracts/notifications/**`, `contracts/http/modules/notifications.openapi.yaml`, `.handoffs/PRC-03.md`
+- Allowed paths: `packages/crm-modules/notifications/**`, `contracts/notifications/**`, `contracts/http/modules/notifications.openapi.yaml`, `.handoffs/PRC-03.md`
 - Migration lease: `0000000009`
 - Dependencies: PRC-01, PRC-02, ASY-01 and the accepted notification ADR/baseline documents
 - Current status: `G2_ACCEPTED`
@@ -46,7 +46,7 @@
 - Added `contracts/notifications/notification-intent.v1.schema.json` and `template-release.v1.schema.json`.
 - Added internal-only `contracts/http/modules/notifications.openapi.yaml` for list/detail/unread/read/archive.
 - The source contracts are additive and business neutral. Generated files are intentionally deferred to the Integration Owner's single contract window.
-- Public TypeScript imports are available only through `@ai-crm/platform-notifications`.
+- Public TypeScript imports are available only through `@ai-crm/crm-notifications`.
 
 ## Authorization and audit
 
@@ -65,7 +65,7 @@
 
 ## Migration
 
-- `0000000009_notifications.sql` creates module-owned schema `platform_notifications`, immutable templates, intents, and in-app facts/indexes.
+- `0000000009_notifications.sql` creates module-owned schema `crm_notifications`, immutable templates, intents, and in-app facts/indexes.
 - It is additive and has no backfill or existing-table lock impact.
 - Before first use, backup and empty-database migration evidence are required. After facts exist, rollback by dropping the schema is not permitted as an online downgrade; preserve history and forward-fix with a new global migration.
 

@@ -62,7 +62,7 @@
 
 - P1：Rabbit adapter acquisition 现接收 composition-owned `AbortSignal`。timeout/abort 会进入 connector、model、Channel acquisition 内部；若 model 已取得但 `createChannel`/`createConfirmChannel` 永不完成，会立即发起 Channel/model 强制关闭并让 acquisition 返回稳定取消。connector 自身 late completion 也会关闭 late model。新增 pending normal/confirm Channel 回归测试。
 - P2：生产资源 `close()` 现使用共享 close operation；并发调用和 timeout 后重入等待同一底层关闭，不重复发起。若 close 已明确拒绝，只保留失败 target 供下一次 `close()` 重试，已成功 target 不重复关闭。bootstrap 不再静默吞 cleanup failure，会记录无敏感数据的 `worker_production_cleanup_failed` 并保持非零。
-- P2：approved migration roots 增加 repo 双向 gate。配置加载时扫描 database migration root 和所有 `platform-modules/*/migrations`，与单一 Worker manifest 精确比较；新增或删除 root 都以 `worker_migration_root_manifest_mismatch` fail closed。当前真实仓库和增删 synthetic root 均有测试。
+- P2：approved migration roots 增加 repo 双向 gate。配置加载时扫描 database migration root 和所有 `crm-modules/*/migrations`，与单一 Worker manifest 精确比较；新增或删除 root 都以 `worker_migration_root_manifest_mismatch` fail closed。当前真实仓库和增删 synthetic root 均有测试。
 
 ## Turbo 并发稳定性回归
 

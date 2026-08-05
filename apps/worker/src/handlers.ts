@@ -6,14 +6,14 @@ import {
   type OutboxPublisher,
   type RabbitConsumedNotice,
   type RabbitDelivery,
-} from "@ai-crm/platform-eventing-outbox";
+} from "@ai-crm/crm-eventing-outbox";
 import type {
   FileCenterService,
   FileCommandMetadata,
   ScanContentCommand,
-} from "@ai-crm/platform-file-center";
-import type { NotificationActor, NotificationCenter, NotificationIntent } from "@ai-crm/platform-notifications";
-import type { TaskActor, TaskCenter, TaskProjectionKey } from "@ai-crm/platform-task-center";
+} from "@ai-crm/crm-file-center";
+import type { NotificationActor, NotificationCenter, NotificationIntent } from "@ai-crm/crm-notifications";
+import type { TaskActor, TaskCenter, TaskProjectionKey } from "@ai-crm/crm-task-center";
 import type { WorkerHandler } from "./index.js";
 
 const STABLE_ID = /^[a-z][a-z0-9._-]{0,127}$/u;

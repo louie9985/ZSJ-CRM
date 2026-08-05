@@ -5,16 +5,15 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
 const runners = [
-  "packages/platform-modules/authorization/scripts/run-postgres-integration.mjs",
-  "packages/platform-modules/app-registry/scripts/run-integration.mjs",
-  "packages/platform-modules/audit/scripts/run-integration.mjs",
-  "packages/platform-modules/business-configuration/scripts/run-integration.mjs",
-  "packages/platform-modules/eventing-outbox/scripts/run-integration.mjs",
-  "packages/platform-modules/file-center/scripts/run-integration.mjs",
-  "packages/platform-modules/form-schema/scripts/run-integration.mjs",
-  "packages/platform-modules/notifications/scripts/run-integration.mjs",
-  "packages/platform-modules/organization/scripts/run-integration.mjs",
-  "packages/platform-modules/task-center/scripts/run-integration.mjs",
+  "packages/crm-modules/authorization/scripts/run-postgres-integration.mjs",
+  "packages/crm-modules/audit/scripts/run-integration.mjs",
+  "packages/crm-modules/business-configuration/scripts/run-integration.mjs",
+  "packages/crm-modules/eventing-outbox/scripts/run-integration.mjs",
+  "packages/crm-modules/file-center/scripts/run-integration.mjs",
+  "packages/crm-modules/form-schema/scripts/run-integration.mjs",
+  "packages/crm-modules/notifications/scripts/run-integration.mjs",
+  "packages/crm-modules/organization/scripts/run-integration.mjs",
+  "packages/crm-modules/task-center/scripts/run-integration.mjs",
 ];
 
 test("PostgreSQL integration runners use bounded stable TCP readiness", async () => {
@@ -50,8 +49,8 @@ test("Direct Docker PostgreSQL integration runners remove anonymous volumes", as
 
 test("Compose-backed PostgreSQL integration runners surface cleanup failures and retain Secret evidence", async () => {
   for (const path of [
-    "packages/platform-modules/eventing-outbox/scripts/run-integration.mjs",
-    "packages/platform-modules/task-center/scripts/run-integration.mjs",
+    "packages/crm-modules/eventing-outbox/scripts/run-integration.mjs",
+    "packages/crm-modules/task-center/scripts/run-integration.mjs",
   ]) {
     const source = await readFile(resolve(root, path), "utf8");
     const compact = source.replaceAll(/\s/gu, "");

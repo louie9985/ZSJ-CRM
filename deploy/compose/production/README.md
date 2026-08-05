@@ -1,69 +1,16 @@
-# Production Two-host Compose Baseline
+# Production Two-Host Compose Baseline
 
-This directory defines two independent projects. `compose.host-a.yml` is always deployed as `ai-crm-prod-a`; `compose.host-b.yml` is always deployed as `ai-crm-prod-b`. They do not share a Docker network and must never be combined into a cross-host Compose command.
+This directory describes two independent Docker Compose projects. It does not provide cross-host scheduling or automatic failover.
 
-## Placement And Accepted Limitation
-
-| Host | Long-running services | Failure meaning |
+| Host | Services | Boundary |
 |---|---|---|
-| Host A | Edge, API A, PostgreSQL, Redis, RabbitMQ, Keycloak, Flowable, ClamAV | State services and the primary entry remain single points of failure; recovery or an approved manual entry switch is required. |
-| Host B | Edge, API B, Worker | Preserves a second API/edge artifact and isolates background execution, but does not make Host A state services highly available. |
+| A | Edge, API A, PostgreSQL, Redis, RabbitMQ, Flowable, ClamAV | State services and the public entry remain single points of failure. |
+| B | API B, Worker | Reaches Host A state services only over reviewed private routing. |
 
-Both edges use the same versioned Nginx template and can reach API A/API B through reviewed private addresses. Only edge ports 80/443 are public. Published API and state ports bind a specific private address and require least-privilege security-group rules; management UIs are not published.
+The edge exposes the PC application, internal H5 application, reviewed API routes, and `/auth/pc/*` plus `/auth/internal-h5/*`. State services and operator endpoints stay private.
 
-The placement is a first-stage baseline, not a capacity claim. CPU, memory, disk, connection, queue and timeout values remain mandatory deployment inputs and must be approved from measured staging evidence.
+Production secrets are root-owned restricted files mounted per service. Authentication requires `session_index_key`; API database, Redis, COS, realtime RabbitMQ and TLS secrets remain purpose-specific. No password, session credential or secret value belongs in Compose YAML, environment values, command arguments or logs.
 
-## Configuration Boundary
+The API URL authenticates as `ai_crm_runtime`; Worker uses `ai_crm_worker_runtime`. Both fail readiness if the fixed database identity probe observes a different role. PostgreSQL and Redis remain authoritative dependencies for local Account/Access; a dependency outage fails authentication closed.
 
-- A reviewed release manifest supplies the release ID and immutable image references.
-- A root-owned, non-secret host variables file supplies reviewed domain, private addresses, resource limits and bounded runtime values. `host-configuration.example.vars` is intentionally non-runnable until every `replace-after-*` value is resolved.
-- A root-owned restricted directory supplies individual Secret files. Do not put Secret values in either variables file, the shell command line, Compose YAML, images or release records.
-- CMP-01 has bound API runtime parameters, the per-service `api_postgres_url`, API-specific COS credential references and the independent Worker database/Rabbit credential references. OPS-G3 defines migration-artifact integrity and rendered Worker drain/stop-grace gates; the image build/release pipeline must retain their evidence. Production remains blocked until the real non-empty authorization policy, COS conformance, immutable image digests and Worker Rabbit activation evidence are accepted.
-
-## Required Secret Files
-
-Host A receives only the files declared by its Compose services: PostgreSQL role files, Redis credentials, RabbitMQ server CA/certificate/key plus separate Publisher/Consumer usernames and passwords, the Keycloak database credential, the Flowable bootstrap credential, the API-only PostgreSQL URL, API-specific COS ID/key, API BFF session files and edge TLS certificate/key files. Host B receives the API-only and Worker-only PostgreSQL URL files, API-specific COS ID/key, shared API BFF session files, edge TLS certificate/key files, and only the RabbitMQ CA and separate Publisher/Consumer credentials required by Worker. The API URL must authenticate as `ai_crm_runtime`; the Worker URL must authenticate as `ai_crm_worker_runtime`, and both applications fail readiness when their fixed identity probe observes another role. Each file is environment/service/purpose specific. Because standalone Compose file-backed Secrets preserve host file permissions while the consumers are non-root, every mounted production Secret is root-owned, assigned to a dedicated numeric Secret-reader group and `0440`. The Secret directory remains root-owned and non-traversable by ordinary host users; no human deployment account is a standing member of the reader group.
-
-The RabbitMQ Consumer permission pattern covers only the sealed platform exchanges and Task Projection main/retry/dead queues. Configure, write, and read all include those declared queues because RabbitMQ checks queue permissions while the Worker asserts and binds its reviewed topology; this grants no access to unrelated queues or VHosts.
-
-The base Host A and Host B files do not declare, reference or mount a previous BFF session encryption key. During an approved one-key rotation window only, add the matching `compose.host-a.bff-previous-key.yml` or `compose.host-b.bff-previous-key.yml` overlay. Enabling the overlay requires the non-secret previous key ID and the single host file `pc_session_previous_encryption_key`; it exposes only the paired `AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_ID` and typed `AI_CRM_PC_SESSION_PREVIOUS_ENCRYPTION_KEY_FILE` inputs to that host's API. A missing ID, Secret root or named file fails closed. Remove both overlays after the approved session compatibility window; never retain more than one previous key or reuse current/index key files.
-
-When realtime is explicitly enabled after G5 evidence, each API mounts only `realtime_rabbit_url`. It is a dedicated `amqps:` consumer credential for server-named exclusive queues and must not reuse the Worker publisher credential. Its Owner, rotation/revocation procedure and incident action belong in the environment Secret inventory; never record its value in Compose, logs, tickets or health output.
-
-The long-running Keycloak service deliberately does not receive a bootstrap administrator credential. Initial administrator establishment or recovery is a separately approved, audited one-time operation; its temporary credential is revoked after use and is never retained in the normal Compose project.
-
-Do not mount the Secret root. Compose resolves each declared file and mounts only the named Secret into the consuming container. A service receives the approved supplementary reader GID only when it declares Secret mounts, so group membership does not reveal unmounted files. Missing files, wrong ownership/mode or GID mismatch fail before deployment.
-
-## Static Verification
-
-```text
-node scripts/deploy/verify-release.mjs <approved-release.json>
-node scripts/deploy/render-release-variables.mjs <approved-release.json> production > <root-owned-release-dir>/images.vars.tmp
-pnpm compose:check
-node scripts/check/run-production-edge-integration.mjs
-```
-
-Restrict and atomically rename `images.vars.tmp` after validation. It contains no Secret, but it is still controlled release metadata. Validate each project with its own two non-secret variable files before pulling or changing containers:
-
-```text
-docker compose --env-file <images.vars> --env-file <host-a.vars> -p ai-crm-prod-a -f deploy/compose/production/compose.host-a.yml config --quiet
-docker compose --env-file <images.vars> --env-file <host-b.vars> -p ai-crm-prod-b -f deploy/compose/production/compose.host-b.yml config --quiet
-```
-
-If the previous-key rotation overlay is approved, append only the matching host overlay to that host command. Do not add the previous-key variable or file for the ordinary base deployment:
-
-```text
-docker compose --env-file <images.vars> --env-file <host-a.vars> -p ai-crm-prod-a -f deploy/compose/production/compose.host-a.yml -f deploy/compose/production/compose.host-a.bff-previous-key.yml config --quiet
-docker compose --env-file <images.vars> --env-file <host-b.vars> -p ai-crm-prod-b -f deploy/compose/production/compose.host-b.yml -f deploy/compose/production/compose.host-b.bff-previous-key.yml config --quiet
-```
-
-For every Host B release, render the concrete Compose configuration into a restricted temporary evidence file and run the numeric relationship gate before pull/up. The values remain reviewed deployment inputs; the repository does not guess them.
-
-```text
-docker compose --env-file <images.vars> --env-file <host-b.vars> -p ai-crm-prod-b -f deploy/compose/production/compose.host-b.yml config > <restricted-temporary-rendered-host-b.yml>
-node scripts/check/verify-worker-drain.mjs <restricted-temporary-rendered-host-b.yml>
-```
-
-Alternatively pipe `docker compose ... config` directly to `node scripts/check/verify-worker-drain.mjs -` when a rendered evidence file is not required. Delete any temporary rendered file after its safe digest/result is retained. The gate parses compound `us`, `ms`, `s`, `m` and `h` durations and requires positive integer drain seconds to be strictly less than stop grace; unresolved placeholders, unitless durations and equality fail closed.
-
-These static checks do not prove backup recovery, host hardening, alert delivery, data residency, performance or application correctness.
+All images must be immutable versions or digests. Release activation still requires the reviewed release manifest, migration compatibility, backup/restore evidence, TLS/private-routing evidence and the repository production gates. This topology does not claim HA, SLA, RPO or RTO.

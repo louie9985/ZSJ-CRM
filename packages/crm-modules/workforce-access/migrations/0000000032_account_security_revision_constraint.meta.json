@@ -1,0 +1,11 @@
+{
+  "moduleOwner": "workforce-access",
+  "purpose": "Enforce the monotonic local-account security revision invariant in PostgreSQL.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Takes a bounded lock while PostgreSQL validates the nonnegative security_revision constraint.",
+  "dataImpact": "No valid account row changes; the migration fails closed if an invalid negative revision exists.",
+  "backfill": "Not required after the approved empty local-development reset.",
+  "destructive": false,
+  "recovery": "Retain the constraint during application rollback because all prior valid revisions satisfy it.",
+  "forwardFix": "Append a reviewed workforce-access-owned migration. Do not rewrite this migration after application."
+}

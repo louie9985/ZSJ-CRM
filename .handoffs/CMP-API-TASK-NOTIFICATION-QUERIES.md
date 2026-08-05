@@ -28,8 +28,8 @@
 ## Implemented
 
 - Production composition creates PostgreSQL Task and Notification stores and their public facades.
-- Notification list/detail/unread authorization maps to the reviewed `platform.notifications.in-app-notification:list|read` permissions. PostgreSQL still enforces current-principal ownership.
-- Task list maps to `platform.task-center.task-projection:list`. Task detail/object authorization deliberately remains unavailable because no reviewed principal/Assignment/candidate rule exists; non-empty Task lists therefore fail closed during per-item authorization instead of leaking projections.
+- Notification list/detail/unread authorization maps to the reviewed `crm.notifications.in-app-notification:list|read` permissions. PostgreSQL still enforces current-principal ownership.
+- Task list maps to `crm.task-center.task-projection:list`. Task detail/object authorization deliberately remains unavailable because no reviewed principal/Assignment/candidate rule exists; non-empty Task lists therefore fail closed during per-item authorization instead of leaking projections.
 - Task router/source reader and Notification resolver/preference ports reject every call. Mutation methods are not exported by `ApiQueryBindings`.
 - Attempted, succeeded and failed query facts append through the PostgreSQL Audit service. A missing Trace/decision association, invalid actor or Audit failure fails the module call.
 - Required `task-query` and `notification-query` readiness dependencies run bounded, read-only module-store probes after database health. Probe failure or database loss clears readiness; recovery rechecks the real stores.

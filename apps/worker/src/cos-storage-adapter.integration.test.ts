@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import COS from "cos-nodejs-sdk-v5";
-import { describeStorageAdapterConformance } from "@ai-crm/platform-file-center/testing/storage-adapter-conformance";
+import { describeStorageAdapterConformance } from "@ai-crm/crm-file-center/testing/storage-adapter-conformance";
 import { loadFileProviderConfiguration } from "./file-provider-config.js";
 import { createTencentCosStorageAdapter } from "./cos-storage-adapter.js";
 

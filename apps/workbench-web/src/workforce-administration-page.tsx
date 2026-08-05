@@ -2,7 +2,7 @@ import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { PageContainer } from "@ant-design/pro-components";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App as AntdApp, Button, Form, Input, Modal, Result, Select, Space, Table, Tabs, Tag, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ColumnsType } from "antd/es/table";
 import { notifyOperation } from "./operation-notification";
@@ -17,30 +17,13 @@ import type {
 
 const statusCopy = {
   active: { color: "success", text: "启用" },
-  credential_pending: { color: "processing", text: "待设置密码" },
   disabled: { color: "default", text: "已停用" },
-  failed: { color: "error", text: "处理失败" },
-  provisioning: { color: "processing", text: "创建中" },
 } as const;
 
 function StatusTag({ status }: { status: keyof typeof statusCopy }): React.JSX.Element {
   const copy = statusCopy[status];
   return <Tag color={copy.color}>{copy.text}</Tag>;
 }
-
-const identitySyncCopy = {
-  failed: { color: "error", text: "同步失败" },
-  pending: { color: "processing", text: "同步中" },
-  succeeded: { color: "success", text: "已同步" },
-  superseded: { color: "default", text: "已过期" },
-} as const;
-
-const identitySyncErrorCopy = {
-  eventing_handler_timeout: "处理超时",
-  identity_sync_failed: "同步失败",
-  keycloak_administration_unavailable: "身份服务暂时不可用",
-  keycloak_entity_conflict: "身份记录冲突",
-} as const;
 
 const passwordPolicyCopy = "密码要求：8-64 位，仅可使用半角英文字母、数字、空格和英文符号，不支持中文或全角字符。";
 const passwordPolicyErrorCopy = "密码不符合要求。请输入 8-64 位半角英文字母、数字、空格或英文符号。";
@@ -66,7 +49,8 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
   const [accountOpen, setAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<WorkforceAccountView>();
   const [editingSystemAccount, setEditingSystemAccount] = useState<WorkforceAccountView>();
-  const [reauthenticatingSystemAccount, setReauthenticatingSystemAccount] = useState(false);
+  const [reauthenticationOpen, setReauthenticationOpen] = useState(false);
+  const [reauthenticating, setReauthenticating] = useState(false);
   const [reactivatingAccount, setReactivatingAccount] = useState<WorkforceAccountView>();
   const [resetPasswordAccount, setResetPasswordAccount] = useState<WorkforceAccountView>();
   const [releasePhoneAccount, setReleasePhoneAccount] = useState<WorkforceAccountView>();
@@ -75,16 +59,15 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
   const [editingDepartment, setEditingDepartment] = useState<OrganizationUnitView>();
   const [positionOpen, setPositionOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<PositionView>();
-  const [credentialUrl, setCredentialUrl] = useState<string>();
   const [accountForm] = Form.useForm();
   const [accountSearchForm] = Form.useForm();
   const [editAccountForm] = Form.useForm();
   const [systemAccountForm] = Form.useForm();
+  const [reauthenticationForm] = Form.useForm();
   const [reactivateForm] = Form.useForm();
   const [resetPasswordForm] = Form.useForm();
   const [departmentForm] = Form.useForm();
   const [positionForm] = Form.useForm();
-  const credentialCompletionStarted = useRef(false);
   const requestedTab = searchParams.get("tab");
   const activeTab = requestedTab === "departments" || requestedTab === "positions" ? requestedTab : "accounts";
 
@@ -94,26 +77,11 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
       const passwordPolicyRejected = (command.kind === "create_account" || command.kind === "reset_password") && error instanceof Error && error.message === "workforce_password_policy_violation";
       notifyOperation(notification, "error", "操作未完成", passwordPolicyRejected ? passwordPolicyErrorCopy : "服务器未确认成功，请刷新状态后重试。");
     },
-    onSuccess: async (result) => {
-      if (result.credentialRedirectUrl !== undefined) setCredentialUrl(result.credentialRedirectUrl);
-      else notifyOperation(notification, "success", "操作成功", "服务器已确认并保存本次变更。");
+    onSuccess: async () => {
+      notifyOperation(notification, "success", "操作成功", "服务器已确认并保存本次变更。");
       await queryClient.invalidateQueries({ queryKey: ["workforce-administration"] });
     },
   });
-
-  useEffect(() => {
-    if (credentialUrl === undefined) return;
-    notification.info({
-      btn: <Button type="primary" href={credentialUrl}>前往 Keycloak</Button>,
-      className: "operation-notification",
-      description: "请前往身份系统继续设置临时密码。",
-      duration: false,
-      key: "workforce-credential-setup",
-      onClose: () => { setCredentialUrl(undefined); },
-      placement: "topRight",
-      title: "继续设置临时密码",
-    });
-  }, [credentialUrl, notification]);
 
   useEffect(() => {
     if (snapshot.isError) notifyOperation(notification, "error", "员工账号管理暂时不可用", "无法读取员工账号管理数据，请重试。");
@@ -122,25 +90,6 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
   useEffect(() => {
     if (accounts.isError) notifyOperation(notification, "error", "员工账号列表暂时不可用", "无法读取员工账号列表，请重试。");
   }, [accounts.isError, notification]);
-
-  useEffect(() => {
-    if (credentialCompletionStarted.current || snapshot.data === undefined) return;
-    const accountId = searchParams.get("accountId");
-    const ceremonyOperationId = searchParams.get("operationId");
-    const stableId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-    if (accountId === null || ceremonyOperationId === null || !stableId.test(accountId) || !stableId.test(ceremonyOperationId)) return;
-    const account = [...snapshot.data.accounts, ...(snapshot.data.systemAccount === undefined ? [] : [snapshot.data.systemAccount])]
-      .find((candidate) => candidate.accountId === accountId);
-    if (account === undefined) return;
-    credentialCompletionStarted.current = true;
-    void execute.mutateAsync({ accountId, ceremonyOperationId, expectedRevision: account.revision, kind: "complete_credential_ceremony" })
-      .then(() => {
-        const next = new URLSearchParams(searchParams);
-        next.delete("accountId");
-        next.delete("operationId");
-        setSearchParams(next, { replace: true });
-      }, () => { credentialCompletionStarted.current = false; });
-  }, [execute, searchParams, setSearchParams, snapshot.data]);
 
   const departments = snapshot.data?.departments ?? [];
   const positions = snapshot.data?.positions ?? [];
@@ -161,14 +110,12 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
     { title: "岗位", dataIndex: "positionName", width: 160, render: (value?: string) => value ?? "-" },
     { title: "授权", width: 150, render: (_, row) => row.crmAdministrator ? <Tag color="blue">CRM系统管理员</Tag> : "-" },
     { title: "状态", width: 110, render: (_, row) => <StatusTag status={row.status} /> },
-    { title: "身份同步", width: 150, render: (_, row) => row.latestIdentitySync === undefined ? "-" : <Space orientation="vertical" size={0}><Tag color={identitySyncCopy[row.latestIdentitySync.status].color}>{identitySyncCopy[row.latestIdentitySync.status].text}</Tag>{row.latestIdentitySync.errorCode === undefined ? null : <Typography.Text type="secondary">{identitySyncErrorCopy[row.latestIdentitySync.errorCode]}</Typography.Text>}</Space> },
     {
       title: "操作", key: "actions", fixed: "right", width: 340,
       render: (_, row) => (
         <Space size={4} wrap>
           {row.allowedActions.includes("reset_password") && <Button type="link" onClick={() => { setResetPasswordAccount(row); resetPasswordForm.resetFields(); }}>重置密码</Button>}
           {row.allowedActions.includes("release_phone") && row.releasablePhones.length > 0 && <Button type="link" onClick={() => { setReleasePhoneAccount(row); setReleasePhoneValue(row.releasablePhones[0]); }}>释放旧手机号</Button>}
-          {row.allowedActions.includes("retry_identity_sync") && row.latestIdentitySync?.status === "failed" && <Button type="link" onClick={() => { run({ accountId: row.accountId, expectedRevision: row.revision, failedOperationId: row.latestIdentitySync?.operationId ?? "", kind: "retry_identity_sync" }); }}>重试同步</Button>}
           {(row.allowedActions.includes("edit") || row.allowedActions.includes("transfer")) && <Button type="link" onClick={() => { setEditingAccount(row); editAccountForm.setFieldsValue({ username: row.username, legalName: row.legalName, phone: row.phone, departmentId: row.departmentId, positionId: row.positionId }); }}>编辑</Button>}
           {row.allowedActions.includes("deactivate") && <Button danger type="link" onClick={() => { confirm("停用员工账号", "停用后将撤销其会话、任职和权限。", { accountId: row.accountId, expectedRevision: row.revision, kind: "deactivate_account" }); }}>停用</Button>}
           {row.allowedActions.includes("reactivate") && <Button type="link" onClick={() => { setReactivatingAccount(row); reactivateForm.setFieldsValue({ departmentId: row.departmentId, positionId: row.positionId }); }}>重新启用</Button>}
@@ -215,15 +162,7 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
         <strong>{snapshot.data.systemAccount.legalName}</strong>
         <span>{snapshot.data.systemAccount.username}</span>
         <StatusTag status={snapshot.data.systemAccount.status} />
-        {snapshot.data.systemAccount.allowedActions.includes("edit")
-          ? <Button type="link" onClick={() => { setEditingSystemAccount(snapshot.data.systemAccount); systemAccountForm.setFieldsValue({ legalName: snapshot.data.systemAccount?.legalName, username: snapshot.data.systemAccount?.username, phone: snapshot.data.systemAccount?.phone }); }}>编辑账号资料</Button>
-          : port.beginSystemAccountReauthentication === undefined ? null : <Button type="link" loading={reauthenticatingSystemAccount} onClick={() => {
-            setReauthenticatingSystemAccount(true);
-            void port.beginSystemAccountReauthentication?.().catch(() => {
-              setReauthenticatingSystemAccount(false);
-              notifyOperation(notification, "error", "重新认证未启动", "当前会话未发生变化，请重试。");
-            });
-          }}>重新认证后编辑</Button>}
+        {snapshot.data.systemAccount.allowedActions.includes("edit") ? <Button type="link" onClick={() => { reauthenticationForm.resetFields(); setReauthenticationOpen(true); }}>重新认证后编辑</Button> : null}
       </Space>
     </section>}
     <Form name="account-search" form={accountSearchForm} layout="inline" className="account-search-form" onFinish={(raw: Record<string, unknown>) => {
@@ -281,7 +220,7 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
       </Form>
     </Modal>
 
-    <Modal title="重新启用员工账号" open={reactivatingAccount !== undefined} okText="继续设置临时密码" cancelText="取消" confirmLoading={execute.isPending} onCancel={() => { setReactivatingAccount(undefined); }} onOk={() => { void reactivateForm.validateFields().then(async (value: Record<string, string>) => {
+    <Modal title="重新启用员工账号" open={reactivatingAccount !== undefined} okText="重新启用" cancelText="取消" confirmLoading={execute.isPending} onCancel={() => { setReactivatingAccount(undefined); }} onOk={() => { void reactivateForm.validateFields().then(async (value: Record<string, string>) => {
       if (reactivatingAccount === undefined) return;
       await execute.mutateAsync({ accountId: reactivatingAccount.accountId, departmentId: value["departmentId"] ?? "", expectedRevision: reactivatingAccount.revision, kind: "reactivate_account", positionId: value["positionId"] ?? "" });
       setReactivatingAccount(undefined); reactivateForm.resetFields();
@@ -289,6 +228,38 @@ export function WorkforceAdministrationPage({ port }: { port: WorkforceAdministr
       <Form form={reactivateForm} layout="vertical" preserve={false}>
         <Form.Item name="departmentId" label="部门" rules={[{ required: true }]}><Select options={activeDepartments.map((item) => ({ label: item.name, value: item.departmentId }))} onChange={() => { reactivateForm.setFieldValue("positionId", undefined); }} /></Form.Item>
         <Form.Item noStyle shouldUpdate>{() => <Form.Item name="positionId" label="岗位" rules={[{ required: true }]}><Select options={positions.filter((item) => item.status === "active" && item.departmentId === reactivateForm.getFieldValue("departmentId") as string).map((item) => ({ label: item.name, value: item.positionId }))} /></Form.Item>}</Form.Item>
+      </Form>
+    </Modal>
+
+    <Modal title="重新认证" open={reauthenticationOpen} okText="确认" cancelText="取消" confirmLoading={reauthenticating} onCancel={() => { if (reauthenticating) return; setReauthenticationOpen(false); reauthenticationForm.resetFields(); }} onOk={() => {
+      if (reauthenticating) return;
+      setReauthenticating(true);
+      void reauthenticationForm.validateFields().then(async (value: { password: string }) => {
+      await port.reauthenticate(value.password);
+      const systemAccount = snapshot.data.systemAccount;
+      if (systemAccount === undefined) return;
+      setReauthenticationOpen(false);
+      reauthenticationForm.resetFields();
+      systemAccountForm.setFieldsValue({ legalName: systemAccount.legalName, phone: systemAccount.phone, username: systemAccount.username });
+      setEditingSystemAccount(systemAccount);
+    }).catch((error: unknown) => {
+      if (!(error instanceof Error)) {
+        if (typeof error === "object" && error !== null && Array.isArray(Reflect.get(error, "errorFields"))) return;
+        notifyOperation(notification, "error", "重新认证失败", "认证服务未确认成功，请稍后重试。");
+        return;
+      }
+      const detail = error.message.endsWith("_429") ? "尝试次数过多，请稍后再试。"
+        : error.message.endsWith("_503") ? "认证服务暂时不可用，请稍后重试。"
+          : error.message.endsWith("_403") ? "请求未通过安全校验，请刷新页面后重试。"
+            : "当前账号密码不正确或会话已失效。";
+      if (error.message.startsWith("workforce_reauthentication_failed") || error.message.startsWith("workforce_session_unavailable")) {
+        notifyOperation(notification, "error", "重新认证失败", detail);
+      } else {
+        notifyOperation(notification, "error", "重新认证失败", "认证服务未确认成功，请稍后重试。");
+      }
+    }).finally(() => { setReauthenticating(false); }); }}>
+      <Form form={reauthenticationForm} layout="vertical" preserve={false}>
+        <Form.Item name="password" label="当前账号密码" rules={[{ required: true, message: "请输入当前账号密码" }]}><Input.Password autoComplete="current-password" maxLength={64} /></Form.Item>
       </Form>
     </Modal>
 

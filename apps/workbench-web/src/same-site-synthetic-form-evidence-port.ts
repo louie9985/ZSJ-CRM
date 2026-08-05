@@ -40,7 +40,7 @@ export function createSameSiteSyntheticFormEvidencePort(
   return Object.freeze({
     fileReference,
     async loadRelease(): Promise<SyntheticFormEvidenceRelease> {
-      const response = await fetchPort("/form-definitions/platform.synthetic.task-completion/releases/1", {
+      const response = await fetchPort("/form-definitions/crm.synthetic.task-completion/releases/1", {
         credentials: "same-origin",
         headers: { Accept: "application/json", traceparent },
       });

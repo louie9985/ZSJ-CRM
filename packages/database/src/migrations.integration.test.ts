@@ -18,14 +18,13 @@ describe.skipIf(!urlFile)("PostgreSQL migration integration", () => {
         "eventing-outbox",
         "task-center",
         "audit",
-        "app-registry",
         "form-schema",
         "business-configuration",
         "notifications",
         "file-center",
         "authorization",
         "workforce-access",
-      ].map((name) => resolve(import.meta.dirname, `../../platform-modules/${name}/migrations`)),
+      ].map((name) => resolve(import.meta.dirname, `../../crm-modules/${name}/migrations`)),
     ];
     await runMigrations(connectionString, directories);
     await runMigrations(connectionString, directories);
@@ -36,11 +35,11 @@ describe.skipIf(!urlFile)("PostgreSQL migration integration", () => {
       expect(compatibility).toEqual({
         applicationSchemaVersion: "0.0.0",
         compatible: true,
-        currentMigrationVersion: "0000000026",
+        currentMigrationVersion: "0000000038",
         issues: [],
       });
       const result = await pool.query<{ count: string }>("select count(*)::text as count from ai_crm_migrations.applied_migrations");
-      expect(result.rows[0]?.count).toBe("26");
+      expect(result.rows[0]?.count).toBe("38");
     } finally {
       await pool.end();
     }

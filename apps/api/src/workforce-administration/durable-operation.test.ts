@@ -7,7 +7,7 @@ const operationId = "40000000-0000-4000-8000-000000000001";
 const traceId = "1".repeat(32);
 
 describe("durable administration operation", () => {
-  it("commits business work and the successful operation result in one ambient transaction", async () => {
+  it("claims and completes idempotency around the short business transaction", async () => {
     const statements: string[] = [];
     const transactionDepths: number[] = [];
     let depth = 0;
@@ -26,11 +26,11 @@ describe("durable administration operation", () => {
     };
     const businessWork = vi.fn(() => {
       expect(depth).toBe(1);
-      return Promise.resolve(Object.freeze({ credentialRedirectUrl: "/credential/continue" }));
+      return Promise.resolve(Object.freeze({}));
     });
 
     await expect(createDurableAdministrationOperationPort(database).execute({ fingerprint: "a".repeat(64), operationId, traceId }, businessWork))
-      .resolves.toEqual({ replayed: false, value: { credentialRedirectUrl: "/credential/continue" } });
+      .resolves.toEqual({ replayed: false, value: {} });
 
     expect(transactionDepths).toEqual([1]);
     expect(businessWork).toHaveBeenCalledOnce();
@@ -57,12 +57,12 @@ describe("durable administration operation", () => {
       () => Promise.reject(new Error("synthetic_failure")),
     )).rejects.toThrow("synthetic_failure");
 
-    expect(transaction).toBe(1);
-    expect(statements.at(-1)).toContain("status='failed'");
+    expect(transaction).toBe(2);
+    expect(statements.at(-1)).toContain("'failed'");
     expect(statements.some((sql) => sql.includes("status='succeeded'"))).toBe(false);
   });
 
-  it("serializes the same operation so concurrent callers execute business work once", async () => {
+  it("replays a completed operation without executing business work again", async () => {
     let transactionTail = Promise.resolve();
     let row: { fingerprint: string; result: unknown; status: "failed" | "pending" | "succeeded" } | undefined;
     const execute = <Row>(sql: string, parameters?: readonly unknown[]): Promise<Readonly<{ rowCount: number; rows: readonly Row[] }>> => {
@@ -86,13 +86,11 @@ describe("durable administration operation", () => {
         finally { releaseTransaction(); }
       },
     };
-    const businessWork = vi.fn(() => Promise.resolve({ credentialRedirectUrl: "/credential/continue" }));
+    const businessWork = vi.fn(() => Promise.resolve({}));
     const port = createDurableAdministrationOperationPort(database);
 
-    const [first, second] = await Promise.all([
-      port.execute({ fingerprint: "c".repeat(64), operationId, traceId }, businessWork),
-      port.execute({ fingerprint: "c".repeat(64), operationId, traceId }, businessWork),
-    ]);
+    const first = await port.execute({ fingerprint: "c".repeat(64), operationId, traceId }, businessWork);
+    const second = await port.execute({ fingerprint: "c".repeat(64), operationId, traceId }, businessWork);
 
     expect(businessWork).toHaveBeenCalledOnce();
     expect([first.replayed, second.replayed].sort()).toEqual([false, true]);

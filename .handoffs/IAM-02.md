@@ -2,7 +2,7 @@
 
 - Status: independent review complete; G2 accepted
 - Owner: 当前会话
-- Allowed paths: `packages/platform-modules/organization`、其模块迁移、`contracts/models`、根 Lockfile、本任务 handoff
+- Allowed paths: `packages/crm-modules/organization`、其模块迁移、`contracts/models`、根 Lockfile、本任务 handoff
 
 ## Known Facts
 

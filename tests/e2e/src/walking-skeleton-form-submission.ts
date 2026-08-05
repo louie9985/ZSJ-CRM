@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { FileReference } from "@ai-crm/platform-file-center";
-import { FormSchemaError, type FormQueryContext, type FormSchemaQueryService } from "@ai-crm/platform-form-schema";
+import type { FileReference } from "@ai-crm/crm-file-center";
+import { FormSchemaError, type FormQueryContext, type FormSchemaQueryService } from "@ai-crm/crm-form-schema";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TRACEPARENT = /^00-((?!0{32})[0-9a-f]{32})-(?!0{16})[0-9a-f]{16}-0[01]$/u;
-const DEFINITION_ID = "platform.synthetic.task-completion";
+const DEFINITION_ID = "crm.synthetic.task-completion";
 
 export type WalkingSkeletonFormSubmissionErrorCode =
   | "submission_conflict"

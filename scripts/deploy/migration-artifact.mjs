@@ -3,7 +3,7 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/u;
-const SAFE_PATH = /^packages\/(?:database|platform-modules\/[A-Za-z0-9._-]+)\/migrations(?:\/[A-Za-z0-9._-]+)*$/u;
+const SAFE_PATH = /^packages\/(?:database|crm-modules\/[A-Za-z0-9._-]+)\/migrations(?:\/[A-Za-z0-9._-]+)*$/u;
 
 export const MIGRATION_MANIFEST_RELATIVE_PATH = "ai-crm-migrations.manifest.json";
 
@@ -46,14 +46,14 @@ export const discoverMigrationRoots = async (artifactRoot) => {
     if (await requireDirectory(databaseRoot, "packages/database/migrations", true)) roots.push("packages/database/migrations");
   }
 
-  const modulesRoot = resolve(artifactRoot, "packages/platform-modules");
-  if (!await requireDirectory(modulesRoot, "packages/platform-modules", true)) return roots;
+  const modulesRoot = resolve(artifactRoot, "packages/crm-modules");
+  if (!await requireDirectory(modulesRoot, "packages/crm-modules", true)) return roots;
   for (const entry of await readdir(modulesRoot, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) throw new Error(`Migration artifact must not contain symbolic links: packages/platform-modules/${entry.name}.`);
+    if (entry.isSymbolicLink()) throw new Error(`Migration artifact must not contain symbolic links: packages/crm-modules/${entry.name}.`);
     if (!entry.isDirectory()) continue;
     const migrationRoot = resolve(modulesRoot, entry.name, "migrations");
-    if (await requireDirectory(migrationRoot, `packages/platform-modules/${entry.name}/migrations`, true)) {
-      roots.push(`packages/platform-modules/${entry.name}/migrations`);
+    if (await requireDirectory(migrationRoot, `packages/crm-modules/${entry.name}/migrations`, true)) {
+      roots.push(`packages/crm-modules/${entry.name}/migrations`);
     }
   }
   return roots.sort((left, right) => left.localeCompare(right, "en"));

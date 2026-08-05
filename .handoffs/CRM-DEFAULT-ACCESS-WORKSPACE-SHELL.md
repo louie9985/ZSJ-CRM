@@ -3,7 +3,7 @@
 ## 已知事实
 
 - 普通账号由 CRM 管理入口创建 Workforce Person、Employment、Assignment、账号目录和 Keycloak 身份。
-- `crm.application-user` 只授予 `crm.application:access` 与 `platform.workbench.shell:read`，Grant 绑定 Assignment。
+- `crm.application-user` 只授予 `crm.application:access` 与 `crm.workbench.shell:read`，Grant 绑定 Assignment。
 - `/workbench/bootstrap` 当前返回 `applicationIds`、`workspaceProfileId` 和服务端授权的 `navigationIds`。
 - 首版唯一 profile 为 `crm.workspace.unconfigured`，没有真实岗位页面。
 

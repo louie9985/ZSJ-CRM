@@ -16,7 +16,7 @@ Before embedding migrations, both application Dockerfiles invoke `sanitize-appli
 
 ## OPS-G3 Migration Artifact Integrity
 
-- `generate-migration-manifest.mjs` recursively inventories every file in the reviewed repository `packages/database/migrations` and `packages/platform-modules/*/migrations` directories. It writes a deterministic version 1 manifest with safe relative paths, sizes and SHA-256 digests and refuses to overwrite an existing output.
+- `generate-migration-manifest.mjs` recursively inventories every file in the reviewed repository `packages/database/migrations` and `packages/crm-modules/*/migrations` directories. It writes a deterministic version 1 manifest with safe relative paths, sizes and SHA-256 digests and refuses to overwrite an existing output.
 - Both immutable API and Worker artifacts must contain those complete directories at their reviewed `packages/**/migrations` paths and the exact manifest at `/app/ai-crm-migrations.manifest.json`. The manifest digest is the release manifest `artifacts.migrationHead` value.
 - `verify-application-migration-artifacts.mjs` requires both unpacked image filesystems in one release gate. It reads each manifest only from the fixed artifact-root location, verifies the same approved digest, then rejects an omitted API or Worker artifact, missing directories/files, extra files, changed size/content, malformed paths, unsupported versions and symbolic links. `verify-migration-artifact.mjs` remains a single-artifact diagnostic.
 

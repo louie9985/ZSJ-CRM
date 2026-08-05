@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "workforce-access",
+  "purpose": "Remove the legacy account status constraint left under its historical PostgreSQL default name.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Takes a brief metadata lock while dropping the obsolete constraint when present.",
+  "dataImpact": "No row changes; workforce_access_accounts_status_check remains the authoritative active or disabled constraint.",
+  "backfill": "Not required for the approved empty local-development reset.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 reset-only local-development migration plan; only the obsolete duplicate constraint is removed and no account rows are changed.",
+  "recovery": "No rollback is required because the replacement status constraint was installed by migration 0000000027.",
+  "forwardFix": "Append a reviewed workforce-access-owned migration. Do not rewrite this migration after application."
+}

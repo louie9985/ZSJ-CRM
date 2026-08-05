@@ -9,14 +9,14 @@ import {
   type EventingObservation,
   type JobEnvelope,
   type OutboxPublication,
-} from "@ai-crm/platform-eventing-outbox";
-import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
+} from "@ai-crm/crm-eventing-outbox";
+import { InMemoryEventingStore } from "@ai-crm/crm-eventing-outbox/testing";
 import {
   createNotificationCenter,
   InMemoryNotificationStore,
   NotificationError,
   type NotificationActor,
-} from "@ai-crm/platform-notifications";
+} from "@ai-crm/crm-notifications";
 import {
   createAmqplibConsumerAdapter,
   createAmqplibPublisherAdapter,
@@ -100,14 +100,14 @@ function notificationJob(): JobEnvelope {
     payload: Object.freeze({
       actorContextReference: "actor-context.synthetic",
       intent: Object.freeze({
-        deepLink: Object.freeze({ applicationId: "platform.synthetic", resourceId: "source-task.synthetic", resourceType: "synthetic-resource", routeId: "platform.synthetic.detail" }),
+        deepLink: Object.freeze({ applicationId: "crm.synthetic", resourceId: "source-task.synthetic", resourceType: "synthetic-resource", routeId: "crm.synthetic.detail" }),
         idempotencyKey: "notification.rabbit-0001",
         intentId: "70000000-0000-4000-8000-000000000002",
         producer: "tests.walking-skeleton",
         selectors: Object.freeze([Object.freeze({ referenceId: "assignment.synthetic", selectorType: "assignment" })]),
         sourceId: "source-task.synthetic",
         sourceType: "tests.walking-skeleton",
-        templateKey: "platform.synthetic.notice",
+        templateKey: "crm.synthetic.notice",
         templateVersion: 1,
         variables: Object.freeze({ subject: "synthetic task" }),
       }),
@@ -157,7 +157,7 @@ export async function runWalkingSkeletonRabbitJobIntegration(): Promise<void> {
     resolver: { resolve: () => Promise.resolve([{ principalId: actor.principalId, recipientReference: "person.synthetic", resolutionReference: "assignment.synthetic", resolutionVersion: "organization-synthetic-v1" }]) },
     store: notificationStore,
   });
-  await notifications.publishTemplate({ actor, bodyTemplate: "Open {{subject}}.", notificationType: "platform.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "platform.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
+  await notifications.publishTemplate({ actor, bodyTemplate: "Open {{subject}}.", notificationType: "crm.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "crm.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
 
   const consumer = await createAmqplibConsumerAdapter(
     await connection("consumer"),

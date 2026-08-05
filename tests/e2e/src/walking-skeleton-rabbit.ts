@@ -34,13 +34,13 @@ export const walkingSkeletonSourceRabbitTopology: Readonly<RabbitConsumerTopolog
 export const walkingSkeletonNotificationRabbitTopology: Readonly<RabbitConsumerTopology> = Object.freeze({
   bindingId: walkingSkeletonNotificationBindingId,
   ...deadLetter,
-  deadLetterRoutingKey: "platform.notifications.intent-submit.v1.dead",
+  deadLetterRoutingKey: "crm.notifications.intent-submit.v1.dead",
   exchange: "ai-crm.tests.events.v1",
   exchangeType: "topic",
-  queue: "ai-crm.tests.platform.notifications.intent-submit.v1",
+  queue: "ai-crm.tests.crm.notifications.intent-submit.v1",
   retryLayers: Object.freeze([
-    Object.freeze({ delaySeconds: 30, exchange: "ai-crm.tests.retry.v1", queue: "ai-crm.tests.platform.notifications.intent-submit.retry.30s.v1", routingKey: "platform.notifications.intent-submit.v1.retry.30s" }),
-    Object.freeze({ delaySeconds: 300, exchange: "ai-crm.tests.retry.v1", queue: "ai-crm.tests.platform.notifications.intent-submit.retry.300s.v1", routingKey: "platform.notifications.intent-submit.v1.retry.300s" }),
+    Object.freeze({ delaySeconds: 30, exchange: "ai-crm.tests.retry.v1", queue: "ai-crm.tests.crm.notifications.intent-submit.retry.30s.v1", routingKey: "crm.notifications.intent-submit.v1.retry.30s" }),
+    Object.freeze({ delaySeconds: 300, exchange: "ai-crm.tests.retry.v1", queue: "ai-crm.tests.crm.notifications.intent-submit.retry.300s.v1", routingKey: "crm.notifications.intent-submit.v1.retry.300s" }),
   ]),
-  routingKey: "platform.notifications.intent-submit.v1",
+  routingKey: "crm.notifications.intent-submit.v1",
 });

@@ -27,7 +27,6 @@ services:
       - postgres_migration_password
       - postgres_app_password
       - postgres_worker_password
-      - postgres_keycloak_password
       - postgres_flowable_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -71,39 +70,6 @@ services:
       timeout: 10s
       retries: 12
       start_period: 30s
-
-  keycloak:
-    <<: *service-defaults
-    image: ai-crm/keycloak:26.3.1-local
-    build:
-      context: ../..
-      dockerfile: deploy/keycloak/Dockerfile
-    entrypoint: [/bin/sh, /opt/ai-crm/keycloak-entrypoint.sh]
-    command: [start-dev, --import-realm, --health-enabled=true]
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak_runtime
-      KC_BOOTSTRAP_ADMIN_USERNAME: dev_admin
-    secrets:
-      - postgres_keycloak_password
-      - keycloak_bootstrap_password
-      - pc_oidc_client_secret
-      - workforce_admin_client_secret
-      - workforce_worker_client_secret
-    volumes:
-      - ../keycloak/realm-dev.json:/opt/ai-crm/realm-dev.template.json:ro
-      - ./entrypoints/keycloak-entrypoint.sh:/opt/ai-crm/keycloak-entrypoint.sh:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks: [backend]
-    healthcheck:
-      test: [CMD-SHELL, "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3; grep -q '200 OK' <&3"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
-      start_period: 45s
 
   flowable:
     <<: *service-defaults
@@ -179,18 +145,8 @@ secrets:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/postgres_worker_password
   postgres_migration_password:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/postgres_migration_password
-  postgres_keycloak_password:
-    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/postgres_keycloak_password
   postgres_flowable_password:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/postgres_flowable_password
-  keycloak_bootstrap_password:
-    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/keycloak_bootstrap_password
-  pc_oidc_client_secret:
-    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/pc_oidc_client_secret
-  workforce_admin_client_secret:
-    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/workforce_admin_client_secret
-  workforce_worker_client_secret:
-    file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/workforce_worker_client_secret
   flowable_admin_password:
     file: ${AI_CRM_COMPOSE_SECRET_DIR:-.runtime/dev}/flowable_admin_password
   rabbitmq_password:

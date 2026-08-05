@@ -13,7 +13,6 @@ const moduleNames = [
   "eventing-outbox",
   "task-center",
   "audit",
-  "app-registry",
   "form-schema",
   "business-configuration",
   "notifications",
@@ -24,7 +23,7 @@ const moduleNames = [
 
 const directories = [
   resolve(import.meta.dirname, "../migrations"),
-  ...moduleNames.map((name) => resolve(import.meta.dirname, `../../platform-modules/${name}/migrations`)),
+  ...moduleNames.map((name) => resolve(import.meta.dirname, `../../crm-modules/${name}/migrations`)),
 ];
 
 function expectDatabaseDenial(error: unknown): void {
@@ -77,7 +76,7 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
       );
 
       await expect(runtime.query("select version from ai_crm_migrations.applied_migrations order by version desc limit 1"))
-        .resolves.toMatchObject({ rows: [{ version: "0000000026" }] });
+        .resolves.toMatchObject({ rows: [{ version: "0000000038" }] });
       await expect(runtime.query(
         "select has_database_privilege(current_user,current_database(),'CONNECT') as connect,has_database_privilege(current_user,current_database(),'TEMP') as temporary,has_schema_privilege(current_user,'public','USAGE') as public_usage,has_function_privilege(current_user,'pg_catalog.hashtextextended(text,bigint)','EXECUTE') as hash_execute,has_function_privilege(current_user,'pg_catalog.pg_advisory_xact_lock(bigint)','EXECUTE') as lock_execute",
       )).resolves.toMatchObject({
@@ -100,9 +99,6 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
         "workforce_access.login_identifier_history",
         "workforce_access.operations",
         "workforce_access.identity_sync_operations",
-        "app_registry.applications",
-        "app_registry.navigation",
-        "app_registry.routes",
         "form_schema.releases",
         "form_schema.release_status",
         "file_center.files",
@@ -234,7 +230,7 @@ describe.skipIf(!migrationUrlFile || !runtimePasswordFile || !workerRuntimePassw
 
       const decisionId = "20000000-0000-4000-8000-000000000013";
       await expect(runtime.query(
-        "insert into authorization_core.decision_records(decision_id,record_digest,evaluated_at,operation,resource,action,permission_code,allowed,reason,policy_version,trace_id) values($1,$2,'2026-07-28T00:01:00.000Z','check','platform.application-registry.application','read','platform.application-registry.application:read',true,'allowed',$3,$4)",
+        "insert into authorization_core.decision_records(decision_id,record_digest,evaluated_at,operation,resource,action,permission_code,allowed,reason,policy_version,trace_id) values($1,$2,'2026-07-28T00:01:00.000Z','check','crm.workbench.shell','read','crm.workbench.shell:read',true,'allowed',$3,$4)",
         [decisionId, "b".repeat(64), policyVersion, "1".repeat(32)],
       )).resolves.toMatchObject({ rowCount: 1 });
 

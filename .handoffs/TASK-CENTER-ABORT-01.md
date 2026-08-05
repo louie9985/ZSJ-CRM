@@ -26,7 +26,7 @@ Task Center projection persistence now accepts an optional caller `AbortSignal` 
 - Unit tests cover service-to-store signal propagation, pre-abort without transaction acquisition, signal identity on every SQL call, unsupported runtime rejection, and cancellation ordering with no late SQL or commit.
 - PostgreSQL integration coverage holds the projection advisory lock in another transaction, aborts the blocked apply, checks bounded failure, and verifies that neither projection nor event receipt committed. The isolated run passed 4/4 tests and cleaned its Compose container, network, and volume.
 - The 4/4 PostgreSQL integration suite was rerun after the database runtime adopted server-confirmed `pg_cancel_backend` cancellation and remained green.
-- Package commands passed: `pnpm --filter @ai-crm/platform-task-center lint`, `typecheck`, and `test` (40 passed, 4 integration tests skipped by the default command).
+- Package commands passed: `pnpm --filter @ai-crm/crm-task-center lint`, `typecheck`, and `test` (40 passed, 4 integration tests skipped by the default command).
 
 ## Eight-Dimension Review
 

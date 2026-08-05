@@ -30,8 +30,8 @@ describe("E2E durable-store migration", () => {
 
     expect(sql).toContain("CREATE TABLE e2e_walking_skeleton.form_submissions");
     expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON audit.operation_receipts");
-    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON platform_task_center.task_projections, platform_task_center.task_commands");
-    expect(sql).toContain("GRANT DELETE ON platform_task_center.task_commands");
+    expect(sql).toContain("GRANT SELECT, INSERT, UPDATE ON crm_task_center.task_projections, crm_task_center.task_commands");
+    expect(sql).toContain("GRANT DELETE ON crm_task_center.task_commands");
     expect(sql).toContain("substring(traceparent FROM 4 FOR 32) = trace_id");
     expect(sql).toContain("substring(traceparent FROM 37 FOR 16) <> repeat('0', 16)");
     expect(sql).not.toContain("substring(traceparent FROM 4 FOR 32) <> trace_id");

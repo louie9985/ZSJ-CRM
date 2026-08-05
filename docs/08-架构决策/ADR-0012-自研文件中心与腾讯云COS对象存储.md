@@ -31,7 +31,7 @@
 
 ### 1. 文件中心自研
 
-`packages/platform-modules/file-center` 自研业务中立的文件控制面，负责：
+`packages/crm-modules/file-center` 自研业务中立的文件控制面，负责：
 
 - 文件元数据、上传会话、不可变内容版本和处理状态。
 - 文件与业务资源引用之间的受控关联。
@@ -48,7 +48,7 @@
 
 选择 COS 的原因是对象耐久性、容量扩展、分片上传、服务端加密、生命周期和可用性保障属于成熟基础设施能力。自建对象存储会增加磁盘、复制、修复、容量和灾难恢复负担，不是第一阶段差异化能力。
 
-`StorageAdapter` 只抽象项目确实需要的上传、检查、读取、删除和签名能力，不追求覆盖所有云厂商功能。领域模块、HTTP 契约和 `platform-sdk` 不出现 COS Bucket、Object Key、凭据或 SDK 类型。
+`StorageAdapter` 只抽象项目确实需要的上传、检查、读取、删除和签名能力，不追求覆盖所有云厂商功能。领域模块、HTTP 契约和 `crm-sdk` 不出现 COS Bucket、Object Key、凭据或 SDK 类型。
 
 ### 3. 本地文件系统适配器仅用于开发和测试
 

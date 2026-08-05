@@ -1,6 +1,6 @@
 # ADR-0004：Keycloak 统一身份认证中心
 
-- 状态：已接受
+- 状态：已被 ADR-0034 取代，仅保留历史说明
 - 日期：2026-07-22
 - 决策人：项目负责人
 - 适用范围：所有需要登录身份的应用与服务
@@ -16,10 +16,10 @@
 1. 使用开源 Keycloak 作为统一身份提供商（Identity Provider）和认证中心。
 2. Keycloak 负责凭证、密码策略、多因素认证、暴力破解防护、登录会话、单点登录、Token 签发与刷新、注销以及认证事件。
 3. 应用使用标准 OpenID Connect/OAuth 2.0 协议接入 Keycloak，不实现自有密码校验、JWT 签发或 Refresh Token 存储系统。
-4. `packages/platform-modules/auth-context` 验证 Token 的签发者、受众、签名、有效期及必要声明，并将外部身份转换为内部、与传输无关的主体上下文。
+4. `packages/crm-modules/auth-context` 验证 Token 的签发者、受众、签名、有效期及必要声明，并将外部身份转换为内部、与传输无关的主体上下文。
 5. Keycloak 的 `issuer + sub` 是外部认证身份的稳定标识。它与内部人员、组织和有效期任职的关联由项目平台层管理；本 ADR 不提前规定关联表结构。
 6. Keycloak 不作为完整业务授权和数据范围的事实源。业务授权由 `authorization` 平台模块裁决，组织与任职由 `organization` 平台模块管理。
-7. 领域模块不得直接调用 Keycloak API、读取 Keycloak 表或依赖 Keycloak SDK，只能通过主体上下文、正式契约或 `platform-sdk` 使用身份信息。
+7. 领域模块不得直接调用 Keycloak API、读取 Keycloak 表或依赖 Keycloak SDK，只能通过主体上下文、正式契约或 `crm-sdk` 使用身份信息。
 8. Keycloak Realm、Client、Protocol Mapper、安全策略和回调地址必须配置即代码、版本化并按环境发布。秘密值只使用配置引用，不写入仓库。
 9. Keycloak 版本必须固定；升级先经过测试环境的登录、Token、注销、密钥轮换、备份恢复和兼容性验证。
 10. 不修改 Keycloak 源码。确需扩展时优先使用标准协议、外部适配器或边界清晰的 SPI，并单独评审升级风险。

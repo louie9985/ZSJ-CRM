@@ -4,16 +4,14 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const expectedServices = Object.freeze(["api-e2e", "clamav", "flowable", "keycloak", "nginx", "postgres", "rabbitmq", "redis", "workbench-e2e", "worker-e2e"]);
+const expectedServices = Object.freeze(["api-e2e", "clamav", "flowable", "nginx", "postgres", "rabbitmq", "redis", "workbench-e2e", "worker-e2e"]);
 const requiredFiles = Object.freeze([
   "apps/api/src/main.ts",
   "apps/worker/src/main.ts",
   "deploy/compose/compose.base.yml",
   "deploy/compose/compose.test.yml",
   "deploy/compose/compose.e2e.yml",
-  "deploy/compose/compose.e2e-browser-auth.yml",
   "deploy/flowable/bpmn/synthetic-human-task.v1.bpmn20.xml",
-  "deploy/keycloak/realm-dev.json",
   "scripts/check/run-e2e-rabbit-jobs-integration.mjs",
   "scripts/check/run-e2e-flowable-workflow-integration.mjs",
   "scripts/check/run-e2e-main-chain-integration.mjs",
@@ -28,7 +26,6 @@ const requiredFiles = Object.freeze([
   "tests/e2e/src/api-main.ts",
   "tests/e2e/src/api-main.test.ts",
   "tests/e2e/src/apply-e2e-migration.ts",
-  "tests/e2e/src/browser-authentication-bff.ts",
   "tests/e2e/src/browser-task-command.ts",
   "tests/e2e/src/walking-skeleton-form-submission.ts",
   "tests/e2e/src/walking-skeleton-task-command.ts",
@@ -71,8 +68,8 @@ function validateServices(output) {
 
 async function assertRepositoryEvidence(root, readText = (path) => readFile(path, "utf8")) {
   await Promise.all(requiredFiles.map((path) => readText(resolve(root, path))));
-  const [apiReadme, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver, browserAuthRunner, browserAuthBff, browserTaskCommand, apiMain, apiMainTest, durableEvidence, evidenceMigration, evidenceMetadataText, mainChainRunner, mainChain, clamavDriver, composeRunner, workerMain, e2eCompose, combinedEvidence] = await Promise.all([
-    readText(resolve(root, "apps/api/README.md")),
+  const [apiPackage, apiComposition, asyncApi, walkingSkeletonAsyncApi, jobsReadme, sourceJob, notificationJob, workerRegistry, rabbitRunner, rabbitDriver, flowableRunner, flowableDriver, browserAuthRunner, browserTaskCommand, apiMain, apiMainTest, durableEvidence, evidenceMigration, evidenceMetadataText, mainChainRunner, mainChain, clamavDriver, composeRunner, workerMain, e2eCompose, combinedEvidence] = await Promise.all([
+    readText(resolve(root, "apps/api/package.json")),
     readText(resolve(root, "apps/api/src/composition-factory.ts")),
     readText(resolve(root, "contracts/asyncapi/topology.asyncapi.yaml")),
     readText(resolve(root, "contracts/asyncapi/walking-skeleton.asyncapi.yaml")),
@@ -85,7 +82,6 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     readText(resolve(root, "scripts/check/run-e2e-flowable-workflow-integration.mjs")),
     readText(resolve(root, "tests/e2e/src/flowable-workflow-integration.ts")),
     readText(resolve(root, "scripts/check/run-e2e-browser-authentication.mjs")),
-    readText(resolve(root, "tests/e2e/src/browser-authentication-bff.ts")),
     readText(resolve(root, "tests/e2e/src/browser-task-command.ts")),
     readText(resolve(root, "tests/e2e/src/api-main.ts")),
     readText(resolve(root, "tests/e2e/src/api-main.test.ts")),
@@ -100,7 +96,7 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     readText(resolve(root, "deploy/compose/compose.e2e.yml")),
     readText(resolve(root, "scripts/check/e2e-combined-evidence.mjs")),
   ]);
-  if (!apiReadme.includes("Workflow remains uncomposed")) throw new Error("e2e_environment_preflight_workflow_boundary_changed");
+  if (apiPackage.includes("@ai-crm/crm-workflow")) throw new Error("e2e_environment_preflight_workflow_boundary_changed");
   if (!apiComposition.includes("task_source_router_unavailable")) throw new Error("e2e_environment_preflight_task_boundary_changed");
   if (!asyncApi.includes("taskProjectionLifecycleQueue")
     || !asyncApi.includes("realtimeNodeQueue")
@@ -114,7 +110,7 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     throw new Error("e2e_environment_preflight_walking_skeleton_contract_changed");
   }
   if (!sourceJob.includes("tests.walking-skeleton.source-command")
-    || !notificationJob.includes("platform.notifications.intent-submit")) {
+    || !notificationJob.includes("crm.notifications.intent-submit")) {
     throw new Error("e2e_environment_preflight_job_contract_changed");
   }
   if (!jobsReadme.includes("authoritative source state") || !workerRegistry.includes("WorkerHandlerRegistry")) {
@@ -131,16 +127,14 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     throw new Error("e2e_environment_preflight_flowable_workflow_evidence_changed");
   }
   if (!browserAuthRunner.includes('"e2e-browser-authentication-passed"')
-    || !browserAuthRunner.includes('"e2e-browser-durable-observation-passed"')
-    || !browserAuthRunner.includes("Network.getAllCookies")
-    || !browserAuthRunner.includes("browserTraceId")
-    || !browserAuthRunner.includes("browserTraceparent")
-    || !browserAuthRunner.includes("taskCompletionAccepted")
-    || !browserAuthBff.includes("createPcBffSessionService")
-    || !browserAuthBff.includes("recordBrowserTaskCommand")
-    || !browserAuthBff.includes("createPrismaTaskCenterStore")
-    || !browserAuthBff.includes("createPrismaNotificationStore")
-    || !browserAuthBff.includes("durableDatabaseUrlFile")
+    || !browserAuthRunner.includes('/auth/${surface}/login')
+    || !browserAuthRunner.includes('/auth/${surface}/session')
+    || !browserAuthRunner.includes('/auth/${session.surface}/logout')
+    || !browserAuthRunner.includes('establishSession("pc"')
+    || !browserAuthRunner.includes('establishSession("internal-h5"')
+    || !browserAuthRunner.includes("e2e_authentication_surface_cookie_isolation_failed")
+    || !browserAuthRunner.includes("pcCookieOnH5.status !== 401")
+    || !browserAuthRunner.includes("h5CookieOnPc.status !== 401")
     || !browserTaskCommand.includes("parseBrowserTaskCommand")) {
     throw new Error("e2e_environment_preflight_browser_auth_evidence_changed");
   }
@@ -162,21 +156,19 @@ async function assertRepositoryEvidence(root, readText = (path) => readFile(path
     || !mainChain.includes('environment["AI_CRM_E2E_BROWSER_TRACEPARENT"]')
     || !mainChain.includes('environment["AI_CRM_E2E_FILE_REFERENCE_JSON"]')
     || !mainChainRunner.includes("AI_CRM_E2E_REQUIRE_EXTERNAL_EVIDENCE")
-    || !combinedEvidence.includes('status: "e2e-browser-to-worker-causal-evidence-passed"')
-    || !combinedEvidence.includes("causalBrowserEvidence")
-    || !combinedEvidence.includes("formSubmissionReference")
+    || !combinedEvidence.includes('status: "e2e-independent-foundation-evidence-passed"')
+    || !combinedEvidence.includes("authenticationSurfaces")
     || combinedEvidence.includes("AI_CRM_E2E_TASK_COMMAND_FILE:")
     || combinedEvidence.includes("AI_CRM_E2E_FORM_SUBMISSION_FILE:")
-    || !combinedEvidence.includes("AI_CRM_E2E_KEYCLOAK_DUMP_FILE")
-    || !mainChainRunner.includes("AI_CRM_E2E_DURABLE_DATABASE_URL_FILE")
-    || !combinedEvidence.includes("assert.deepEqual(mainChainEvidence.fileReference, fileEvidence.cleanFileReference)")) {
+    || !mainChainRunner.includes("TEST_E2E_DATABASE_URL_FILE")
+    || !combinedEvidence.includes("assertCombinedEvidence")) {
     throw new Error("e2e_environment_preflight_external_evidence_bridge_changed");
   }
   if (!workerMain.includes("createDefaultProductionWorkerResources")
     || !e2eCompose.includes('AI_CRM_E2E_WORKER_REAL_INFRA: "true"')
     || !e2eCompose.includes('AI_CRM_WORKER_TASK_PROJECTION_CONSUMER_ENABLED: "true"')
-    || !composeRunner.includes("platform_task_center.task_projections")
-    || !composeRunner.includes("platform_eventing.inbox_receipts")) {
+    || !composeRunner.includes("crm_task_center.task_projections")
+    || !composeRunner.includes("crm_eventing.inbox_receipts")) {
     throw new Error("e2e_environment_preflight_real_worker_evidence_changed");
   }
   let evidenceMetadata;

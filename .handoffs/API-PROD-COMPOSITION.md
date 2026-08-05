@@ -1,5 +1,7 @@
 # API Production Composition
 
+> **身份部分状态说明（2026-08-04）：** 本文涉及 Keycloak、OIDC、旧 PC BFF Session、subject association 或动态授权策略的段落均已被 ADR-0034 取代，仅保留为历史组合记录。
+
 - Status: REVIEW_FIX_VERIFIED
 - Owner: CMP-01 API production composition line
 - Allowed paths: `apps/api/**` and this handoff

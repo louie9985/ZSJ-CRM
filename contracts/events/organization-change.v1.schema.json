@@ -9,7 +9,7 @@
     {
       "if": {
         "properties": {
-          "entityType": { "enum": ["workforce_person", "employment", "assignment", "subject_association"] }
+          "entityType": { "enum": ["workforce_person", "employment", "assignment"] }
         },
         "required": ["entityType"]
       },
@@ -33,15 +33,13 @@
         "organization.unit_placement.closed.v1",
         "organization.position.created.v1",
         "organization.assignment.created.v1",
-        "organization.assignment.closed.v1",
-        "organization.subject_association.created.v1",
-        "organization.subject_association.closed.v1"
+        "organization.assignment.closed.v1"
       ]
     },
     "operationId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" },
     "entityType": {
       "type": "string",
-      "enum": ["workforce_person", "employment", "organization_unit", "organization_unit_placement", "position", "assignment", "subject_association"]
+      "enum": ["workforce_person", "employment", "organization_unit", "organization_unit_placement", "position", "assignment"]
     },
     "entityId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" },
     "workforcePersonId": { "type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" },

@@ -13,14 +13,14 @@ import {
   type JobEnvelope,
   type MessageHandler,
   type OutboxPublication,
-} from "@ai-crm/platform-eventing-outbox";
-import { InMemoryEventingStore } from "@ai-crm/platform-eventing-outbox/testing";
-import { createFormSchemaService, createMemoryFormSchemaStore, FormSchemaError, type FormAudit, type FormSchemaStore } from "@ai-crm/platform-form-schema";
-import type { FileReference } from "@ai-crm/platform-file-center";
-import { createNotificationCenter, InMemoryNotificationStore, NotificationError, type NotificationActor, type NotificationStore } from "@ai-crm/platform-notifications";
-import { createTaskCenter, InMemoryTaskCenterStore, TaskCenterError, type CompleteTaskCommand, type TaskAudit, type TaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
-import { createFlowableRestEngine, createWorkflowFacade, type WorkflowAuditRecord, type WorkflowCommandLedger, type WorkflowLifecycleEvent } from "@ai-crm/platform-workflow";
-import { createMemoryWorkflowCommandLedger } from "@ai-crm/platform-workflow/testing";
+} from "@ai-crm/crm-eventing-outbox";
+import { InMemoryEventingStore } from "@ai-crm/crm-eventing-outbox/testing";
+import { createFormSchemaService, createMemoryFormSchemaStore, FormSchemaError, type FormAudit, type FormSchemaStore } from "@ai-crm/crm-form-schema";
+import type { FileReference } from "@ai-crm/crm-file-center";
+import { createNotificationCenter, InMemoryNotificationStore, NotificationError, type NotificationActor, type NotificationStore } from "@ai-crm/crm-notifications";
+import { createTaskCenter, InMemoryTaskCenterStore, TaskCenterError, type CompleteTaskCommand, type TaskAudit, type TaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/crm-task-center";
+import { createFlowableRestEngine, createWorkflowFacade, type WorkflowAuditRecord, type WorkflowCommandLedger, type WorkflowLifecycleEvent } from "@ai-crm/crm-workflow";
+import { createMemoryWorkflowCommandLedger } from "@ai-crm/crm-workflow/testing";
 import {
   createAmqplibConsumerAdapter,
   createAmqplibPublisherAdapter,
@@ -52,7 +52,7 @@ const definitionKey = "syntheticHumanTaskV1";
 const sourceTaskId = "source-task.main-chain-synthetic";
 const defaultTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
 const defaultTraceparent = `00-${defaultTraceId}-00f067aa0ba902b7-01`;
-const formDefinitionId = "platform.synthetic.task-completion";
+const formDefinitionId = "crm.synthetic.task-completion";
 const defaultSubmissionReference = "submission.main-chain-synthetic-0001";
 const defaultFileReference: FileReference = Object.freeze({
   contentVersionId: "93000000-0000-4000-8000-000000000002",
@@ -209,10 +209,10 @@ function job(input: { readonly fileReference: FileReference; readonly formSubmis
     }) : Object.freeze({
       actorContextReference,
       intent: Object.freeze({
-        deepLink: Object.freeze({ applicationId: "platform.synthetic", resourceId: sourceTaskId, resourceType: "synthetic-resource", routeId: "platform.synthetic.detail" }),
+        deepLink: Object.freeze({ applicationId: "crm.synthetic", resourceId: sourceTaskId, resourceType: "synthetic-resource", routeId: "crm.synthetic.detail" }),
         idempotencyKey: "notification.main-chain-0001", intentId: "92000000-0000-4000-8000-000000000002", producer: "tests.walking-skeleton",
         selectors: Object.freeze([Object.freeze({ referenceId: "assignment.synthetic", selectorType: "assignment" })]),
-        sourceId: sourceTaskId, sourceType: walkingSkeletonSourceType, templateKey: "platform.synthetic.notice", templateVersion: 1,
+        sourceId: sourceTaskId, sourceType: walkingSkeletonSourceType, templateKey: "crm.synthetic.notice", templateVersion: 1,
         variables: Object.freeze({ subject: "synthetic task" }),
       }),
     }),
@@ -359,7 +359,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     ...(browserFormSubmission === undefined ? {} : { sourceCommandReference: activeSubmissionReference }),
   });
 
-  const openTaskEvent: TaskLifecycleEvent = Object.freeze({ assigneeReference: chainActor.activeAssignmentIds[0] ?? "assignment.synthetic", deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" }, eventId: stableUuid("task-projection:open"), occurredAt: at, sourceTaskId, sourceType: walkingSkeletonSourceType, sourceVersion: 1, status: "open" });
+  const openTaskEvent: TaskLifecycleEvent = Object.freeze({ assigneeReference: chainActor.activeAssignmentIds[0] ?? "assignment.synthetic", deepLink: { appId: "crm.synthetic", routeId: "crm.synthetic.detail" }, eventId: stableUuid("task-projection:open"), occurredAt: at, sourceTaskId, sourceType: walkingSkeletonSourceType, sourceVersion: 1, status: "open" });
   let dependencyFailuresRemaining = 1;
   let workflowCompletionCalls = 0;
   const taskAudit: TaskAudit = { record: async (record) => {
@@ -424,7 +424,7 @@ export async function runMainChainIntegration(factory = createMainChainIntegrati
     preference: { evaluate: () => Promise.resolve({ decision: "deliver", reason: "synthetic-default", version: "synthetic-v1" }) },
     resolver: { resolve: () => Promise.resolve([{ principalId: chainActor.principalId, recipientReference: "person.synthetic", resolutionReference: chainActor.activeAssignmentIds[0] ?? "assignment.synthetic", resolutionVersion: "organization-synthetic-v1" }]) }, store: notificationStore,
   });
-  await notifications.publishTemplate({ actor: chainNotificationActor, bodyTemplate: "Open {{subject}}.", notificationType: "platform.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "platform.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
+  await notifications.publishTemplate({ actor: chainNotificationActor, bodyTemplate: "Open {{subject}}.", notificationType: "crm.synthetic", ownerReference: "tests.walking-skeleton", publishedAt: at, templateKey: "crm.synthetic.notice", titleTemplate: "Update {{subject}}", variableSchema: { additionalProperties: false, properties: { subject: { type: "string" } }, required: ["subject"], type: "object" }, version: 1 });
 
   const controller = new AbortController();
   let publisherAdapter: Awaited<ReturnType<typeof createAmqplibPublisherAdapter>> | undefined;

@@ -2,11 +2,11 @@
 
 - Status: implementation and scoped verification complete; awaiting independent review and Integration Owner merge
 - Date: 2026-07-28
-- Owned paths: `packages/platform-modules/file-center/**` and this handoff
+- Owned paths: `packages/crm-modules/file-center/**` and this handoff
 
 ## Known facts
 
-- The public vendor-neutral `StorageAdapter` port already exists in `@ai-crm/platform-file-center`.
+- The public vendor-neutral `StorageAdapter` port already exists in `@ai-crm/crm-file-center`.
 - `LocalFileStorageAdapter` already implements that port for development and test use.
 - ADR-0012 requires local storage and a future real COS adapter to execute the same storage contract tests.
 
@@ -34,10 +34,10 @@
 
 ## Verification evidence
 
-- `pnpm --filter @ai-crm/platform-file-center test`: passed, 29/29 executable package tests; 5 PostgreSQL integration tests correctly skipped by the ordinary unit command.
-- `pnpm --filter @ai-crm/platform-file-center typecheck`: passed.
-- `pnpm --filter @ai-crm/platform-file-center lint`: passed with zero warnings.
-- `git diff --check -- packages/platform-modules/file-center .handoffs/FILE-STORAGE-CONFORMANCE.md`: passed.
+- `pnpm --filter @ai-crm/crm-file-center test`: passed, 29/29 executable package tests; 5 PostgreSQL integration tests correctly skipped by the ordinary unit command.
+- `pnpm --filter @ai-crm/crm-file-center typecheck`: passed.
+- `pnpm --filter @ai-crm/crm-file-center lint`: passed with zero warnings.
+- `git diff --check -- packages/crm-modules/file-center .handoffs/FILE-STORAGE-CONFORMANCE.md`: passed.
 
 ## Eight-area review
 

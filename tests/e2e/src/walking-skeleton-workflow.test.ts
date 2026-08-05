@@ -1,6 +1,6 @@
-import { createTaskCenter, InMemoryTaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/platform-task-center";
-import { createWorkflowFacade, type WorkflowEngine, type WorkflowLifecycleEvent, type WorkflowTask } from "@ai-crm/platform-workflow";
-import { createMemoryWorkflowCommandLedger } from "@ai-crm/platform-workflow/testing";
+import { createTaskCenter, InMemoryTaskCenterStore, type TaskLifecycleEvent } from "@ai-crm/crm-task-center";
+import { createWorkflowFacade, type WorkflowEngine, type WorkflowLifecycleEvent, type WorkflowTask } from "@ai-crm/crm-workflow";
+import { createMemoryWorkflowCommandLedger } from "@ai-crm/crm-workflow/testing";
 import { describe, expect, it, vi } from "vitest";
 
 import { createWalkingSkeletonSource, createWalkingSkeletonTaskPorts, walkingSkeletonSourceType } from "./walking-skeleton-source.js";
@@ -64,7 +64,7 @@ describe("Walking Skeleton Task-to-Workflow-to-source composition", () => {
     });
     const event: TaskLifecycleEvent = {
       assigneeReference: "assignment.synthetic",
-      deepLink: { appId: "platform.synthetic", routeId: "platform.synthetic.detail" },
+      deepLink: { appId: "crm.synthetic", routeId: "crm.synthetic.detail" },
       eventId: "50000000-0000-4000-8000-000000000001",
       occurredAt: "2026-07-30T00:00:00.000Z",
       sourceTaskId: "source-task.synthetic",

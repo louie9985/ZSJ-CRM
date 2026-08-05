@@ -17,7 +17,7 @@ if (!Number.isSafeInteger(unavailablePort) || unavailablePort < 1024 || unavaila
 const e2eRequire = createRequire(resolve("tests/e2e/package.json"));
 const workerUrl = pathToFileURL(e2eRequire.resolve("@ai-crm/worker")).href;
 const workerRequire = createRequire(resolve("apps/worker/package.json"));
-const fileCenterUrl = pathToFileURL(workerRequire.resolve("@ai-crm/platform-file-center")).href;
+const fileCenterUrl = pathToFileURL(workerRequire.resolve("@ai-crm/crm-file-center")).href;
 const [{ ClamAvMalwareScanner }, { MemoryFileCenterStore, createFileCenterService }] = await Promise.all([
   import(workerUrl),
   import(fileCenterUrl),
@@ -85,7 +85,7 @@ async function pendingUpload(target, bytes, operationId = nextId()) {
     declaredMediaType: "text/plain",
     declaredSizeBytes: bytes.byteLength,
     displayName: "synthetic-clamav-fixture.txt",
-    ownerModule: "platform.synthetic-e2e",
+    ownerModule: "crm.synthetic-e2e",
   });
   const handle = target.storage.handles.at(-1);
   assert.ok(handle);
@@ -102,8 +102,8 @@ const cleanCommand = { ...metadata(cleanOperationId), contentVersionId: cleanUpl
 const cleanResult = await clean.service.scanContentVersion(cleanCommand);
 assert.equal(cleanResult.contentVersion.status, "available");
 assert.equal(cleanResult.replayed, false);
-const cleanResource = { resourceId: "synthetic:clamav-clean", resourceType: "platform.resource" };
-await clean.service.linkResource({ ...metadata(), fileReference: cleanUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: cleanResource });
+const cleanResource = { resourceId: "synthetic:clamav-clean", resourceType: "crm.resource" };
+await clean.service.linkResource({ ...metadata(), fileReference: cleanUpload.created.fileReference, linkId: nextId(), ownerModule: "crm.synthetic-e2e", relationType: "crm.attachment", resource: cleanResource });
 const cleanReference = await clean.service.resolveFileReference({ ...metadata(), fileReference: cleanUpload.created.fileReference, resource: cleanResource });
 assert.equal(cleanReference.fileId, cleanUpload.created.fileReference.fileId);
 assert.equal(cleanReference.contentVersionId, cleanUpload.created.fileReference.contentVersionId);
@@ -121,7 +121,7 @@ const maliciousOperationId = nextId();
 const maliciousCommand = { ...metadata(maliciousOperationId), contentVersionId: maliciousUpload.completed.contentVersion.contentVersionId };
 const maliciousResult = await malicious.service.scanContentVersion(maliciousCommand);
 assert.equal(maliciousResult.contentVersion.status, "quarantined");
-await assert.rejects(malicious.service.linkResource({ ...metadata(), fileReference: maliciousUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: { resourceId: "synthetic:malicious", resourceType: "platform.resource" } }), (error) => error?.code === "file_center_not_ready");
+await assert.rejects(malicious.service.linkResource({ ...metadata(), fileReference: maliciousUpload.created.fileReference, linkId: nextId(), ownerModule: "crm.synthetic-e2e", relationType: "crm.attachment", resource: { resourceId: "synthetic:malicious", resourceType: "crm.resource" } }), (error) => error?.code === "file_center_not_ready");
 assert.equal(maliciousResult.replayed, false);
 assert.ok(malicious.storage.quarantined.has(maliciousUpload.handle));
 const maliciousReplay = await malicious.service.scanContentVersion(maliciousCommand);
@@ -138,7 +138,7 @@ await assert.rejects(
 );
 const unavailableState = await unavailable.store.findContentVersion(unavailableUpload.completed.contentVersion.contentVersionId);
 assert.equal(unavailableState?.contentVersion.status, "pending_scan");
-await assert.rejects(unavailable.service.linkResource({ ...metadata(), fileReference: unavailableUpload.created.fileReference, linkId: nextId(), ownerModule: "platform.synthetic-e2e", relationType: "platform.attachment", resource: { resourceId: "synthetic:pending", resourceType: "platform.resource" } }), (error) => error?.code === "file_center_not_ready");
+await assert.rejects(unavailable.service.linkResource({ ...metadata(), fileReference: unavailableUpload.created.fileReference, linkId: nextId(), ownerModule: "crm.synthetic-e2e", relationType: "crm.attachment", resource: { resourceId: "synthetic:pending", resourceType: "crm.resource" } }), (error) => error?.code === "file_center_not_ready");
 assert.equal(unavailable.storage.quarantined.size, 0);
 assert.ok(unavailable.audits.some((entry) => entry.action === "file:scan" && entry.result === "failed"));
 

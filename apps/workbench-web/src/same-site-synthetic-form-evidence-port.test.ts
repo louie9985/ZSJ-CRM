@@ -14,7 +14,7 @@ const fileReference = Object.freeze({
 const release = Object.freeze({
   active: true,
   contentDigest: "a".repeat(64),
-  definitionId: "platform.synthetic.task-completion",
+  definitionId: "crm.synthetic.task-completion",
   jsonSchema: {},
   releaseVersion: 1,
   uiSchema: { fields: [], layout: "vertical" as const, version: 1 as const },

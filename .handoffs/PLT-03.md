@@ -7,7 +7,7 @@
 - Status: `G2_ACCEPTED`
 - Baseline: `6474690dffe2af0b8f73f76a1659733d94272d3e`
 - Migration lease: `0000000010`
-- Allowed paths: `packages/platform-modules/file-center/`, `contracts/files/`, `.handoffs/PLT-03.md`
+- Allowed paths: `packages/crm-modules/file-center/`, `contracts/files/`, `.handoffs/PLT-03.md`
 - Shared-resource changes: none; `pnpm-lock.yaml`, generated contracts, `apps/api`, and `apps/worker` are unchanged
 
 ## Known Facts
@@ -119,13 +119,13 @@
 
 ## Verification Evidence
 
-- `pnpm --filter @ai-crm/platform-file-center typecheck` — passed 2026-07-26.
-- `pnpm --filter @ai-crm/platform-file-center lint` — passed 2026-07-26.
-- `pnpm --filter @ai-crm/platform-file-center test` — passed, 25/25 executable unit, contract-alignment, adapter, and package tests; 5 PostgreSQL tests correctly skipped in the unit command.
-- `pnpm --filter @ai-crm/platform-file-center test:integration` — passed, 5/5 real PostgreSQL tests.
+- `pnpm --filter @ai-crm/crm-file-center typecheck` — passed 2026-07-26.
+- `pnpm --filter @ai-crm/crm-file-center lint` — passed 2026-07-26.
+- `pnpm --filter @ai-crm/crm-file-center test` — passed, 25/25 executable unit, contract-alignment, adapter, and package tests; 5 PostgreSQL tests correctly skipped in the unit command.
+- `pnpm --filter @ai-crm/crm-file-center test:integration` — passed, 5/5 real PostgreSQL tests.
 - `pnpm contracts:check` — passed, 28/28 packages.
 - `pnpm check` — passed, 140/140 workspace tasks on the Round 1 fix candidate.
-- `git diff --check` — passed; allowed-path audit contains only `packages/platform-modules/file-center/`, `contracts/files/`, and `.handoffs/PLT-03.md`.
+- `git diff --check` — passed; allowed-path audit contains only `packages/crm-modules/file-center/`, `contracts/files/`, and `.handoffs/PLT-03.md`.
 
 ## Independent Review
 

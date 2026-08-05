@@ -1,0 +1,12 @@
+{
+  "moduleOwner": "organization",
+  "purpose": "Remove the obsolete external identity subject association table after Account becomes the sole internal identity-to-person owner.",
+  "applicationCompatibility": ">=0.0.0",
+  "lockImpact": "Drops organization.subject_associations during the approved local-development reset.",
+  "dataImpact": "Destructive local-development reset. Historical external identity associations are not retained.",
+  "backfill": "Not supported because the repository has no environment with retained identity data.",
+  "destructive": true,
+  "destructiveApproval": "Approved by ADR-0034 and the 2026-08-04 local-development empty-volume reset; no retained environment data exists.",
+  "recovery": "Restore the complete pre-reset database backup and prior application version.",
+  "forwardFix": "Append a reviewed organization-owned migration. Do not rewrite this migration after application."
+}

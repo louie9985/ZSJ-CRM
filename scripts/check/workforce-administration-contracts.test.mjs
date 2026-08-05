@@ -9,7 +9,7 @@ const contract = YAML.parse(await readFile(new URL("../../contracts/http/modules
 test("Workforce Administration commands are a closed discriminated union", () => {
   const command = contract.components.schemas.WorkforceAdministrationCommand;
   assert.equal(command.discriminator.propertyName, "kind");
-  assert.equal(command.oneOf.length, 18);
+  assert.equal(command.oneOf.length, 16);
   const variants = command.oneOf.map(({ $ref }) => {
     assert.match($ref, /^#\/components\/schemas\/[A-Za-z]+Command$/u);
     return contract.components.schemas[$ref.split("/").at(-1)];
@@ -17,11 +17,11 @@ test("Workforce Administration commands are a closed discriminated union", () =>
   assert.equal(variants.every((variant) => variant.type === "object" && variant.additionalProperties === false), true);
   assert.equal(variants.every((variant) => variant.required.includes("kind")), true);
   const kinds = variants.map((variant) => variant.properties.kind.const);
-  assert.equal(new Set(kinds).size, 18);
+  assert.equal(new Set(kinds).size, 16);
   assert.deepEqual(kinds.sort(), [
-    "complete_credential_ceremony", "create_account", "create_department", "create_position",
+    "create_account", "create_department", "create_position",
     "deactivate_account", "deactivate_department", "deactivate_position", "reactivate_account",
-    "reactivate_department", "reactivate_position", "release_phone", "reset_password", "retry_identity_sync",
+    "reactivate_department", "reactivate_position", "release_phone", "reset_password",
     "set_crm_administrator", "update_account", "update_department", "update_position", "update_system_account",
   ]);
   assert.equal(variants.every((variant) => variant.properties.token === undefined), true);
@@ -42,15 +42,12 @@ test("Workforce Administration commands are a closed discriminated union", () =>
   const systemUpdate = variants.find((variant) => variant.properties.kind.const === "update_system_account");
   assert.deepEqual(Object.keys(systemUpdate.properties).sort(), ["accountId", "expectedRevision", "kind", "legalName", "phone", "username"]);
   assert.deepEqual(systemUpdate.required.sort(), ["accountId", "expectedRevision", "kind", "legalName", "username"]);
-  const retry = variants.find((variant) => variant.properties.kind.const === "retry_identity_sync");
-  assert.deepEqual(Object.keys(retry.properties).sort(), ["accountId", "expectedRevision", "failedOperationId", "kind"]);
-  assert.deepEqual(retry.required.sort(), ["accountId", "expectedRevision", "failedOperationId", "kind"]);
 });
 
 test("Workforce account listing has bounded pagination and reviewed filters", () => {
   const operation = contract.paths["/workforce-administration/accounts"].get;
   assert.equal(operation.operationId, "listWorkforceAccounts");
-  assert.equal(operation["x-ai-crm-permission"].code, "platform.workforce-access.console:read");
+  assert.equal(operation["x-ai-crm-permission"].code, "crm.workforce-access.console:read");
   const parameters = Object.fromEntries(operation.parameters.map((parameter) => [parameter.name, parameter]));
   assert.deepEqual(Object.keys(parameters).sort(), ["departmentId", "legalName", "page", "pageSize", "phone", "positionId", "status", "username"]);
   assert.equal(parameters.page.schema.minimum, 1);
@@ -60,14 +57,9 @@ test("Workforce account listing has bounded pagination and reviewed filters", ()
   assert.equal(operation.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/WorkforceAccountPage");
 });
 
-test("Workforce account synchronization projection exposes no identity payload", () => {
+test("Workforce account view exposes no provider synchronization state", () => {
   const account = contract.components.schemas.WorkforceAccount;
-  assert.equal(account.properties.latestIdentitySync.$ref, "#/components/schemas/IdentitySyncOperation");
-  assert.equal(contract.components.schemas.AllowedAction.enum.includes("retry_identity_sync"), true);
-  const projection = contract.components.schemas.IdentitySyncOperation;
-  assert.equal(projection.additionalProperties, false);
-  assert.deepEqual(Object.keys(projection.properties).sort(), ["action", "completedAt", "errorCode", "operationId", "requestedAt", "retryOfOperationId", "status"]);
-  assert.equal(projection.properties.phone, undefined);
-  assert.equal(projection.properties.username, undefined);
-  assert.equal(projection.properties.traceId, undefined);
+  assert.equal(account.properties.latestIdentitySync, undefined);
+  assert.equal(contract.components.schemas.IdentitySyncOperation, undefined);
+  assert.equal(contract.components.schemas.AllowedAction.enum.includes("retry_identity_sync"), false);
 });
